@@ -1,0 +1,106 @@
+:root {
+  color-scheme: light;
+
+  --tts-olive-700: #5f5a44;
+  --tts-olive-600: #6f6b52;
+  --tts-olive-500: #7f7a60;
+  --tts-olive-300: #a39f84;
+  --tts-slate-900: #2f3136;
+  --tts-slate-700: #4a4e54;
+  --tts-slate-500: #6b7076;
+  --tts-slate-300: #9aa0a7;
+  --tts-sand-100: #f6f6f2;
+  --tts-sand-200: #eceee7;
+  --tts-sand-300: #e0e3db;
+  --tts-white: #ffffff;
+
+  --app-bg: var(--tts-sand-100);
+  --app-surface: var(--tts-white);
+  --app-surface-alt: var(--tts-sand-200);
+  --app-border: #d4d6ce;
+  --app-text: var(--tts-slate-900);
+  --app-text-muted: var(--tts-slate-500);
+  --app-primary: var(--tts-olive-600);
+  --app-primary-strong: var(--tts-olive-700);
+  --app-primary-soft: var(--tts-olive-300);
+  --app-link: #55523f;
+  --app-focus: #b7b39a;
+  --app-shadow: 0 10px 30px rgba(32, 34, 36, 0.1);
+  --app-radius: 12px;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --app-bg: #1e2124;
+  --app-surface: #25282c;
+  --app-surface-alt: #2d3035;
+  --app-border: #3b3f45;
+  --app-text: #e7e8ea;
+  --app-text-muted: #a6abb1;
+  --app-primary: #8f8a70;
+  --app-primary-strong: #a7a283;
+  --app-primary-soft: #6d6952;
+  --app-link: #cbc6ab;
+  --app-focus: #9f9a7f;
+  --app-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--app-bg);
+  color: var(--app-text);
+  font-family: "Avenir Next", "Avenir", "Segoe UI", sans-serif;
+  letter-spacing: 0.01em;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+a {
+  color: var(--app-link);
+}
+
+a:hover {
+  color: var(--app-primary-strong);
+}
+
+::selection {
+  background: var(--app-primary-soft);
+  color: var(--app-text);
+}
+
+/* Ant Design surface alignment */
+.ant-layout,
+.ant-layout-content {
+  background: var(--app-bg);
+}
+
+.ant-layout-header,
+.ant-layout-sider {
+  background: var(--app-surface);
+}
+
+.ant-menu {
+  background: transparent;
+}
+
+.ant-card {
+  background: var(--app-surface);
+  border-color: var(--app-border);
+  box-shadow: var(--app-shadow);
+}
+
+.ant-card-head {
+  border-bottom-color: var(--app-border);
+}
+
+.ant-btn-primary {
+  box-shadow: none;
+}
+
+.ant-divider {
+  border-color: var(--app-border);
+}
