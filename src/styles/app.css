@@ -73,6 +73,34 @@
   padding: 16px;
 }
 
+.hub-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.hub-panel {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--app-primary) 8%, var(--app-surface)),
+    var(--app-surface)
+  );
+}
+
+.hub-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.panel-copy {
+  margin: 0;
+  color: var(--app-text-muted);
+  line-height: 1.6;
+}
+
 .app-sider {
   border-right: 1px solid var(--app-border);
 }
