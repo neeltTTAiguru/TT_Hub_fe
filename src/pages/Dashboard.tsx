@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   Alert,
   Button,
@@ -13,9 +13,27 @@ import {
   Tag,
   Typography,
 } from 'antd'
-import { createResearchRun, getAgent, getCompetitors, getResearchRuns, type AgentDetail, type Competitor, type ResearchRun } from '../lib/api'
+import {
+  createResearchRun,
+  captureBrowserResearchPage,
+  getAgent,
+  getCompetitors,
+  getResearchRuns,
+  sendAgentChat,
+  type AgentChatMessage,
+  type AgentDetail,
+  type Competitor,
+  type ResearchRun,
+} from '../lib/api'
 
 const { Paragraph, Text, Title } = Typography
+const { TextArea } = Input
+
+const initialChatMessage: AgentChatMessage = {
+  role: 'assistant',
+  content:
+    'OpenClaw is ready. Ask for competitor tracking, message analysis, or a source-grounded research brief and I will work from the Trusted Tech context loaded into the hub.',
+}
 
 export default function Dashboard() {
   const [form] = Form.useForm()
@@ -26,6 +44,15 @@ export default function Dashboard() {
   const [error, setError] = useState('')
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [chatMessages, setChatMessages] = useState<AgentChatMessage[]>([initialChatMessage])
+  const [chatInput, setChatInput] = useState('')
+  const [chatError, setChatError] = useState('')
+  const [isChatting, setIsChatting] = useState(false)
+  const [researchUrl, setResearchUrl] = useState('')
+  const [researchObjective, setResearchObjective] = useState('')
+  const [isCapturingResearch, setIsCapturingResearch] = useState(false)
+  const [browserResearchError, setBrowserResearchError] = useState('')
+  const chatEndRef = useRef<HTMLDivElement | null>(null)
 
   const load = async () => {
     setIsLoading(true)
@@ -51,6 +78,10 @@ export default function Dashboard() {
   useEffect(() => {
     load()
   }, [])
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [chatMessages, isChatting])
 
   const researchSignals = competitors
     .flatMap((competitor) =>
@@ -79,6 +110,66 @@ export default function Dashboard() {
       }
     } finally {
       setIsSubmitting(false)
+    }
+  }
+
+  const handleSendChat = async () => {
+    const trimmedInput = chatInput.trim()
+
+    if (!trimmedInput || isChatting) {
+      return
+    }
+
+    const nextUserMessage: AgentChatMessage = {
+      role: 'user',
+      content: trimmedInput,
+    }
+    const nextMessages = [...chatMessages, nextUserMessage]
+
+    setChatInput('')
+    setChatError('')
+    setIsChatting(true)
+    setChatMessages(nextMessages)
+
+    try {
+      const response = await sendAgentChat('market-researcher', nextMessages)
+      setChatMessages((current) => [...current, response.message])
+    } catch (submitError) {
+      setChatError(
+        submitError instanceof Error
+          ? submitError.message
+          : 'OpenClaw could not respond right now.',
+      )
+    } finally {
+      setIsChatting(false)
+    }
+  }
+
+  const handleCaptureResearch = async () => {
+    if (!researchUrl.trim() || isCapturingResearch) {
+      return
+    }
+
+    setIsCapturingResearch(true)
+    setBrowserResearchError('')
+
+    try {
+      await captureBrowserResearchPage({
+        url: researchUrl.trim(),
+        objective: researchObjective.trim() || undefined,
+      })
+
+      setResearchUrl('')
+      setResearchObjective('')
+      await load()
+    } catch (captureError) {
+      setBrowserResearchError(
+        captureError instanceof Error
+          ? captureError.message
+          : 'OpenClaw could not capture that page.',
+      )
+    } finally {
+      setIsCapturingResearch(false)
     }
   }
 
@@ -151,6 +242,42 @@ export default function Dashboard() {
             />
           </Card>
 
+          <Card className="section-card" title="Browser Research Capture">
+            <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+              <Text type="secondary">
+                Use your local OpenClaw browser profile to open a public page, extract its text, and save it into the hub.
+              </Text>
+              {browserResearchError ? (
+                <Alert
+                  type="error"
+                  showIcon
+                  message="Browser research capture failed"
+                  description={browserResearchError}
+                />
+              ) : null}
+              <Input
+                value={researchUrl}
+                onChange={(event) => setResearchUrl(event.target.value)}
+                placeholder="https://example.com/competitor-page"
+              />
+              <TextArea
+                value={researchObjective}
+                onChange={(event) => setResearchObjective(event.target.value)}
+                autoSize={{ minRows: 2, maxRows: 4 }}
+                placeholder="Optional objective, for example: capture competitor pricing and product claims."
+              />
+              <div className="chat-composer-actions">
+                <Button
+                  type="primary"
+                  onClick={() => void handleCaptureResearch()}
+                  loading={isCapturingResearch}
+                >
+                  Capture With OpenClaw Browser
+                </Button>
+              </div>
+            </Space>
+          </Card>
+
           <Card className="section-card" title="Research Workspace">
             {researchRuns.length ? (
               <List
@@ -179,6 +306,79 @@ export default function Dashboard() {
                 Launch a research run to start building run history, saved reports, and source-backed findings.
               </p>
             )}
+          </Card>
+
+          <Card
+            className="section-card"
+            title="OpenClaw Chat"
+            extra={agent ? <Tag color="gold">OpenAI via backend</Tag> : null}
+          >
+            <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+              <Text type="secondary">
+                This chat uses the Market Researcher agent context and keeps your OpenAI API key on the backend.
+              </Text>
+
+              {chatError ? (
+                <Alert
+                  type="error"
+                  showIcon
+                  message="OpenClaw chat is unavailable"
+                  description={chatError}
+                />
+              ) : null}
+
+              <div className="chat-thread">
+                {chatMessages.map((message, index) => (
+                  <div
+                    key={`${message.role}-${index}`}
+                    className={`chat-message ${message.role === 'user' ? 'chat-message-user' : 'chat-message-assistant'}`}
+                  >
+                    <div className="chat-message-label">
+                      {message.role === 'user' ? 'You' : 'OpenClaw'}
+                    </div>
+                    <div className="chat-message-body">
+                      {message.content.split('\n').map((line, lineIndex) => (
+                        <p key={lineIndex}>{line || '\u00A0'}</p>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+
+                {isChatting ? (
+                  <div className="chat-message chat-message-assistant">
+                    <div className="chat-message-label">OpenClaw</div>
+                    <div className="chat-message-body">
+                      <p>Thinking through the request...</p>
+                    </div>
+                  </div>
+                ) : null}
+
+                <div ref={chatEndRef} />
+              </div>
+
+              <div className="chat-composer">
+                <TextArea
+                  value={chatInput}
+                  onChange={(event) => setChatInput(event.target.value)}
+                  placeholder="Ask OpenClaw to research a competitor, summarize a signal, or draft a strategic brief."
+                  autoSize={{ minRows: 3, maxRows: 7 }}
+                  onPressEnter={(event) => {
+                    if (!event.shiftKey) {
+                      event.preventDefault()
+                      void handleSendChat()
+                    }
+                  }}
+                />
+                <div className="chat-composer-actions">
+                  <Button onClick={() => setChatMessages([initialChatMessage])} disabled={isChatting}>
+                    Reset thread
+                  </Button>
+                  <Button type="primary" onClick={() => void handleSendChat()} loading={isChatting}>
+                    Send
+                  </Button>
+                </div>
+              </div>
+            </Space>
           </Card>
         </>
       )}

@@ -1,5 +1,9 @@
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:3000').replace(/\/$/, '')
 
+type ApiErrorPayload = {
+  message?: string
+}
+
 export type CompanyContext = {
   _id?: string
   companyName: string
@@ -52,6 +56,21 @@ export type ResearchRun = {
   createdAt: string
 }
 
+export type PublicPage = {
+  _id: string
+  url: string
+  slug: string
+  title: string
+  pageType: string
+  summary: string
+  highlights: string[]
+  rawText: string
+  sourceDomain: string
+  visibility: 'public' | 'internal'
+  updatedAt: string
+  createdAt: string
+}
+
 export type AgentSummary = {
   id: string
   name: string
@@ -88,6 +107,24 @@ export type AgentDetail = AgentSummary & {
   >
 }
 
+export type AgentChatMessage = {
+  role: 'user' | 'assistant'
+  content: string
+}
+
+export type AgentChatResponse = {
+  message: AgentChatMessage
+  meta: {
+    model: string
+    responseId: string
+  }
+}
+
+export type BrowserCaptureResponse = {
+  page: PublicPage
+  researchRun: ResearchRun
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
@@ -99,7 +136,18 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     const body = await response.text()
-    throw new Error(body || `Request failed with ${response.status}`)
+    let message = body
+
+    try {
+      const parsed = JSON.parse(body) as ApiErrorPayload
+      if (parsed.message) {
+        message = parsed.message
+      }
+    } catch {
+      // Keep the raw response body when the payload is not JSON.
+    }
+
+    throw new Error(message || `Request failed with ${response.status}`)
   }
 
   return response.json()
@@ -139,6 +187,20 @@ export function createResearchRun(payload: {
   requestedBy?: string
 }) {
   return request<ResearchRun>('/research-runs', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function sendAgentChat(agentId: string, messages: AgentChatMessage[]) {
+  return request<AgentChatResponse>(`/agents/${agentId}/chat`, {
+    method: 'POST',
+    body: JSON.stringify({ messages }),
+  })
+}
+
+export function captureBrowserResearchPage(payload: { url: string; objective?: string }) {
+  return request<BrowserCaptureResponse>('/browser-research/capture-page', {
     method: 'POST',
     body: JSON.stringify(payload),
   })
