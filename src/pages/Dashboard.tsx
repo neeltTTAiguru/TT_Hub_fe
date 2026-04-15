@@ -1,32 +1,21 @@
 import { useEffect, useRef, useState } from 'react'
+import { useAuth0 } from '@auth0/auth0-react'
+import { Alert, Button, Card, Form, Input, message, Modal, Space, Spin, Tag, Typography } from 'antd'
+import ChatMessageContent from '../components/ChatMessageContent'
 import {
-  Alert,
-  Button,
-  Card,
-  Form,
-  Input,
-  List,
-  Modal,
-  Space,
-  Spin,
-  Statistic,
-  Tag,
-  Typography,
-} from 'antd'
-import {
+  createChatThread,
   createResearchRun,
   captureBrowserResearchPage,
   getAgent,
-  getCompetitors,
-  getResearchRuns,
+  getChatThreads,
   sendAgentChat,
+  updateChatThread,
   type AgentChatMessage,
   type AgentDetail,
-  type Competitor,
-  type ResearchRun,
+  type ChatThread,
 } from '../lib/api'
 
-const { Paragraph, Text, Title } = Typography
+const { Text } = Typography
 const { TextArea } = Input
 
 const initialChatMessage: AgentChatMessage = {
@@ -36,38 +25,40 @@ const initialChatMessage: AgentChatMessage = {
 }
 
 export default function Dashboard() {
+  const { user } = useAuth0()
   const [form] = Form.useForm()
   const [agent, setAgent] = useState<AgentDetail | null>(null)
-  const [competitors, setCompetitors] = useState<Competitor[]>([])
-  const [researchRuns, setResearchRuns] = useState<ResearchRun[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [chatMessages, setChatMessages] = useState<AgentChatMessage[]>([initialChatMessage])
+  const [savedThreads, setSavedThreads] = useState<ChatThread[]>([])
+  const [activeThreadId, setActiveThreadId] = useState<string | null>(null)
   const [chatInput, setChatInput] = useState('')
   const [chatError, setChatError] = useState('')
   const [isChatting, setIsChatting] = useState(false)
+  const [isSavingThread, setIsSavingThread] = useState(false)
+  const [isThreadSidebarOpen, setIsThreadSidebarOpen] = useState(false)
   const [researchUrl, setResearchUrl] = useState('')
   const [researchObjective, setResearchObjective] = useState('')
   const [isCapturingResearch, setIsCapturingResearch] = useState(false)
   const [browserResearchError, setBrowserResearchError] = useState('')
   const chatEndRef = useRef<HTMLDivElement | null>(null)
+  const userId = user?.sub ?? ''
 
   const load = async () => {
     setIsLoading(true)
     setError('')
 
     try {
-      const [agentResponse, competitorsResponse, runsResponse] = await Promise.all([
+      const [agentResponse, threadsResponse] = await Promise.all([
         getAgent('market-researcher'),
-        getCompetitors(),
-        getResearchRuns(),
+        userId ? getChatThreads(userId, 'market-researcher') : Promise.resolve([]),
       ])
 
       setAgent(agentResponse)
-      setCompetitors(competitorsResponse)
-      setResearchRuns(runsResponse)
+      setSavedThreads(threadsResponse)
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Failed to load market research data.')
     } finally {
@@ -76,18 +67,12 @@ export default function Dashboard() {
   }
 
   useEffect(() => {
-    load()
-  }, [])
+    void load()
+  }, [userId])
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [chatMessages, isChatting])
-
-  const researchSignals = competitors
-    .flatMap((competitor) =>
-      competitor.watchSignals.map((signal) => `${competitor.name}: ${signal}`),
-    )
-    .slice(0, 6)
 
   const handleCreateRun = async () => {
     try {
@@ -145,6 +130,75 @@ export default function Dashboard() {
     }
   }
 
+  const buildThreadTitle = () => {
+    const firstUserMessage = chatMessages.find((entry) => entry.role === 'user')?.content.trim()
+
+    if (!firstUserMessage) {
+      return 'Market Research Thread'
+    }
+
+    return firstUserMessage.slice(0, 80)
+  }
+
+  const handleSaveThread = async () => {
+    if (!userId || !chatMessages.length || isSavingThread) {
+      return
+    }
+
+    setIsSavingThread(true)
+    setChatError('')
+
+    try {
+      const payload = {
+        agentId: 'market-researcher',
+        title: buildThreadTitle(),
+        messages: chatMessages,
+        thread: {
+          messages: chatMessages,
+        },
+      }
+      const savedThread = activeThreadId
+        ? await updateChatThread(userId, activeThreadId, payload)
+        : await createChatThread(userId, payload)
+
+      setSavedThreads((current) => {
+        const next = current.filter((thread) => thread._id !== savedThread._id)
+        return [savedThread, ...next]
+      })
+      setActiveThreadId(savedThread._id)
+      message.success('Thread saved to Trusted Tech Hub')
+    } catch (saveError) {
+      setChatError(saveError instanceof Error ? saveError.message : 'Failed to save thread.')
+    } finally {
+      setIsSavingThread(false)
+    }
+  }
+
+  const handleImportThread = (threadId: string) => {
+    const selectedThread = savedThreads.find((thread) => thread._id === threadId)
+
+    if (!selectedThread) {
+      return
+    }
+
+    const importedMessages =
+      Array.isArray(selectedThread.thread?.messages) && selectedThread.thread.messages.length
+        ? selectedThread.thread.messages
+        : selectedThread.messages
+
+    setChatMessages(importedMessages)
+    setActiveThreadId(selectedThread._id)
+    setChatError('')
+    setIsThreadSidebarOpen(false)
+  }
+
+  const handleNewThread = () => {
+    setChatMessages([initialChatMessage])
+    setActiveThreadId(null)
+    setChatError('')
+    setIsThreadSidebarOpen(false)
+  }
+
   const handleCaptureResearch = async () => {
     if (!researchUrl.trim() || isCapturingResearch) {
       return
@@ -190,58 +244,6 @@ export default function Dashboard() {
         </div>
       ) : (
         <>
-          <div className="stat-grid">
-            <Card className="section-card">
-              <Statistic title="Competitors monitored" value={competitors.length} />
-            </Card>
-            <Card className="section-card">
-              <Statistic title="Research runs" value={researchRuns.length} />
-            </Card>
-            <Card className="section-card">
-              <Statistic title="Plugin tools" value={agent?.plugin.tools.length ?? 0} />
-            </Card>
-            <Card className="section-card">
-              <Statistic title="Priority watchlist" value={competitors.filter((item) => item.status === 'priority').length} />
-            </Card>
-          </div>
-
-          <div className="hub-grid">
-            <Card className="section-card" title="Latest Signals">
-              <List
-                locale={{ emptyText: 'Add competitor watch signals in the backend to see live intelligence here.' }}
-                dataSource={researchSignals}
-                renderItem={(item) => (
-                  <List.Item>
-                    <Text>{item}</Text>
-                  </List.Item>
-                )}
-              />
-            </Card>
-
-            <Card className="section-card" title="Current Mission">
-              <Space direction="vertical" size="middle">
-                <Tag color="processing">{agent?.status ?? 'active'}</Tag>
-                <Paragraph style={{ margin: 0 }}>
-                  {agent?.mission || 'Gather company context, investigate the market, and return a strategic brief.'}
-                </Paragraph>
-                <Button type="primary" onClick={() => setIsModalOpen(true)}>
-                  Launch Research Run
-                </Button>
-              </Space>
-            </Card>
-          </div>
-
-          <Card className="section-card" title="Research Workflow">
-            <List
-              dataSource={agent?.workflow ?? []}
-              renderItem={(item, index) => (
-                <List.Item>
-                  <Text>{index + 1}. {item}</Text>
-                </List.Item>
-              )}
-            />
-          </Card>
-
           <Card className="section-card" title="Browser Research Capture">
             <Space direction="vertical" size="middle" style={{ width: '100%' }}>
               <Text type="secondary">
@@ -278,36 +280,6 @@ export default function Dashboard() {
             </Space>
           </Card>
 
-          <Card className="section-card" title="Research Workspace">
-            {researchRuns.length ? (
-              <List
-                dataSource={researchRuns}
-                renderItem={(run) => (
-                  <List.Item>
-                    <Space direction="vertical" size={4} style={{ width: '100%' }}>
-                      <Space>
-                        <Title level={5} style={{ margin: 0 }}>
-                          {run.title}
-                        </Title>
-                        <Tag color={run.status === 'completed' ? 'green' : run.status === 'in_progress' ? 'processing' : 'default'}>
-                          {run.status}
-                        </Tag>
-                      </Space>
-                      <Text>{run.objective}</Text>
-                      <Text type="secondary">
-                        Findings: {run.findings.length} | Updated {new Date(run.updatedAt).toLocaleString()}
-                      </Text>
-                    </Space>
-                  </List.Item>
-                )}
-              />
-            ) : (
-              <p className="panel-copy">
-                Launch a research run to start building run history, saved reports, and source-backed findings.
-              </p>
-            )}
-          </Card>
-
           <Card
             className="section-card"
             title="OpenClaw Chat"
@@ -327,55 +299,94 @@ export default function Dashboard() {
                 />
               ) : null}
 
-              <div className="chat-thread">
-                {chatMessages.map((message, index) => (
-                  <div
-                    key={`${message.role}-${index}`}
-                    className={`chat-message ${message.role === 'user' ? 'chat-message-user' : 'chat-message-assistant'}`}
-                  >
-                    <div className="chat-message-label">
-                      {message.role === 'user' ? 'You' : 'OpenClaw'}
-                    </div>
-                    <div className="chat-message-body">
-                      {message.content.split('\n').map((line, lineIndex) => (
-                        <p key={lineIndex}>{line || '\u00A0'}</p>
-                      ))}
+              <div className="chat-shell">
+                <aside className={`chat-sidebar ${isThreadSidebarOpen ? 'chat-sidebar-open' : ''}`}>
+                  <div className="chat-sidebar-header">
+                    <Text strong>Threads</Text>
+                    <Button type="text" onClick={() => setIsThreadSidebarOpen(false)}>
+                      Close
+                    </Button>
+                  </div>
+                  <Button onClick={handleNewThread} disabled={isChatting}>
+                    New thread
+                  </Button>
+                  <Button onClick={handleSaveThread} loading={isSavingThread} disabled={isChatting || !userId}>
+                    Save thread
+                  </Button>
+                  <div className="chat-thread-list">
+                    {savedThreads.length ? (
+                      savedThreads.map((thread) => (
+                        <button
+                          key={thread._id}
+                          type="button"
+                          className={`chat-thread-item ${activeThreadId === thread._id ? 'chat-thread-item-active' : ''}`}
+                          onClick={() => handleImportThread(thread._id)}
+                          disabled={isChatting}
+                        >
+                          <strong>{thread.title}</strong>
+                          <span>{new Date(thread.updatedAt).toLocaleString()}</span>
+                        </button>
+                      ))
+                    ) : (
+                      <Text type="secondary">No saved threads yet.</Text>
+                    )}
+                  </div>
+                </aside>
+
+                <div className="chat-main">
+                  <div className="chat-toolbar">
+                    <Button onClick={() => setIsThreadSidebarOpen((current) => !current)}>
+                      Threads
+                    </Button>
+                    {activeThreadId ? <Text type="secondary">Saved thread loaded</Text> : null}
+                  </div>
+
+                  <div className="chat-thread">
+                    {chatMessages.map((message, index) => (
+                      <div
+                        key={`${message.role}-${index}`}
+                        className={`chat-message ${message.role === 'user' ? 'chat-message-user' : 'chat-message-assistant'}`}
+                      >
+                        <div className="chat-message-label">
+                          {message.role === 'user' ? 'You' : 'OpenClaw'}
+                        </div>
+                        <div className="chat-message-body">
+                          <ChatMessageContent content={message.content} />
+                        </div>
+                      </div>
+                    ))}
+
+                    {isChatting ? (
+                      <div className="chat-message chat-message-assistant">
+                        <div className="chat-message-label">OpenClaw</div>
+                        <div className="chat-message-body">
+                          <p>Thinking through the request...</p>
+                        </div>
+                      </div>
+                    ) : null}
+
+                    <div ref={chatEndRef} />
+                  </div>
+
+                  <div className="chat-composer">
+                    <TextArea
+                      value={chatInput}
+                      onChange={(event) => setChatInput(event.target.value)}
+                      placeholder="Ask OpenClaw to research a competitor, summarize a signal, or draft a strategic brief."
+                      autoSize={{ minRows: 3, maxRows: 7 }}
+                      onPressEnter={(event) => {
+                        if (!event.shiftKey) {
+                          event.preventDefault()
+                          void handleSendChat()
+                        }
+                      }}
+                    />
+                    <div className="chat-composer-actions">
+                      <Button type="primary" onClick={() => void handleSendChat()} loading={isChatting}>
+                        Send
+                      </Button>
                     </div>
                   </div>
-                ))}
-
-                {isChatting ? (
-                  <div className="chat-message chat-message-assistant">
-                    <div className="chat-message-label">OpenClaw</div>
-                    <div className="chat-message-body">
-                      <p>Thinking through the request...</p>
-                    </div>
-                  </div>
-                ) : null}
-
-                <div ref={chatEndRef} />
-              </div>
-
-              <div className="chat-composer">
-                <TextArea
-                  value={chatInput}
-                  onChange={(event) => setChatInput(event.target.value)}
-                  placeholder="Ask OpenClaw to research a competitor, summarize a signal, or draft a strategic brief."
-                  autoSize={{ minRows: 3, maxRows: 7 }}
-                  onPressEnter={(event) => {
-                    if (!event.shiftKey) {
-                      event.preventDefault()
-                      void handleSendChat()
-                    }
-                  }}
-                />
-                <div className="chat-composer-actions">
-                  <Button onClick={() => setChatMessages([initialChatMessage])} disabled={isChatting}>
-                    Reset thread
-                  </Button>
-                  <Button type="primary" onClick={() => void handleSendChat()} loading={isChatting}>
-                    Send
-                  </Button>
                 </div>
               </div>
             </Space>

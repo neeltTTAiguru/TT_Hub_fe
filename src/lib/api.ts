@@ -71,6 +71,27 @@ export type PublicPage = {
   createdAt: string
 }
 
+export type Opportunity = {
+  _id: string
+  noticeId: string
+  title: string
+  solicitationNumber: string
+  agency: string
+  office: string
+  postedDate: string
+  responseDeadline: string
+  noticeType: string
+  setAside: string
+  naicsCode: string
+  classificationCode: string
+  uiLink: string
+  descriptionLink: string
+  sourceKeyword: string
+  active: string
+  updatedAt: string
+  createdAt: string
+}
+
 export type AgentSummary = {
   id: string
   name: string
@@ -112,6 +133,20 @@ export type AgentChatMessage = {
   content: string
 }
 
+export type ChatThread = {
+  _id: string
+  userId: string
+  agentId: string
+  title: string
+  messages: AgentChatMessage[]
+  thread: {
+    messages: AgentChatMessage[]
+    [key: string]: unknown
+  }
+  updatedAt: string
+  createdAt: string
+}
+
 export type AgentChatResponse = {
   message: AgentChatMessage
   meta: {
@@ -125,14 +160,39 @@ export type BrowserCaptureResponse = {
   researchRun: ResearchRun
 }
 
+export type SamGovSyncResponse = {
+  opportunities: Opportunity[]
+  researchRun: ResearchRun
+}
+
+export type LinkedInPostCaptureResponse = {
+  title: string
+  url: string
+  keyword: string
+  posts: Array<{
+    author: string
+    text: string
+  }>
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(init?.headers ?? {}),
-    },
-  })
+  let response: Response
+
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      ...init,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(init?.headers ?? {}),
+      },
+    })
+  } catch (error) {
+    if (error instanceof TypeError) {
+      throw new Error(`Trusted Tech Hub API is unavailable at ${API_BASE_URL}. Start the backend and try again.`)
+    }
+
+    throw error
+  }
 
   if (!response.ok) {
     const body = await response.text()
@@ -199,8 +259,102 @@ export function sendAgentChat(agentId: string, messages: AgentChatMessage[]) {
   })
 }
 
+export function getChatThreads(userId: string, agentId?: string) {
+  const search = new URLSearchParams()
+
+  if (agentId) {
+    search.set('agentId', agentId)
+  }
+
+  const query = search.toString()
+
+  return request<ChatThread[]>(`/chat-threads${query ? `?${query}` : ''}`, {
+    headers: {
+      'x-auth0-user-id': userId,
+    },
+  })
+}
+
+export function createChatThread(
+  userId: string,
+  payload: {
+    agentId: string
+    title: string
+    messages: AgentChatMessage[]
+    thread: {
+      messages: AgentChatMessage[]
+      [key: string]: unknown
+    }
+  },
+) {
+  return request<ChatThread>('/chat-threads', {
+    method: 'POST',
+    headers: {
+      'x-auth0-user-id': userId,
+    },
+    body: JSON.stringify(payload),
+  })
+}
+
+export function updateChatThread(
+  userId: string,
+  threadId: string,
+  payload: {
+    agentId: string
+    title: string
+    messages: AgentChatMessage[]
+    thread: {
+      messages: AgentChatMessage[]
+      [key: string]: unknown
+    }
+  },
+) {
+  return request<ChatThread>(`/chat-threads/${threadId}`, {
+    method: 'PATCH',
+    headers: {
+      'x-auth0-user-id': userId,
+    },
+    body: JSON.stringify(payload),
+  })
+}
+
 export function captureBrowserResearchPage(payload: { url: string; objective?: string }) {
   return request<BrowserCaptureResponse>('/browser-research/capture-page', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function getSamGovOpportunities() {
+  return request<Opportunity[]>('/sam-gov-monitor/opportunities')
+}
+
+export function syncSamGovMonitor() {
+  return request<SamGovSyncResponse>('/sam-gov-monitor/sync', {
+    method: 'POST',
+  })
+}
+
+export function getLinkedInProfiles() {
+  return request<PublicPage[]>('/linkedin-surfer/profiles')
+}
+
+export function captureLinkedInProfile(payload: { url: string }) {
+  return request<PublicPage>('/linkedin-surfer/capture-profile', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function captureLinkedInPosts(payload: { url: string; keyword: string }) {
+  return request<LinkedInPostCaptureResponse>('/linkedin-surfer/capture-posts', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function searchLinkedInPosts(payload: { keyword: string }) {
+  return request<LinkedInPostCaptureResponse>('/linkedin-surfer/search-posts', {
     method: 'POST',
     body: JSON.stringify(payload),
   })

@@ -14,6 +14,10 @@ import {
 import { getAntdTheme } from './theme'
 import HubOverview from './pages/HubOverview'
 import Dashboard from './pages/Dashboard'
+import Reports from './pages/Reports'
+import SamGovMonitor from './pages/SamGovMonitor'
+import RfpResponseAgent from './pages/RfpResponseAgent'
+import LinkedInSurfer from './pages/LinkedInSurfer'
 import Settings from './pages/Settings'
 import NotFound from './pages/NotFound'
 import './styles/app.css'
@@ -24,6 +28,10 @@ const { Text, Title } = Typography
 const navItems = [
   { key: '/', label: <Link to="/">Hub Overview</Link> },
   { key: '/market-research', label: <Link to="/market-research">Market Researcher</Link> },
+  { key: '/sam-gov-monitor', label: <Link to="/sam-gov-monitor">SAM.gov Monitor</Link> },
+  { key: '/rfp-response-agent', label: <Link to="/rfp-response-agent">RFP Response Agent</Link> },
+  { key: '/linkedin-surfer', label: <Link to="/linkedin-surfer">LinkedIn Surfer</Link> },
+  { key: '/reports', label: <Link to="/reports">Reports</Link> },
   { key: '/settings', label: <Link to="/settings">Settings</Link> },
 ]
 
@@ -75,6 +83,10 @@ function AppShell({ isDark, onToggle }: { isDark: boolean; onToggle: () => void 
           <Routes>
             <Route path="/" element={<HubOverview />} />
             <Route path="/market-research" element={<Dashboard />} />
+            <Route path="/sam-gov-monitor" element={<SamGovMonitor />} />
+            <Route path="/rfp-response-agent" element={<RfpResponseAgent />} />
+            <Route path="/linkedin-surfer" element={<LinkedInSurfer />} />
+            <Route path="/reports" element={<Reports />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="*" element={<NotFound />} />
           </Routes>

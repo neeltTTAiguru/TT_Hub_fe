@@ -130,6 +130,94 @@
   padding: 6px;
 }
 
+.chat-shell {
+  position: relative;
+  min-height: 520px;
+}
+
+.chat-sidebar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 280px;
+  display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  gap: 10px;
+  padding: 16px;
+  background: var(--app-surface);
+  border: 1px solid var(--app-border);
+  border-radius: 16px;
+  box-shadow: var(--app-shadow);
+  transform: translateX(-110%);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    transform 180ms ease,
+    opacity 180ms ease;
+  z-index: 2;
+}
+
+.chat-sidebar-open {
+  transform: translateX(0);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.chat-sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.chat-thread-list {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.chat-main {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.chat-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.chat-thread-item {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  padding: 12px;
+  text-align: left;
+  border: 1px solid var(--app-border);
+  border-radius: 12px;
+  background: var(--app-surface-alt);
+  color: var(--app-text);
+  cursor: pointer;
+}
+
+.chat-thread-item span {
+  color: var(--app-text-muted);
+  font-size: 12px;
+}
+
+.chat-thread-item-active {
+  border-color: var(--app-primary);
+  background: color-mix(in srgb, var(--app-primary) 12%, var(--app-surface));
+}
+
+.chat-thread-item:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
 .chat-message {
   max-width: min(100%, 860px);
   border: 1px solid var(--app-border);
@@ -162,8 +250,37 @@
   line-height: 1.6;
 }
 
-.chat-message-body p {
+.chat-rich-content {
+  display: grid;
+  gap: 12px;
+}
+
+.chat-rich-block {
+  display: grid;
+  gap: 8px;
+}
+
+.chat-message-body p,
+.chat-rich-content p {
   margin: 0;
+}
+
+.chat-rich-heading {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.4;
+}
+
+.chat-rich-list {
+  margin: 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 6px;
+}
+
+.chat-rich-content a {
+  color: var(--app-link);
+  text-decoration: underline;
 }
 
 .chat-composer {
@@ -175,6 +292,66 @@
   display: flex;
   justify-content: flex-end;
   gap: 10px;
+}
+
+.linkedin-run-card {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--app-primary) 6%, var(--app-surface)),
+    var(--app-surface)
+  );
+}
+
+.linkedin-run-builder {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.linkedin-prompt-list {
+  display: grid;
+  gap: 10px;
+}
+
+.linkedin-prompt-chip {
+  width: 100%;
+  text-align: left;
+  padding: 12px 14px;
+  border: 1px solid var(--app-border);
+  border-radius: 14px;
+  background: var(--app-surface);
+  color: var(--app-text);
+  cursor: pointer;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    transform 160ms ease;
+}
+
+.linkedin-prompt-chip:hover {
+  border-color: var(--app-primary);
+  background: color-mix(in srgb, var(--app-primary) 8%, var(--app-surface));
+  transform: translateY(-1px);
+}
+
+.linkedin-prompt-chip-active {
+  border-color: var(--app-primary);
+  background: color-mix(in srgb, var(--app-primary) 12%, var(--app-surface));
+}
+
+.linkedin-run-preview {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--app-border);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--app-surface-alt) 60%, var(--app-surface));
+}
+
+.linkedin-run-snippet {
+  display: grid;
+  gap: 6px;
 }
 
 @media (max-width: 900px) {
@@ -190,11 +367,23 @@
     max-width: 100%;
   }
 
+  .chat-sidebar {
+    width: min(85vw, 280px);
+  }
+
+  .chat-sidebar .ant-btn {
+    width: 100%;
+  }
+
   .chat-composer-actions {
     justify-content: stretch;
   }
 
   .chat-composer-actions .ant-btn {
     flex: 1;
+  }
+
+  .linkedin-run-builder {
+    grid-template-columns: 1fr;
   }
 }
