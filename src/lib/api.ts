@@ -1,5 +1,11 @@
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:3000').replace(/\/$/, '')
 
+let accessTokenProvider: null | (() => Promise<string>) = null
+
+export function setAccessTokenProvider(provider: null | (() => Promise<string>)) {
+  accessTokenProvider = provider
+}
+
 type ApiErrorPayload = {
   message?: string
 }
@@ -155,6 +161,16 @@ export type AgentChatResponse = {
   }
 }
 
+export type User = {
+  _id: string
+  name: string
+  email: string
+  role: string
+  status: 'active' | 'invited' | 'inactive'
+  createdAt: string
+  updatedAt: string
+}
+
 export type BrowserCaptureResponse = {
   page: PublicPage
   researchRun: ResearchRun
@@ -169,20 +185,41 @@ export type LinkedInPostCaptureResponse = {
   title: string
   url: string
   keyword: string
+  screenshotDataUrl?: string
   posts: Array<{
     author: string
     text: string
+    selector?: string
   }>
+}
+
+export type LinkedInBrowserSessionResponse = {
+  ok: boolean
+  page: {
+    title: string
+    url: string
+    readyState: string
+  }
+}
+
+export type BrowserScreenshotResponse = {
+  mediaPath: string
+  dataUrl: string
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response
+  const authHeaders =
+    accessTokenProvider
+      ? (() => accessTokenProvider())().then((token) => (token ? { Authorization: `Bearer ${token}` } : {}))
+      : Promise.resolve({})
 
   try {
     response = await fetch(`${API_BASE_URL}${path}`, {
       ...init,
       headers: {
         'Content-Type': 'application/json',
+        ...(await authHeaders),
         ...(init?.headers ?? {}),
       },
     })
@@ -240,6 +277,22 @@ export function getResearchRuns() {
   return request<ResearchRun[]>('/research-runs')
 }
 
+export function getUsers() {
+  return request<User[]>('/users')
+}
+
+export function createUser(payload: {
+  name: string
+  email: string
+  role?: string
+  status?: User['status']
+}) {
+  return request<User>('/users', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
 export function createResearchRun(payload: {
   title: string
   objective: string
@@ -259,7 +312,7 @@ export function sendAgentChat(agentId: string, messages: AgentChatMessage[]) {
   })
 }
 
-export function getChatThreads(userId: string, agentId?: string) {
+export function getChatThreads(agentId?: string) {
   const search = new URLSearchParams()
 
   if (agentId) {
@@ -269,14 +322,10 @@ export function getChatThreads(userId: string, agentId?: string) {
   const query = search.toString()
 
   return request<ChatThread[]>(`/chat-threads${query ? `?${query}` : ''}`, {
-    headers: {
-      'x-auth0-user-id': userId,
-    },
   })
 }
 
 export function createChatThread(
-  userId: string,
   payload: {
     agentId: string
     title: string
@@ -289,15 +338,11 @@ export function createChatThread(
 ) {
   return request<ChatThread>('/chat-threads', {
     method: 'POST',
-    headers: {
-      'x-auth0-user-id': userId,
-    },
     body: JSON.stringify(payload),
   })
 }
 
 export function updateChatThread(
-  userId: string,
   threadId: string,
   payload: {
     agentId: string
@@ -311,9 +356,6 @@ export function updateChatThread(
 ) {
   return request<ChatThread>(`/chat-threads/${threadId}`, {
     method: 'PATCH',
-    headers: {
-      'x-auth0-user-id': userId,
-    },
     body: JSON.stringify(payload),
   })
 }
@@ -337,6 +379,19 @@ export function syncSamGovMonitor() {
 
 export function getLinkedInProfiles() {
   return request<PublicPage[]>('/linkedin-surfer/profiles')
+}
+
+export function openLinkedInSession(payload?: { url?: string }) {
+  return request<LinkedInBrowserSessionResponse>('/linkedin-surfer/open-session', {
+    method: 'POST',
+    body: JSON.stringify(payload ?? {}),
+  })
+}
+
+export function getLinkedInScreenshot() {
+  return request<BrowserScreenshotResponse>('/linkedin-surfer/screenshot', {
+    method: 'POST',
+  })
 }
 
 export function captureLinkedInProfile(payload: { url: string }) {

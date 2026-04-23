@@ -46,6 +46,14 @@
   gap: 20px;
 }
 
+.page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
 .page-title {
   margin: 0;
   font-size: 28px;
@@ -352,6 +360,14 @@
 .linkedin-run-snippet {
   display: grid;
   gap: 6px;
+}
+
+.linkedin-browser-shot {
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid var(--app-border);
+  background: var(--app-surface);
+  object-fit: contain;
 }
 
 @media (max-width: 900px) {

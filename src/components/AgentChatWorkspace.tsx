@@ -51,7 +51,7 @@ export default function AgentChatWorkspace({
   children,
   renderChatTools,
 }: AgentChatWorkspaceProps) {
-  const { user } = useAuth0()
+  const { isAuthenticated } = useAuth0()
   const [agent, setAgent] = useState<AgentDetail | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
@@ -73,7 +73,6 @@ export default function AgentChatWorkspace({
   const [isSavingThread, setIsSavingThread] = useState(false)
   const [isThreadSidebarOpen, setIsThreadSidebarOpen] = useState(false)
   const chatEndRef = useRef<HTMLDivElement | null>(null)
-  const userId = user?.sub ?? ''
 
   useEffect(() => {
     const load = async () => {
@@ -83,7 +82,7 @@ export default function AgentChatWorkspace({
       try {
         const [agentResponse, threadsResponse] = await Promise.all([
           getAgent(agentId),
-          userId ? getChatThreads(userId, agentId) : Promise.resolve([]),
+          isAuthenticated ? getChatThreads(agentId) : Promise.resolve([]),
         ])
 
         setAgent(agentResponse)
@@ -96,7 +95,7 @@ export default function AgentChatWorkspace({
     }
 
     void load()
-  }, [agentId, userId])
+  }, [agentId, isAuthenticated])
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -170,7 +169,7 @@ export default function AgentChatWorkspace({
   }
 
   const handleSaveThread = async () => {
-    if (!userId || !chatMessages.length || isSavingThread) {
+    if (!isAuthenticated || !chatMessages.length || isSavingThread) {
       return
     }
 
@@ -187,8 +186,8 @@ export default function AgentChatWorkspace({
         },
       }
       const savedThread = activeThreadId
-        ? await updateChatThread(userId, activeThreadId, payload)
-        : await createChatThread(userId, payload)
+        ? await updateChatThread(activeThreadId, payload)
+        : await createChatThread(payload)
 
       setSavedThreads((current) => {
         const next = current.filter((thread) => thread._id !== savedThread._id)
@@ -267,7 +266,7 @@ export default function AgentChatWorkspace({
                     <Button onClick={handleNewThread} disabled={isChatting}>
                       New thread
                     </Button>
-                    <Button onClick={handleSaveThread} loading={isSavingThread} disabled={isChatting || !userId}>
+                    <Button onClick={handleSaveThread} loading={isSavingThread} disabled={isChatting || !isAuthenticated}>
                       Save thread
                     </Button>
                     <div className="chat-thread-list">

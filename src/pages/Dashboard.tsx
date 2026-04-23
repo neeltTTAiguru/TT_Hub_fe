@@ -25,7 +25,7 @@ const initialChatMessage: AgentChatMessage = {
 }
 
 export default function Dashboard() {
-  const { user } = useAuth0()
+  const { isAuthenticated } = useAuth0()
   const [form] = Form.useForm()
   const [agent, setAgent] = useState<AgentDetail | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -45,17 +45,15 @@ export default function Dashboard() {
   const [isCapturingResearch, setIsCapturingResearch] = useState(false)
   const [browserResearchError, setBrowserResearchError] = useState('')
   const chatEndRef = useRef<HTMLDivElement | null>(null)
-  const userId = user?.sub ?? ''
-
   const load = async () => {
     setIsLoading(true)
     setError('')
 
-    try {
-      const [agentResponse, threadsResponse] = await Promise.all([
-        getAgent('market-researcher'),
-        userId ? getChatThreads(userId, 'market-researcher') : Promise.resolve([]),
-      ])
+      try {
+        const [agentResponse, threadsResponse] = await Promise.all([
+          getAgent('market-researcher'),
+          isAuthenticated ? getChatThreads('market-researcher') : Promise.resolve([]),
+        ])
 
       setAgent(agentResponse)
       setSavedThreads(threadsResponse)
@@ -68,7 +66,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     void load()
-  }, [userId])
+  }, [isAuthenticated])
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -141,7 +139,7 @@ export default function Dashboard() {
   }
 
   const handleSaveThread = async () => {
-    if (!userId || !chatMessages.length || isSavingThread) {
+    if (!isAuthenticated || !chatMessages.length || isSavingThread) {
       return
     }
 
@@ -158,8 +156,8 @@ export default function Dashboard() {
         },
       }
       const savedThread = activeThreadId
-        ? await updateChatThread(userId, activeThreadId, payload)
-        : await createChatThread(userId, payload)
+        ? await updateChatThread(activeThreadId, payload)
+        : await createChatThread(payload)
 
       setSavedThreads((current) => {
         const next = current.filter((thread) => thread._id !== savedThread._id)
@@ -310,7 +308,7 @@ export default function Dashboard() {
                   <Button onClick={handleNewThread} disabled={isChatting}>
                     New thread
                   </Button>
-                  <Button onClick={handleSaveThread} loading={isSavingThread} disabled={isChatting || !userId}>
+                  <Button onClick={handleSaveThread} loading={isSavingThread} disabled={isChatting || !isAuthenticated}>
                     Save thread
                   </Button>
                   <div className="chat-thread-list">

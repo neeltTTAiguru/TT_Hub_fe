@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useAuth0 } from '@auth0/auth0-react'
 import {
   getAgents,
   getCompanyContext,
@@ -29,6 +30,7 @@ const initialState: HubDataState = {
 }
 
 export function useHubData() {
+  const { isAuthenticated, isLoading: isAuthLoading } = useAuth0()
   const [state, setState] = useState<HubDataState>(initialState)
 
   const load = async () => {
@@ -60,11 +62,14 @@ export function useHubData() {
   }
 
   useEffect(() => {
-    load()
-  }, [])
+    if (!isAuthLoading && isAuthenticated) {
+      void load()
+    }
+  }, [isAuthenticated, isAuthLoading])
 
   return {
     ...state,
+    isLoading: state.isLoading || isAuthLoading,
     refresh: load,
   }
 }
