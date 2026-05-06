@@ -114,10 +114,26 @@ function getInitialTheme(): boolean {
 }
 
 function LoginScreen() {
+  const { loginWithRedirect } = useAuth0()
+  const [authError, setAuthError] = useState('')
+
+  const startAuth = async (mode: 'login' | 'signup') => {
+    try {
+      setAuthError('')
+      await loginWithRedirect({
+        appState: {
+          returnTo: '/',
+        },
+        authorizationParams: {
+          ...(mode === 'signup' ? { screen_hint: 'signup' } : {}),
+        },
+      })
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : 'Auth0 login failed to start.')
+    }
+  }
+
   const authButtonStyle: React.CSSProperties = {
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
     minWidth: 140,
     height: 48,
     padding: '0 20px',
@@ -128,7 +144,6 @@ function LoginScreen() {
     fontSize: 18,
     fontWeight: 600,
     textDecoration: 'none',
-    cursor: 'pointer',
   }
   const secondaryAuthButtonStyle: React.CSSProperties = {
     ...authButtonStyle,
@@ -154,16 +169,25 @@ function LoginScreen() {
             Sign in with Auth0 to access Trusted Tech products and protected workflows.
           </Text>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            <a href="/login" style={authButtonStyle}>
+            <Button
+              type="primary"
+              size="large"
+              style={authButtonStyle}
+              onClick={() => void startAuth('login')}
+            >
               Log in
-            </a>
-            <a href="/signup" style={secondaryAuthButtonStyle}>
+            </Button>
+            <Button
+              size="large"
+              style={secondaryAuthButtonStyle}
+              onClick={() => void startAuth('signup')}
+            >
               Create account
-            </a>
+            </Button>
           </div>
-          <Text type="secondary">
-            If this still does not redirect, check that Auth0 allows `http://localhost:5173` in callback, logout, and web origin settings.
-          </Text>
+          {authError ? (
+            <Alert type="error" showIcon message="Auth0 redirect failed" description={authError} />
+          ) : null}
         </Space>
       </Card>
     </div>
