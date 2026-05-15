@@ -58,7 +58,7 @@ export default function Reports() {
             const primarySource = run.findings.flatMap((finding) => finding.sources)[0]
             const companyLabel = toCompanyLabel(primarySource?.url)
             const reportType =
-              primarySource?.sourceType === 'sam-gov' ? 'SAM.gov Monitor' : 'Browser Research'
+              primarySource?.sourceType === 'sam-gov' ? 'RFP Opportunity' : 'Browser Research'
 
             return (
               <Card key={run._id} className="section-card" style={{ marginBottom: 16 }}>

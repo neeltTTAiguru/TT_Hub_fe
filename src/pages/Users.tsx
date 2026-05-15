@@ -1,12 +1,36 @@
 import { useEffect, useState } from 'react'
-import { Alert, Button, Card, Form, Input, Modal, Select, Space, Table, Tag, message } from 'antd'
-import { createUser, getUsers, type User } from '../lib/api'
+import {
+  Alert,
+  Button,
+  Card,
+  Form,
+  Input,
+  Modal,
+  Select,
+  Space,
+  Switch,
+  Table,
+  Tag,
+  Typography,
+  message,
+} from 'antd'
+import {
+  createAdminUser,
+  getAdminAccess,
+  getAdminUsers,
+  updateAdminUser,
+  type User,
+} from '../lib/api'
 
-type UserFormValues = {
+const { Text } = Typography
+
+type AdminFormValues = {
   name: string
   email: string
   role: string
+  title: string
   status: User['status']
+  isAdmin: boolean
 }
 
 const statusColors: Record<User['status'], string> = {
@@ -15,12 +39,26 @@ const statusColors: Record<User['status'], string> = {
   inactive: 'default',
 }
 
+function getInitialValues(user?: User): AdminFormValues {
+  return {
+    name: user?.name ?? '',
+    email: user?.email ?? '',
+    role: user?.role ?? 'Admin',
+    title: user?.title ?? '',
+    status: user?.status ?? 'active',
+    isAdmin: user?.isAdmin ?? true,
+  }
+}
+
 export default function Users() {
-  const [form] = Form.useForm<UserFormValues>()
+  const [form] = Form.useForm<AdminFormValues>()
   const [users, setUsers] = useState<User[]>([])
+  const [isCheckingAccess, setIsCheckingAccess] = useState(true)
+  const [hasAdminAccess, setHasAdminAccess] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [editingUser, setEditingUser] = useState<User | undefined>()
   const [error, setError] = useState('')
 
   const loadUsers = async () => {
@@ -28,8 +66,7 @@ export default function Users() {
     setError('')
 
     try {
-      const nextUsers = await getUsers()
-      setUsers(nextUsers)
+      setUsers(await getAdminUsers())
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Failed to load users.')
     } finally {
@@ -38,21 +75,64 @@ export default function Users() {
   }
 
   useEffect(() => {
-    loadUsers()
+    const loadAdmin = async () => {
+      setIsCheckingAccess(true)
+      setError('')
+
+      try {
+        await getAdminAccess()
+        setHasAdminAccess(true)
+        await loadUsers()
+      } catch (accessError) {
+        setHasAdminAccess(false)
+        setError(accessError instanceof Error ? accessError.message : 'Admin access is restricted.')
+      } finally {
+        setIsCheckingAccess(false)
+      }
+    }
+
+    void loadAdmin()
   }, [])
 
-  const handleCreateUser = async (values: UserFormValues) => {
+  const openAdminModal = (user?: User) => {
+    setEditingUser(user)
+    form.setFieldsValue(getInitialValues(user))
+    setIsModalOpen(true)
+  }
+
+  const closeAdminModal = () => {
+    setIsModalOpen(false)
+    setEditingUser(undefined)
+    form.resetFields()
+  }
+
+  const handleSaveAdmin = async (values: AdminFormValues) => {
     setIsSaving(true)
     setError('')
 
     try {
-      const createdUser = await createUser(values)
-      setUsers((currentUsers) => [createdUser, ...currentUsers])
-      setIsModalOpen(false)
-      form.resetFields()
-      message.success('User added')
+      const payload = {
+        ...values,
+        userType: 'trusted_employee' as const,
+        onboardingFlow: 'trusted_employee' as const,
+        accessScope: 'internal' as const,
+      }
+
+      const savedUser = editingUser
+        ? await updateAdminUser(editingUser._id, payload)
+        : await createAdminUser(payload)
+
+      setUsers((currentUsers) => {
+        if (!editingUser) {
+          return [savedUser, ...currentUsers]
+        }
+
+        return currentUsers.map((user) => (user._id === savedUser._id ? savedUser : user))
+      })
+      closeAdminModal()
+      message.success(editingUser ? 'User updated' : 'Admin added')
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : 'Failed to add user.')
+      setError(saveError instanceof Error ? saveError.message : 'Failed to save admin.')
     } finally {
       setIsSaving(false)
     }
@@ -62,88 +142,119 @@ export default function Users() {
     <div className="page">
       <div className="page-header">
         <div>
-          <h1 className="page-title">Users</h1>
+          <h1 className="page-title">Admin</h1>
           <p className="page-subtitle">
-            View the current team and add new users to the hub.
+            View all users and control who can access Admin.
           </p>
         </div>
-        <Button type="primary" onClick={() => setIsModalOpen(true)}>
-          Add New User
+        <Button type="primary" onClick={() => openAdminModal()} disabled={!hasAdminAccess}>
+          Add Admin
         </Button>
       </div>
 
       {error ? <Alert type="error" showIcon message="Unable to manage users" description={error} /> : null}
 
-      <Card className="section-card">
-        <Table<User>
-          rowKey="_id"
-          loading={isLoading}
-          dataSource={users}
-          pagination={{ pageSize: 8, showSizeChanger: false }}
-          scroll={{ x: 720 }}
-          locale={{
-            emptyText: 'No users yet. Add the first user to get started.',
-          }}
-          columns={[
-            {
-              title: 'Name',
-              dataIndex: 'name',
-              key: 'name',
-            },
-            {
-              title: 'Email',
-              dataIndex: 'email',
-              key: 'email',
-            },
-            {
-              title: 'Role',
-              dataIndex: 'role',
-              key: 'role',
-            },
-            {
-              title: 'Status',
-              dataIndex: 'status',
-              key: 'status',
-              render: (status: User['status']) => (
-                <Tag color={statusColors[status]}>
-                  {status.charAt(0).toUpperCase() + status.slice(1)}
-                </Tag>
-              ),
-            },
-            {
-              title: 'Added',
-              dataIndex: 'createdAt',
-              key: 'createdAt',
-              render: (value: string) => new Date(value).toLocaleDateString(),
-            },
-          ]}
-        />
-      </Card>
+      {isCheckingAccess ? (
+        <Card className="section-card">
+          <Text type="secondary">Checking admin access...</Text>
+        </Card>
+      ) : null}
+
+      {!isCheckingAccess && hasAdminAccess ? (
+        <Card className="section-card">
+          <Table<User>
+            rowKey="_id"
+            loading={isLoading}
+            dataSource={users}
+            pagination={{ pageSize: 10, showSizeChanger: false }}
+            scroll={{ x: 1080 }}
+            locale={{
+              emptyText: 'No users yet.',
+            }}
+            columns={[
+              {
+                title: 'Name',
+                dataIndex: 'name',
+                key: 'name',
+                render: (name: string, user) => (
+                  <Space direction="vertical" size={0}>
+                    <Text strong>{name}</Text>
+                    <Text type="secondary">{user.email}</Text>
+                  </Space>
+                ),
+              },
+              {
+                title: 'Role',
+                dataIndex: 'role',
+                key: 'role',
+                render: (role: string, user) => user.title || role || 'Member',
+              },
+              {
+                title: 'Agency',
+                dataIndex: 'agencyName',
+                key: 'agencyName',
+                render: (agencyName: string, user) => agencyName || user.department || 'Trusted Tech',
+              },
+              {
+                title: 'Access',
+                dataIndex: 'accessScope',
+                key: 'accessScope',
+                render: (scope: User['accessScope']) => scope.replaceAll('_', ' '),
+              },
+              {
+                title: 'Admin',
+                dataIndex: 'isAdmin',
+                key: 'isAdmin',
+                render: (isAdmin: boolean) => (
+                  isAdmin ? <Tag color="blue">Admin</Tag> : <Tag>Standard</Tag>
+                ),
+              },
+              {
+                title: 'Status',
+                dataIndex: 'status',
+                key: 'status',
+                render: (status: User['status']) => (
+                  <Tag color={statusColors[status]}>
+                    {status.charAt(0).toUpperCase() + status.slice(1)}
+                  </Tag>
+                ),
+              },
+              {
+                title: 'Created',
+                dataIndex: 'createdAt',
+                key: 'createdAt',
+                render: (value: string) => new Date(value).toLocaleDateString(),
+              },
+              {
+                title: '',
+                key: 'actions',
+                fixed: 'right',
+                width: 110,
+                render: (_, user) => (
+                  <Button onClick={() => openAdminModal(user)}>
+                    Edit
+                  </Button>
+                ),
+              },
+            ]}
+          />
+        </Card>
+      ) : null}
 
       <Modal
-        title="Add new user"
+        title={editingUser ? 'Edit user' : 'Add admin'}
         open={isModalOpen}
-        onCancel={() => {
-          setIsModalOpen(false)
-          form.resetFields()
-        }}
+        onCancel={closeAdminModal}
         footer={null}
         destroyOnHidden
       >
         <Form
           form={form}
           layout="vertical"
-          initialValues={{
-            role: 'Member',
-            status: 'active',
-          }}
-          onFinish={handleCreateUser}
+          initialValues={getInitialValues(editingUser)}
+          onFinish={handleSaveAdmin}
         >
-          <Form.Item
-            label="Name"
-            name="name"
-            rules={[{ required: true, message: 'Name is required.' }]}
-          >
+          <Form.Item label="Name" name="name" rules={[{ required: true, message: 'Name is required.' }]}>
             <Input placeholder="Jordan Lee" />
           </Form.Item>
           <Form.Item
@@ -154,20 +265,18 @@ export default function Users() {
               { type: 'email', message: 'Enter a valid email address.' },
             ]}
           >
-            <Input placeholder="jordan@trustedtech.com" />
+            <Input placeholder="jordan@trustedtechnology.ai" />
           </Form.Item>
-          <Form.Item
-            label="Role"
-            name="role"
-            rules={[{ required: true, message: 'Role is required.' }]}
-          >
-            <Input placeholder="Member" />
+          <Form.Item label="Role" name="role" rules={[{ required: true, message: 'Role is required.' }]}>
+            <Input placeholder="Admin" />
           </Form.Item>
-          <Form.Item
-            label="Status"
-            name="status"
-            rules={[{ required: true, message: 'Status is required.' }]}
-          >
+          <Form.Item label="Title" name="title">
+            <Input placeholder="Operations lead" />
+          </Form.Item>
+          <Form.Item label="Admin access" name="isAdmin" valuePropName="checked">
+            <Switch />
+          </Form.Item>
+          <Form.Item label="Status" name="status" rules={[{ required: true }]}>
             <Select
               options={[
                 { value: 'active', label: 'Active' },
@@ -177,9 +286,9 @@ export default function Users() {
             />
           </Form.Item>
           <Space>
-            <Button onClick={() => setIsModalOpen(false)}>Cancel</Button>
+            <Button onClick={closeAdminModal}>Cancel</Button>
             <Button type="primary" htmlType="submit" loading={isSaving}>
-              Create user
+              {editingUser ? 'Save user' : 'Add admin'}
             </Button>
           </Space>
         </Form>

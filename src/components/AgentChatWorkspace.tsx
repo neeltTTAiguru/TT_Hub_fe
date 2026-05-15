@@ -28,12 +28,15 @@ type AgentChatWorkspaceProps = {
   showChatIntro?: boolean
   showBackendTag?: boolean
   showInitialAssistantMessage?: boolean
+  showChatWorkspace?: boolean
   chatTitle?: string
+  renderBeforeChat?: ReactNode
   children?: ReactNode
   renderChatTools?: (helpers: {
     setChatInput: (value: string) => void
     currentChatInput: string
   }) => ReactNode
+  buildMessageContext?: () => string
 }
 
 export default function AgentChatWorkspace({
@@ -47,9 +50,12 @@ export default function AgentChatWorkspace({
   showChatIntro = true,
   showBackendTag = true,
   showInitialAssistantMessage = true,
+  showChatWorkspace = true,
   chatTitle = 'OpenClaw Chat',
+  renderBeforeChat,
   children,
   renderChatTools,
+  buildMessageContext,
 }: AgentChatWorkspaceProps) {
   const { isAuthenticated } = useAuth0()
   const [agent, setAgent] = useState<AgentDetail | null>(null)
@@ -113,6 +119,16 @@ export default function AgentChatWorkspace({
       content: trimmedInput,
     }
     const nextMessages = [...chatMessages, nextUserMessage]
+    const context = buildMessageContext?.().trim() || ''
+    const messagesForBackend = context
+      ? [
+          ...chatMessages,
+          {
+            role: 'user' as const,
+            content: `${context}\n\nUser request:\n${trimmedInput}`,
+          },
+        ]
+      : nextMessages
 
     setChatInput('')
     setChatError('')
@@ -120,7 +136,7 @@ export default function AgentChatWorkspace({
     setChatMessages(nextMessages)
 
     try {
-      const response = await sendAgentChat(agentId, nextMessages)
+      const response = await sendAgentChat(agentId, messagesForBackend)
       setChatMessages((current) => [...current, response.message])
     } catch (submitError) {
       setChatError(submitError instanceof Error ? submitError.message : 'OpenClaw could not respond right now.')
@@ -242,119 +258,123 @@ export default function AgentChatWorkspace({
             </div>
           ) : null}
 
-          <Card
-            className="section-card"
-            title={chatTitle || undefined}
-            extra={showBackendTag && agent ? <Tag color="gold">OpenAI via backend</Tag> : null}
-          >
-            <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-              {showChatIntro ? <Text type="secondary">{intro}</Text> : null}
+          {renderBeforeChat}
 
-              {chatError ? (
-                <Alert type="error" showIcon message="OpenClaw chat is unavailable" description={chatError} />
-              ) : null}
+          {showChatWorkspace ? (
+            <Card
+              className="section-card"
+              title={chatTitle || undefined}
+              extra={showBackendTag && agent ? <Tag color="gold">OpenAI via backend</Tag> : null}
+            >
+              <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+                {showChatIntro ? <Text type="secondary">{intro}</Text> : null}
 
-              <div className="chat-shell">
-                {showThreadControls ? (
-                  <aside className={`chat-sidebar ${isThreadSidebarOpen ? 'chat-sidebar-open' : ''}`}>
-                    <div className="chat-sidebar-header">
-                      <Text strong>Threads</Text>
-                      <Button type="text" onClick={() => setIsThreadSidebarOpen(false)}>
-                        Close
-                      </Button>
-                    </div>
-                    <Button onClick={handleNewThread} disabled={isChatting}>
-                      New thread
-                    </Button>
-                    <Button onClick={handleSaveThread} loading={isSavingThread} disabled={isChatting || !isAuthenticated}>
-                      Save thread
-                    </Button>
-                    <div className="chat-thread-list">
-                      {savedThreads.length ? (
-                        savedThreads.map((thread) => (
-                          <button
-                            key={thread._id}
-                            type="button"
-                            className={`chat-thread-item ${activeThreadId === thread._id ? 'chat-thread-item-active' : ''}`}
-                            onClick={() => handleImportThread(thread._id)}
-                            disabled={isChatting}
-                          >
-                            <strong>{thread.title}</strong>
-                            <span>{new Date(thread.updatedAt).toLocaleString()}</span>
-                          </button>
-                        ))
-                      ) : (
-                        <Text type="secondary">No saved threads yet.</Text>
-                      )}
-                    </div>
-                  </aside>
+                {chatError ? (
+                  <Alert type="error" showIcon message="OpenClaw chat is unavailable" description={chatError} />
                 ) : null}
 
-                <div className="chat-main">
+                <div className="chat-shell">
                   {showThreadControls ? (
-                    <div className="chat-toolbar">
-                      <Button onClick={() => setIsThreadSidebarOpen((current) => !current)}>
-                        Threads
+                    <aside className={`chat-sidebar ${isThreadSidebarOpen ? 'chat-sidebar-open' : ''}`}>
+                      <div className="chat-sidebar-header">
+                        <Text strong>Threads</Text>
+                        <Button type="text" onClick={() => setIsThreadSidebarOpen(false)}>
+                          Close
+                        </Button>
+                      </div>
+                      <Button onClick={handleNewThread} disabled={isChatting}>
+                        New thread
                       </Button>
-                      {activeThreadId ? <Text type="secondary">Saved thread loaded</Text> : null}
-                    </div>
+                      <Button onClick={handleSaveThread} loading={isSavingThread} disabled={isChatting || !isAuthenticated}>
+                        Save thread
+                      </Button>
+                      <div className="chat-thread-list">
+                        {savedThreads.length ? (
+                          savedThreads.map((thread) => (
+                            <button
+                              key={thread._id}
+                              type="button"
+                              className={`chat-thread-item ${activeThreadId === thread._id ? 'chat-thread-item-active' : ''}`}
+                              onClick={() => handleImportThread(thread._id)}
+                              disabled={isChatting}
+                            >
+                              <strong>{thread.title}</strong>
+                              <span>{new Date(thread.updatedAt).toLocaleString()}</span>
+                            </button>
+                          ))
+                        ) : (
+                          <Text type="secondary">No saved threads yet.</Text>
+                        )}
+                      </div>
+                    </aside>
                   ) : null}
 
-                  {renderChatTools
-                    ? renderChatTools({
-                        setChatInput,
-                        currentChatInput: chatInput,
-                      })
-                    : null}
-
-                  <div className="chat-thread">
-                    {chatMessages.map((entry, index) => (
-                      <div
-                        key={`${entry.role}-${index}`}
-                        className={`chat-message ${entry.role === 'user' ? 'chat-message-user' : 'chat-message-assistant'}`}
-                      >
-                        <div className="chat-message-label">{entry.role === 'user' ? 'You' : 'OpenClaw'}</div>
-                        <div className="chat-message-body">
-                          <ChatMessageContent content={entry.content} />
-                        </div>
-                      </div>
-                    ))}
-
-                    {isChatting ? (
-                      <div className="chat-message chat-message-assistant">
-                        <div className="chat-message-label">OpenClaw</div>
-                        <div className="chat-message-body">
-                          <p>Thinking through the request...</p>
-                        </div>
+                  <div className="chat-main">
+                    {showThreadControls ? (
+                      <div className="chat-toolbar">
+                        <Button onClick={() => setIsThreadSidebarOpen((current) => !current)}>
+                          Threads
+                        </Button>
+                        {activeThreadId ? <Text type="secondary">Saved thread loaded</Text> : null}
                       </div>
                     ) : null}
 
-                    <div ref={chatEndRef} />
-                  </div>
+                    {renderChatTools
+                      ? renderChatTools({
+                          setChatInput,
+                          currentChatInput: chatInput,
+                        })
+                      : null}
 
-                  <div className="chat-composer">
-                    <TextArea
-                      value={chatInput}
-                      onChange={(event) => setChatInput(event.target.value)}
-                      placeholder={emptyPrompt}
-                      autoSize={{ minRows: 3, maxRows: 7 }}
-                      onPressEnter={(event) => {
-                        if (!event.shiftKey) {
-                          event.preventDefault()
-                          void handleSendChat()
-                        }
-                      }}
-                    />
-                    <div className="chat-composer-actions">
-                      <Button type="primary" onClick={() => void handleSendChat()} loading={isChatting}>
-                        Send
-                      </Button>
+                    <div className="chat-thread">
+                      {chatMessages.map((entry, index) => (
+                        <div
+                          key={`${entry.role}-${index}`}
+                          className={`chat-message ${entry.role === 'user' ? 'chat-message-user' : 'chat-message-assistant'}`}
+                        >
+                          <div className="chat-message-label">{entry.role === 'user' ? 'You' : 'OpenClaw'}</div>
+                          <div className="chat-message-body">
+                            <ChatMessageContent content={entry.content} />
+                          </div>
+                        </div>
+                      ))}
+
+                      {isChatting ? (
+                        <div className="chat-message chat-message-assistant">
+                          <div className="chat-message-label">OpenClaw</div>
+                          <div className="chat-message-body">
+                            <p>Thinking through the request...</p>
+                          </div>
+                        </div>
+                      ) : null}
+
+                      <div ref={chatEndRef} />
+                    </div>
+
+                    <div className="chat-composer">
+                      <TextArea
+                        value={chatInput}
+                        onChange={(event) => setChatInput(event.target.value)}
+                        placeholder={emptyPrompt}
+                        autoSize={{ minRows: 3, maxRows: 7 }}
+                        onPressEnter={(event) => {
+                          if (!event.shiftKey) {
+                            event.preventDefault()
+                            void handleSendChat()
+                          }
+                        }}
+                      />
+                      <div className="chat-composer-actions">
+                        <Button type="primary" onClick={() => void handleSendChat()} loading={isChatting}>
+                          Send
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            </Space>
-          </Card>
+              </Space>
+            </Card>
+          ) : null}
 
           {children}
         </>

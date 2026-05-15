@@ -1,8 +1,8 @@
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:3000').replace(/\/$/, '')
 
-let accessTokenProvider: null | (() => Promise<string>) = null
+let accessTokenProvider: null | ((forceRefresh?: boolean) => Promise<string>) = null
 
-export function setAccessTokenProvider(provider: null | (() => Promise<string>)) {
+export function setAccessTokenProvider(provider: null | ((forceRefresh?: boolean) => Promise<string>)) {
   accessTokenProvider = provider
 }
 
@@ -92,10 +92,59 @@ export type Opportunity = {
   classificationCode: string
   uiLink: string
   descriptionLink: string
+  attachmentLinks: OpportunityAttachmentLink[]
+  opportunityLinks: OpportunityLink[]
+  attachmentsLinksText: string
+  rfpPackage: RfpPackage
   sourceKeyword: string
   active: string
   updatedAt: string
   createdAt: string
+}
+
+export type OpportunityAttachmentLink = {
+  label: string
+  url: string
+  access: string
+  fileType: string
+}
+
+export type OpportunityLink = {
+  label: string
+  url: string
+  updatedDate: string
+}
+
+export type RfpPackage = {
+  classification?: string
+  originalSetAside?: string
+  productServiceCode?: string
+  naicsCode?: string
+  placeOfPerformance?: string
+  initiative?: string
+  description?: string
+  contactInformation?: string
+  primaryPointOfContact?: string
+  alternativePointOfContact?: string
+  contractingOfficeAddress?: string
+  attachmentsLinksText?: string
+  sourceUrl?: string
+  capturedAt?: string
+}
+
+export type ReadOpportunityAttachment = OpportunityAttachmentLink & {
+  status: 'read' | 'empty' | 'unsupported' | 'error'
+  contentType?: string
+  sizeBytes?: number
+  text: string
+  excerpt: string
+  truncated?: boolean
+  error?: string
+}
+
+export type ReadOpportunityAttachmentsResponse = {
+  opportunity: Opportunity
+  attachments: ReadOpportunityAttachment[]
 }
 
 export type AgentSummary = {
@@ -165,7 +214,30 @@ export type User = {
   _id: string
   name: string
   email: string
+  createdBy: string
+  isAdmin: boolean
   role: string
+  title: string
+  phone: string
+  userType: 'trusted_employee' | 'police_officer' | 'firefighter' | 'agency_admin' | 'non_trusted_employee'
+  onboardingFlow: 'trusted_employee' | 'public_safety' | 'external_reviewer' | 'restricted_guest'
+  agencyName: string
+  agencyType: string
+  city: string
+  state: string
+  department: string
+  accessScope: 'internal' | 'agency_workspace' | 'grant_drafting_only' | 'read_only'
+  grantProjectFocus: string
+  targetGrantTypes: string[]
+  promptVariables: {
+    agencyName: string
+    agencyType: string
+    location: string
+    roleContext: string
+    projectFocus: string
+    knownNeeds: string
+    grantRequirements: string
+  }
   status: 'active' | 'invited' | 'inactive'
   createdAt: string
   updatedAt: string
@@ -176,9 +248,100 @@ export type BrowserCaptureResponse = {
   researchRun: ResearchRun
 }
 
-export type SamGovSyncResponse = {
+export type SamGovBrowserSearchResponse = {
+  source: string
+  searchUrl: string
+  daysBack: number
+  keywords: string[]
+  noticeTypes: string[]
   opportunities: Opportunity[]
-  researchRun: ResearchRun
+  scannedAt: string
+}
+
+export type FirstSamGovBrowserOpportunityResponse = {
+  source: string
+  searchUrl: string
+  keyword: string
+  searchPlan?: {
+    originalInstructions: string
+    searchText: string
+    noticeTypes: string[]
+    includeInactive: boolean
+  }
+  opportunity: Opportunity | null
+  scannedAt: string
+}
+
+export type PoliceGrantLead = {
+  _id: string
+  leadId: string
+  agencyName: string
+  locationName: string
+  state: string
+  estimatedAgencySize: string
+  grantAmount: number
+  grantAmountText: string
+  fundingProgram: string
+  fundingSource: string
+  grantDate: string
+  grantEndDate: string
+  description: string
+  opportunityScore: number
+  likelyNeeds: string[]
+  whyThisMatters: string
+  startupOpportunity: string
+  recommendedAction: 'Immediate outreach' | 'High priority' | 'Monitor' | 'Low priority'
+  sourceUrl: string
+  sourceType: string
+  scannedAt: string
+  updatedAt: string
+  createdAt: string
+}
+
+export type GrantOpportunity = {
+  _id: string
+  opportunityId: string
+  title: string
+  sourceAgency: string
+  sourceUrl: string
+  applicationUrl: string
+  grantProgram: string
+  eligibility: string
+  deadline: string
+  awardRange: string
+  matchRequired: string
+  focusAreas: string[]
+  fitTags: string[]
+  fitScore: number
+  summary: string
+  sourceText: string
+  sourceType: string
+  scannedAt: string
+  updatedAt: string
+  createdAt: string
+}
+
+export type GrantOpportunitySearchResponse = {
+  source: string
+  sources: string[]
+  keywords: string[]
+  scannedAt: string
+  errors: Array<{
+    source: string
+    url: string
+    message: string
+  }>
+  opportunities: GrantOpportunity[]
+}
+
+export type PoliceGrantSurfResponse = {
+  source: string
+  searchUrl: string
+  instructions?: string
+  scannedAt: string
+  skippedCount?: number
+  exhausted?: boolean
+  leads: PoliceGrantLead[]
 }
 
 export type LinkedInPostCaptureResponse = {
@@ -209,20 +372,32 @@ export type BrowserScreenshotResponse = {
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response
-  const authHeaders =
-    accessTokenProvider
-      ? (() => accessTokenProvider())().then((token) => (token ? { Authorization: `Bearer ${token}` } : {}))
-      : Promise.resolve({})
+  const buildHeaders = async (forceRefresh = false) => {
+    const headers = new Headers(init?.headers)
+    headers.set('Content-Type', 'application/json')
+
+    if (accessTokenProvider) {
+      const token = await accessTokenProvider(forceRefresh)
+      if (token) {
+        headers.set('Authorization', `Bearer ${token}`)
+      }
+    }
+
+    return headers
+  }
 
   try {
     response = await fetch(`${API_BASE_URL}${path}`, {
       ...init,
-      headers: {
-        'Content-Type': 'application/json',
-        ...(await authHeaders),
-        ...(init?.headers ?? {}),
-      },
+      headers: await buildHeaders(),
     })
+
+    if (response.status === 401 && accessTokenProvider) {
+      response = await fetch(`${API_BASE_URL}${path}`, {
+        ...init,
+        headers: await buildHeaders(true),
+      })
+    }
   } catch (error) {
     if (error instanceof TypeError) {
       throw new Error(`Trusted Tech Hub API is unavailable at ${API_BASE_URL}. Start the backend and try again.`)
@@ -242,6 +417,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       }
     } catch {
       // Keep the raw response body when the payload is not JSON.
+    }
+
+    if (response.status === 401 && /unauthorized/i.test(message)) {
+      message = 'Your Auth0 session is signed in, but the API rejected the access token. Log out and back in to refresh the API token.'
     }
 
     throw new Error(message || `Request failed with ${response.status}`)
@@ -284,11 +463,85 @@ export function getUsers() {
 export function createUser(payload: {
   name: string
   email: string
+  isAdmin?: boolean
   role?: string
+  title?: string
+  phone?: string
+  userType?: User['userType']
+  onboardingFlow?: User['onboardingFlow']
+  agencyName?: string
+  agencyType?: string
+  city?: string
+  state?: string
+  department?: string
+  accessScope?: User['accessScope']
+  grantProjectFocus?: string
+  targetGrantTypes?: string[]
+  promptVariables?: Partial<User['promptVariables']>
   status?: User['status']
 }) {
   return request<User>('/users', {
     method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function updateUser(userId: string, payload: Partial<User>) {
+  return request<User>(`/users/${userId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function deleteUser(userId: string) {
+  return request<{ user: User }>(`/users/${userId}`, {
+    method: 'DELETE',
+  })
+}
+
+export function getAdminAccess() {
+  return request<{
+    allowed: boolean
+    user: {
+      id: string
+      email: string
+    }
+  }>('/admin/access')
+}
+
+export function getAdminUsers() {
+  return request<User[]>('/admin/users')
+}
+
+export function createAdminUser(payload: {
+  name: string
+  email: string
+  isAdmin?: boolean
+  role?: string
+  title?: string
+  phone?: string
+  userType?: User['userType']
+  onboardingFlow?: User['onboardingFlow']
+  agencyName?: string
+  agencyType?: string
+  city?: string
+  state?: string
+  department?: string
+  accessScope?: User['accessScope']
+  grantProjectFocus?: string
+  targetGrantTypes?: string[]
+  promptVariables?: Partial<User['promptVariables']>
+  status?: User['status']
+}) {
+  return request<User>('/admin/users', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function updateAdminUser(userId: string, payload: Partial<User>) {
+  return request<User>(`/admin/users/${userId}`, {
+    method: 'PATCH',
     body: JSON.stringify(payload),
   })
 }
@@ -368,12 +621,82 @@ export function captureBrowserResearchPage(payload: { url: string; objective?: s
 }
 
 export function getSamGovOpportunities() {
-  return request<Opportunity[]>('/sam-gov-monitor/opportunities')
+  return request<Opportunity[]>('/rfp-opportunities')
 }
 
-export function syncSamGovMonitor() {
-  return request<SamGovSyncResponse>('/sam-gov-monitor/sync', {
+export function getSamGovOpportunity(noticeId: string) {
+  return request<Opportunity>(`/rfp-opportunities/${encodeURIComponent(noticeId)}`)
+}
+
+export function deleteSamGovOpportunity(noticeId: string) {
+  return request<{ opportunity: Opportunity }>(`/rfp-opportunities/${encodeURIComponent(noticeId)}`, {
+    method: 'DELETE',
+  })
+}
+
+export function searchSamGovWithBrowser(payload?: { daysBack?: number; keywords?: string[]; noticeTypes?: string[] }) {
+  return request<SamGovBrowserSearchResponse>('/rfp-opportunities/browser-search', {
     method: 'POST',
+    body: JSON.stringify(payload ?? {}),
+  })
+}
+
+export function findFirstSamGovWithBrowser(payload?: { keyword?: string; instructions?: string; excludeNoticeIds?: string[] }) {
+  return request<FirstSamGovBrowserOpportunityResponse>('/rfp-opportunities/browser-search/first', {
+    method: 'POST',
+    body: JSON.stringify(payload ?? {}),
+  })
+}
+
+export function readSamGovOpportunityAttachments(noticeId: string) {
+  return request<ReadOpportunityAttachmentsResponse>(`/rfp-opportunities/${encodeURIComponent(noticeId)}/attachments/read`, {
+    method: 'POST',
+  })
+}
+
+export function getPoliceGrantLeads() {
+  return request<PoliceGrantLead[]>('/police-grant-leads')
+}
+
+export function surfPoliceGrantDatabase(payload?: {
+  limit?: number
+  instructions?: string
+  excludeLeadIds?: string[]
+  excludeAgencyKeys?: string[]
+}) {
+  return request<PoliceGrantSurfResponse>('/police-grant-leads/surf', {
+    method: 'POST',
+    body: JSON.stringify(payload ?? {}),
+  })
+}
+
+export function deletePoliceGrantLead(leadId: string) {
+  return request<{ lead: PoliceGrantLead }>(`/police-grant-leads/${encodeURIComponent(leadId)}`, {
+    method: 'DELETE',
+  })
+}
+
+export function getGrantOpportunities() {
+  return request<GrantOpportunity[]>('/grant-opportunities')
+}
+
+export function searchGrantOpportunities(payload?: {
+  limit?: number
+  keywords?: string[]
+  state?: string
+  agencyType?: string
+  projectType?: string
+  sourceUrls?: string[]
+}) {
+  return request<GrantOpportunitySearchResponse>('/grant-opportunities/search', {
+    method: 'POST',
+    body: JSON.stringify(payload ?? {}),
+  })
+}
+
+export function deleteGrantOpportunity(opportunityId: string) {
+  return request<{ opportunity: GrantOpportunity }>(`/grant-opportunities/${encodeURIComponent(opportunityId)}`, {
+    method: 'DELETE',
   })
 }
 

@@ -18,33 +18,86 @@ import HubOverview from './pages/HubOverview'
 import Dashboard from './pages/Dashboard'
 import Reports from './pages/Reports'
 import SamGovMonitor from './pages/SamGovMonitor'
+import PoliceGrantIntelligenceAgent from './pages/PoliceGrantIntelligenceAgent'
+import GrantApplicationAgent from './pages/GrantApplicationAgent'
+import RfpResponseCrm from './pages/RfpResponseCrm'
 import RfpResponseAgent from './pages/RfpResponseAgent'
 import LinkedInSurfer from './pages/LinkedInSurfer'
 import TrustedTechAssistant from './pages/TrustedTechAssistant'
 import Settings from './pages/Settings'
 import NotFound from './pages/NotFound'
 import Users from './pages/Users'
-import { setAccessTokenProvider } from './lib/api'
+import { getAdminAccess, setAccessTokenProvider } from './lib/api'
 import './styles/app.css'
 
 const { Header, Sider, Content } = Layout
 const { Text, Title } = Typography
+const auth0Audience = import.meta.env.VITE_AUTH0_AUDIENCE
+const bootstrapAdminEmails = String(import.meta.env.VITE_ADMIN_EMAILS || 'neel@trustedtechnology.ai')
+  .split(',')
+  .map((email) => email.trim().toLowerCase())
+  .filter(Boolean)
 
-const navItems = [
+function getAuthAuthorizationParams(extra?: Record<string, string>) {
+  return {
+    ...(auth0Audience ? { audience: auth0Audience } : {}),
+    scope: 'openid profile email',
+    ...extra,
+  }
+}
+
+const baseNavItems = [
   { key: '/', label: <Link to="/">Hub Overview</Link> },
   { key: '/trusted-tech-assistant', label: <Link to="/trusted-tech-assistant">Trusted Tech Assistant</Link> },
   { key: '/market-research', label: <Link to="/market-research">Market Researcher</Link> },
   { key: '/sam-gov-monitor', label: <Link to="/sam-gov-monitor">SAM.gov Monitor</Link> },
+  { key: '/grant-applications', label: <Link to="/grant-applications">Grant Application Agent</Link> },
   { key: '/rfp-response-agent', label: <Link to="/rfp-response-agent">RFP Response Agent</Link> },
   { key: '/linkedin-surfer', label: <Link to="/linkedin-surfer">LinkedIn Surfer</Link> },
   { key: '/reports', label: <Link to="/reports">Reports</Link> },
-  { key: '/users', label: <Link to="/users">Users</Link> },
-  { key: '/settings', label: <Link to="/settings">Settings</Link> },
 ]
+
+const adminNavItem = { key: '/users', label: <Link to="/users">Admin</Link> }
 
 function AppShell({ isDark, onToggle }: { isDark: boolean; onToggle: () => void }) {
   const location = useLocation()
   const { user, logout } = useAuth0()
+  const [hasAdminAccess, setHasAdminAccess] = useState(false)
+  const isBootstrapAdmin = Boolean(
+    user?.email && bootstrapAdminEmails.includes(user.email.toLowerCase()),
+  ) || user?.name === 'Neel Palle'
+  const navItems = useMemo(
+    () => (hasAdminAccess || isBootstrapAdmin ? [...baseNavItems, adminNavItem] : baseNavItems),
+    [hasAdminAccess, isBootstrapAdmin],
+  )
+  const selectedNavKey = navItems.find((item) =>
+    item.key === '/'
+      ? location.pathname === '/'
+      : location.pathname === item.key || location.pathname.startsWith(`${item.key}/`),
+  )?.key
+
+  useEffect(() => {
+    let isMounted = true
+
+    const loadAdminAccess = async () => {
+      try {
+        await getAdminAccess()
+        if (isMounted) {
+          setHasAdminAccess(true)
+        }
+      } catch {
+        if (isMounted) {
+          setHasAdminAccess(false)
+        }
+      }
+    }
+
+    void loadAdminAccess()
+
+    return () => {
+      isMounted = false
+    }
+  }, [])
 
   return (
     <Layout className="app-shell">
@@ -61,7 +114,7 @@ function AppShell({ isDark, onToggle }: { isDark: boolean; onToggle: () => void 
         <Menu
           mode="inline"
           items={navItems}
-          selectedKeys={[location.pathname]}
+          selectedKeys={selectedNavKey ? [selectedNavKey] : []}
         />
       </Sider>
 
@@ -72,7 +125,9 @@ function AppShell({ isDark, onToggle }: { isDark: boolean; onToggle: () => void 
             {user?.name ? <Text type="secondary">Signed in as {user.name}</Text> : null}
             <span>{isDark ? 'Dark' : 'Light'} mode</span>
             <Switch checked={isDark} onChange={onToggle} />
-            <Button type="primary">New Workflow</Button>
+            <Link to="/settings">
+              <Button type="primary">Settings</Button>
+            </Link>
             <Button
               onClick={() =>
                 logout({
@@ -92,7 +147,12 @@ function AppShell({ isDark, onToggle }: { isDark: boolean; onToggle: () => void 
             <Route path="/trusted-tech-assistant" element={<TrustedTechAssistant />} />
             <Route path="/market-research" element={<Dashboard />} />
             <Route path="/sam-gov-monitor" element={<SamGovMonitor />} />
-            <Route path="/rfp-response-agent" element={<RfpResponseAgent />} />
+            <Route path="/police-grants" element={<PoliceGrantIntelligenceAgent />} />
+            <Route path="/police-grants/:applicationUserId" element={<PoliceGrantIntelligenceAgent />} />
+            <Route path="/grant-applications" element={<GrantApplicationAgent />} />
+            <Route path="/grant-applications/:applicationUserId" element={<GrantApplicationAgent />} />
+            <Route path="/rfp-response-agent" element={<RfpResponseCrm />} />
+            <Route path="/rfp-response-agent/:rfpId" element={<RfpResponseAgent />} />
             <Route path="/linkedin-surfer" element={<LinkedInSurfer />} />
             <Route path="/reports" element={<Reports />} />
             <Route path="/users" element={<Users />} />
@@ -125,7 +185,7 @@ function LoginScreen() {
           returnTo: '/',
         },
         authorizationParams: {
-          ...(mode === 'signup' ? { screen_hint: 'signup' } : {}),
+          ...getAuthAuthorizationParams(mode === 'signup' ? { screen_hint: 'signup' } : undefined),
         },
       })
     } catch (error) {
@@ -134,14 +194,14 @@ function LoginScreen() {
   }
 
   const authButtonStyle: React.CSSProperties = {
-    minWidth: 140,
-    height: 48,
-    padding: '0 20px',
+    minWidth: 184,
+    height: 62,
+    padding: '0 30px',
     borderRadius: 16,
     border: '1px solid var(--app-border)',
     background: 'var(--app-primary)',
     color: '#fff',
-    fontSize: 18,
+    fontSize: 22,
     fontWeight: 600,
     textDecoration: 'none',
   }
@@ -152,23 +212,16 @@ function LoginScreen() {
   }
 
   return (
-    <div
-      style={{
-        minHeight: '100vh',
-        display: 'grid',
-        placeItems: 'center',
-        padding: 24,
-      }}
-    >
-      <Card style={{ width: 'min(100%, 480px)' }}>
-        <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-          <Title level={2} style={{ margin: 0 }}>
+    <div className="auth-screen">
+      <Card className="auth-card">
+        <Space direction="vertical" size={24} style={{ width: '100%' }}>
+          <Title level={1} className="auth-title">
             OpenClaw Hub
           </Title>
-          <Text type="secondary">
+          <Text type="secondary" className="auth-copy">
             Sign in with Auth0 to access Trusted Tech products and protected workflows.
           </Text>
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          <div className="auth-actions">
             <Button
               type="primary"
               size="large"
@@ -208,7 +261,7 @@ function LoginLauncher({ mode }: { mode: 'login' | 'signup' }) {
             returnTo: '/',
           },
           authorizationParams: {
-            ...(mode === 'signup' ? { screen_hint: 'signup' } : {}),
+            ...getAuthAuthorizationParams(mode === 'signup' ? { screen_hint: 'signup' } : undefined),
           },
         })
       } catch (error) {
@@ -226,15 +279,8 @@ function LoginLauncher({ mode }: { mode: 'login' | 'signup' }) {
   }, [loginWithRedirect, mode])
 
   return (
-    <div
-      style={{
-        minHeight: '100vh',
-        display: 'grid',
-        placeItems: 'center',
-        padding: 24,
-      }}
-    >
-      <Card style={{ width: 'min(100%, 480px)' }}>
+    <div className="auth-screen">
+      <Card className="auth-card">
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
           <Title level={2} style={{ margin: 0 }}>
             {mode === 'signup' ? 'Creating your account' : 'Redirecting to login'}
@@ -300,23 +346,40 @@ function CallbackScreen() {
   )
 }
 
-function AuthTokenBridge() {
-  const { getAccessTokenSilently, isAuthenticated, isLoading } = useAuth0()
+function AuthenticatedApp({ isDark, onToggle }: { isDark: boolean; onToggle: () => void }) {
+  const { getAccessTokenSilently } = useAuth0()
+  const [isTokenProviderReady, setIsTokenProviderReady] = useState(false)
 
   useEffect(() => {
-    if (!isAuthenticated || isLoading) {
-      setAccessTokenProvider(null)
-      return
-    }
-
-    setAccessTokenProvider(() => getAccessTokenSilently())
+    setAccessTokenProvider((forceRefresh = false) =>
+      getAccessTokenSilently({
+        cacheMode: forceRefresh ? 'off' : undefined,
+        authorizationParams: getAuthAuthorizationParams(),
+      }),
+    )
+    setIsTokenProviderReady(true)
 
     return () => {
       setAccessTokenProvider(null)
+      setIsTokenProviderReady(false)
     }
-  }, [getAccessTokenSilently, isAuthenticated, isLoading])
+  }, [getAccessTokenSilently])
 
-  return null
+  if (!isTokenProviderReady) {
+    return (
+      <div
+        style={{
+          minHeight: '100vh',
+          display: 'grid',
+          placeItems: 'center',
+        }}
+      >
+        <Text>Preparing secure API access...</Text>
+      </div>
+    )
+  }
+
+  return <AppShell isDark={isDark} onToggle={onToggle} />
 }
 
 function AppRouterGate({ isDark, onToggle }: { isDark: boolean; onToggle: () => void }) {
@@ -338,7 +401,7 @@ function AppRouterGate({ isDark, onToggle }: { isDark: boolean; onToggle: () => 
   }
 
   if (isAuthenticated) {
-    return <AppShell isDark={isDark} onToggle={onToggle} />
+    return <AuthenticatedApp isDark={isDark} onToggle={onToggle} />
   }
 
   if (location.pathname === '/login') {
@@ -370,7 +433,6 @@ export default function App() {
   return (
     <ConfigProvider theme={themeConfig}>
       <BrowserRouter>
-        <AuthTokenBridge />
         <AppRouterGate isDark={isDark} onToggle={() => setIsDark(!isDark)} />
       </BrowserRouter>
     </ConfigProvider>
