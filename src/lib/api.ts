@@ -334,6 +334,98 @@ export type GrantOpportunitySearchResponse = {
   opportunities: GrantOpportunity[]
 }
 
+export type GrantApplicationDraft = {
+  _id: string
+  userId: string
+  grantOpportunityId: string
+  status: 'draft' | 'needs_review' | 'ready'
+  draftTitle: string
+  sections: {
+    executiveSummary: string
+    needStatement: string
+    projectDescription: string
+    goalsAndOutcomes: string
+    implementationPlan: string
+    budgetNarrative: string
+    sustainabilityPlan: string
+    agencyBenefitStatement: string
+  }
+  questionResponses: Array<{
+    question: string
+    answer: string
+    fieldName: string
+    fieldType: string
+    confidence: 'high' | 'medium' | 'low'
+    needsUserReview: boolean
+    missingInfo: string[]
+  }>
+  missingInformation: string[]
+  complianceChecklist: string[]
+  recommendedNextSteps: string[]
+  sourceReferences: Array<{
+    label: string
+    url: string
+  }>
+  portalInstructions: string
+  createdAt: string
+  updatedAt: string
+}
+
+export type GrantApplicationDraftResponse = {
+  draft: GrantApplicationDraft
+  opportunity: GrantOpportunity
+  user: User
+  meta: {
+    model: string
+    responseId: string
+  }
+}
+
+export type GrantApplicationQuestionsResponse = {
+  opportunity: GrantOpportunity
+  applicationUrl: string
+  page: {
+    title: string
+    url: string
+  }
+  needsLogin: boolean
+  message: string
+  questions: Array<{
+    label: string
+    type: string
+    name: string
+    required: boolean
+    options: string[]
+  }>
+  visibleQuestionText: string[]
+  capturedAt: string
+}
+
+export type GrantDiscoveryResponse = {
+  source: string
+  state: string
+  stateCode: string
+  sources: Array<{
+    sourceName: string
+    sourceUrl: string
+    focusArea: string
+  }>
+  readErrors: Array<{
+    sourceName: string
+    sourceUrl: string
+    message: string
+  }>
+  scannedAt: string
+  result: {
+    eligibleGrants?: unknown[]
+    maybeEligibleGrants?: unknown[]
+    notEligibleGrants?: unknown[]
+    missingUserInfo?: string[]
+    sourceFindings?: unknown[]
+  }
+  opportunities: GrantOpportunity[]
+}
+
 export type PoliceGrantSurfResponse = {
   source: string
   searchUrl: string
@@ -691,6 +783,41 @@ export function searchGrantOpportunities(payload?: {
   return request<GrantOpportunitySearchResponse>('/grant-opportunities/search', {
     method: 'POST',
     body: JSON.stringify(payload ?? {}),
+  })
+}
+
+export function discoverGrantOpportunities(payload: {
+  state: string
+  stateCode?: string
+  userProfile: {
+    organizationName?: string
+    organizationType?: string
+    state?: string
+    serviceArea?: string
+    projectNeeds?: string[]
+    knownNeeds?: string
+    grantRequirements?: string
+  }
+}) {
+  return request<GrantDiscoveryResponse>('/grant-opportunities/discover', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function generateGrantResponse(opportunityId: string, payload: {
+  userId: string
+  applicationQuestions?: GrantApplicationQuestionsResponse
+}) {
+  return request<GrantApplicationDraftResponse>(`/grant-opportunities/${encodeURIComponent(opportunityId)}/generate-response`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function readGrantApplicationQuestions(opportunityId: string) {
+  return request<GrantApplicationQuestionsResponse>(`/grant-opportunities/${encodeURIComponent(opportunityId)}/read-application-questions`, {
+    method: 'POST',
   })
 }
 

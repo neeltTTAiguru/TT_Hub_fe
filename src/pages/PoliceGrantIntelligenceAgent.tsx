@@ -1,17 +1,31 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Alert, Button, Card, Input, Popconfirm, Skeleton, Space, Table, Tag, Typography } from 'antd'
+import { Alert, Button, Card, Input, Modal, Popconfirm, Skeleton, Space, Table, Tag, Typography } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { Link, useParams } from 'react-router-dom'
 import {
   deletePoliceGrantLead,
+  discoverGrantOpportunities,
+  generateGrantResponse,
+  type GrantApplicationDraft,
+  type GrantApplicationQuestionsResponse,
+  type GrantOpportunity,
   getPoliceGrantLeads,
   getUsers,
+  readGrantApplicationQuestions,
   surfPoliceGrantDatabase,
   type PoliceGrantLead,
   type User,
 } from '../lib/api'
 
 const { Paragraph, Text, Title } = Typography
+
+const userTypeLabels: Record<User['userType'], string> = {
+  trusted_employee: 'Trusted employee',
+  police_officer: 'Police officer',
+  firefighter: 'Firefighter',
+  agency_admin: 'Agency admin',
+  non_trusted_employee: 'External reviewer',
+}
 
 function actionColor(action: PoliceGrantLead['recommendedAction']) {
   if (action === 'Immediate outreach') return 'green'
@@ -37,6 +51,7 @@ function sortLeadsByPriority(leadsToSort: PoliceGrantLead[]) {
 export default function PoliceGrantIntelligenceAgent() {
   const { applicationUserId } = useParams()
   const [leads, setLeads] = useState<PoliceGrantLead[]>([])
+  const [grantMatches, setGrantMatches] = useState<GrantOpportunity[]>([])
   const [applicationUser, setApplicationUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isSurfing, setIsSurfing] = useState(false)
@@ -46,6 +61,11 @@ export default function PoliceGrantIntelligenceAgent() {
   const [searchText, setSearchText] = useState('')
   const [surfInstructions, setSurfInstructions] = useState('')
   const [selectedLeadKeys, setSelectedLeadKeys] = useState<string[]>([])
+  const [generatedDraft, setGeneratedDraft] = useState<GrantApplicationDraft | null>(null)
+  const [generatingGrantId, setGeneratingGrantId] = useState('')
+  const [portalGrant, setPortalGrant] = useState<GrantOpportunity | null>(null)
+  const [portalQuestions, setPortalQuestions] = useState<GrantApplicationQuestionsResponse | null>(null)
+  const [isReadingPortal, setIsReadingPortal] = useState(false)
 
   useEffect(() => {
     const load = async () => {
@@ -116,6 +136,35 @@ export default function PoliceGrantIntelligenceAgent() {
     setError('')
 
     try {
+      if (applicationUser) {
+        const projectNeeds = [
+          applicationUser.grantProjectFocus,
+          applicationUser.promptVariables?.knownNeeds,
+          applicationUser.promptVariables?.grantRequirements,
+          surfInstructions,
+        ].filter(Boolean)
+
+        const result = await discoverGrantOpportunities({
+          state: applicationUser.state,
+          stateCode: applicationUser.state,
+          userProfile: {
+            organizationName: applicationUser.agencyName || applicationUser.name,
+            organizationType: applicationUser.agencyType || userTypeLabels[applicationUser.userType],
+            state: applicationUser.state,
+            serviceArea: [applicationUser.city, applicationUser.state].filter(Boolean).join(', '),
+            projectNeeds,
+            knownNeeds: applicationUser.promptVariables?.knownNeeds,
+            grantRequirements: applicationUser.promptVariables?.grantRequirements,
+          },
+        })
+
+        setGrantMatches(result.opportunities)
+        setLastSurfText(
+          `Phase 2 grant discovery searched ${result.sources.length} saved ${result.stateCode || result.state} source${result.sources.length === 1 ? '' : 's'} and saved ${result.opportunities.length} matched grant opportunit${result.opportunities.length === 1 ? 'y' : 'ies'} at ${new Date(result.scannedAt).toLocaleString()}.`,
+        )
+        return
+      }
+
       const alreadySeenLeads = leads
       const result = await surfPoliceGrantDatabase({
         limit: 10,
@@ -167,6 +216,54 @@ export default function PoliceGrantIntelligenceAgent() {
       setError(deleteError instanceof Error ? deleteError.message : 'Failed to delete selected leads.')
     } finally {
       setIsDeleting(false)
+    }
+  }
+
+  const generateResponseForGrant = async (grant: GrantOpportunity) => {
+    if (!applicationUser) {
+      return
+    }
+
+    const portalUrl = grant.applicationUrl || grant.sourceUrl
+
+    if (portalUrl) {
+      window.open(portalUrl, '_blank', 'noopener,noreferrer')
+    }
+
+    setPortalGrant(grant)
+    setPortalQuestions(null)
+    setGeneratedDraft(null)
+  }
+
+  const continueAfterPortalLogin = async () => {
+    if (!applicationUser || !portalGrant) {
+      return
+    }
+
+    setGeneratingGrantId(portalGrant.opportunityId)
+    setIsReadingPortal(true)
+    setError('')
+
+    try {
+      const questions = await readGrantApplicationQuestions(portalGrant.opportunityId)
+      setPortalQuestions(questions)
+
+      if (questions.needsLogin || (!questions.questions.length && !questions.visibleQuestionText.length)) {
+        return
+      }
+
+      const result = await generateGrantResponse(portalGrant.opportunityId, {
+        userId: applicationUser._id,
+        applicationQuestions: questions,
+      })
+      setPortalGrant(null)
+      setPortalQuestions(null)
+      setGeneratedDraft(result.draft)
+    } catch (generateError) {
+      setError(generateError instanceof Error ? generateError.message : 'Failed to generate grant response.')
+    } finally {
+      setGeneratingGrantId('')
+      setIsReadingPortal(false)
     }
   }
 
@@ -235,6 +332,65 @@ export default function PoliceGrantIntelligenceAgent() {
     },
   ]
 
+  const grantColumns: ColumnsType<GrantOpportunity> = [
+    {
+      title: 'Grant',
+      dataIndex: 'title',
+      key: 'title',
+      width: 320,
+      render: (title: string, opportunity) => (
+        <Space direction="vertical" size={4} className="rfp-opportunity-cell">
+          <a href={opportunity.applicationUrl || opportunity.sourceUrl} target="_blank" rel="noreferrer" className="rfp-opportunity-link">
+            <Text strong>{title}</Text>
+          </a>
+          <Text type="secondary" className="rfp-agency-text">{opportunity.sourceAgency || 'Source unknown'}</Text>
+        </Space>
+      ),
+    },
+    {
+      title: 'Fit',
+      dataIndex: 'fitScore',
+      key: 'fitScore',
+      width: 90,
+      render: (score: number) => <Tag color={score >= 80 ? 'green' : score >= 55 ? 'gold' : 'default'}>{score >= 80 ? 'Eligible' : score >= 55 ? 'Maybe' : 'Review'}</Tag>,
+    },
+    {
+      title: 'Deadline',
+      dataIndex: 'deadline',
+      key: 'deadline',
+      width: 150,
+      render: (value: string) => <Text>{value || 'Unknown'}</Text>,
+    },
+    {
+      title: 'Award',
+      dataIndex: 'awardRange',
+      key: 'awardRange',
+      width: 170,
+      render: (value: string) => <Text>{value || 'Unknown'}</Text>,
+    },
+    {
+      title: 'Summary',
+      dataIndex: 'summary',
+      key: 'summary',
+      render: (value: string) => <Text>{value || 'No summary captured.'}</Text>,
+    },
+    {
+      title: 'Actions',
+      key: 'actions',
+      width: 190,
+      render: (_, opportunity) => (
+        <Button
+          type="primary"
+          loading={generatingGrantId === opportunity.opportunityId}
+          disabled={Boolean(generatingGrantId) && generatingGrantId !== opportunity.opportunityId}
+          onClick={() => void generateResponseForGrant(opportunity)}
+        >
+          Generate Response
+        </Button>
+      ),
+    },
+  ]
+
   return (
     <div className="page police-grant-page">
       <div className="page-header">
@@ -261,8 +417,10 @@ export default function PoliceGrantIntelligenceAgent() {
         <Alert
           type="info"
           showIcon
-          message="OpenClaw is surfing Police Funding Database"
-          description="This now opens and reads live location pages through the OpenClaw browser, so it may take longer than the previous direct fetch."
+          message={applicationUser ? 'OpenClaw is running Phase 2 grant discovery' : 'OpenClaw is surfing Police Funding Database'}
+          description={applicationUser
+            ? 'This reads saved state grant sources, applies the grant discovery prompt, and saves eligible or maybe eligible opportunities.'
+            : 'This opens and reads live location pages through the OpenClaw browser, so it may take longer than the previous direct fetch.'}
         />
       ) : null}
       {lastSurfText ? <Alert type="info" showIcon message="Latest surf" description={lastSurfText} /> : null}
@@ -281,28 +439,32 @@ export default function PoliceGrantIntelligenceAgent() {
 
       <div className="rfp-crm-stats">
         <Card className="section-card">
-          <Text type="secondary">Total Leads</Text>
-          <Title level={3}>{leads.length}</Title>
+          <Text type="secondary">{applicationUser ? 'Grant Matches' : 'Total Leads'}</Text>
+          <Title level={3}>{applicationUser ? grantMatches.length : leads.length}</Title>
         </Card>
         <Card className="section-card">
-          <Text type="secondary">Immediate Outreach</Text>
-          <Title level={3}>{leads.filter((lead) => lead.recommendedAction === 'Immediate outreach').length}</Title>
+          <Text type="secondary">{applicationUser ? 'Eligible' : 'Immediate Outreach'}</Text>
+          <Title level={3}>
+            {applicationUser ? grantMatches.filter((grant) => grant.fitScore >= 80).length : leads.filter((lead) => lead.recommendedAction === 'Immediate outreach').length}
+          </Title>
         </Card>
         <Card className="section-card">
           <Text type="secondary">Avg Score</Text>
           <Title level={3}>
-            {leads.length ? Math.round(leads.reduce((sum, lead) => sum + lead.opportunityScore, 0) / leads.length) : 0}
+            {applicationUser
+              ? grantMatches.length ? Math.round(grantMatches.reduce((sum, grant) => sum + grant.fitScore, 0) / grantMatches.length) : 0
+              : leads.length ? Math.round(leads.reduce((sum, lead) => sum + lead.opportunityScore, 0) / leads.length) : 0}
           </Title>
         </Card>
       </div>
 
-      <Card className="section-card" title="Grant Lead Pipeline">
+      <Card className="section-card" title={applicationUser ? 'Phase 2 Grant Matches' : 'Grant Lead Pipeline'}>
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
           <div className="grant-surf-builder">
             <Input.TextArea
               value={surfInstructions}
               onChange={(event) => setSurfInstructions(event.target.value)}
-              placeholder="Search instructions, e.g. 'Florida county sheriff offices', 'Pasco County', 'small departments in Nebraska', or 'rural agencies in the Southeast'"
+              placeholder={applicationUser ? 'Optional grant discovery hints for this applicant' : "Search instructions, e.g. 'Florida county sheriff offices', 'Pasco County', 'small departments in Nebraska', or 'rural agencies in the Southeast'"}
               autoSize={{ minRows: 2, maxRows: 4 }}
             />
             <Button type="primary" onClick={() => void runSurf()} loading={isSurfing}>
@@ -310,61 +472,214 @@ export default function PoliceGrantIntelligenceAgent() {
             </Button>
           </div>
 
-          <div className="rfp-crm-toolbar">
-            <Input.Search
-              placeholder="Search agency, state, program, need"
-              allowClear
-              value={searchText}
-              onChange={(event) => setSearchText(event.target.value)}
-            />
-            {selectedLeadKeys.length ? (
-              <Space wrap className="rfp-selection-actions">
-                <Tag color="blue">{selectedLeadKeys.length} selected</Tag>
-                <Popconfirm
-                  title="Delete selected leads?"
-                  description="This removes the selected grant intelligence records."
-                  okText="Delete"
-                  okButtonProps={{ danger: true }}
-                  cancelText="Cancel"
-                  onConfirm={() => void deleteSelectedLeads()}
-                >
-                  <Button danger loading={isDeleting}>Delete</Button>
-                </Popconfirm>
-              </Space>
-            ) : null}
-          </div>
-
-          {isLoading ? (
-            <Skeleton active paragraph={{ rows: 5 }} />
-          ) : (
+          {applicationUser ? (
             <Table
-              columns={columns}
-              dataSource={visibleLeads}
+              columns={grantColumns}
+              dataSource={grantMatches}
               pagination={false}
-              rowClassName="rfp-crm-row"
-              rowKey="leadId"
-              rowSelection={{
-                selectedRowKeys: selectedLeadKeys,
-                onChange: (keys) => setSelectedLeadKeys(keys.map(String)),
-              }}
+              rowKey="opportunityId"
               tableLayout="fixed"
-              expandable={{
-                expandedRowRender: (lead) => (
-                  <div className="grant-expanded-row">
-                    <Paragraph>{lead.description}</Paragraph>
-                    <Text strong>Why this matters: </Text>
-                    <Text>{lead.whyThisMatters}</Text>
-                    <br />
-                    <Text strong>Startup opportunity: </Text>
-                    <Text>{lead.startupOpportunity}</Text>
-                  </div>
-                ),
-              }}
-              scroll={{ x: 1240 }}
+              scroll={{ x: 1080 }}
+              locale={{ emptyText: 'No Phase 2 grant matches yet. Click Surf Leads to search saved state sources.' }}
             />
-          )}
+          ) : null}
+
+          {!applicationUser ? (
+            <>
+              <div className="rfp-crm-toolbar">
+                <Input.Search
+                  placeholder="Search agency, state, program, need"
+                  allowClear
+                  value={searchText}
+                  onChange={(event) => setSearchText(event.target.value)}
+                />
+                {selectedLeadKeys.length ? (
+                  <Space wrap className="rfp-selection-actions">
+                    <Tag color="blue">{selectedLeadKeys.length} selected</Tag>
+                    <Popconfirm
+                      title="Delete selected leads?"
+                      description="This removes the selected grant intelligence records."
+                      okText="Delete"
+                      okButtonProps={{ danger: true }}
+                      cancelText="Cancel"
+                      onConfirm={() => void deleteSelectedLeads()}
+                    >
+                      <Button danger loading={isDeleting}>Delete</Button>
+                    </Popconfirm>
+                  </Space>
+                ) : null}
+              </div>
+
+              {isLoading ? (
+                <Skeleton active paragraph={{ rows: 5 }} />
+              ) : (
+                <Table
+                  columns={columns}
+                  dataSource={visibleLeads}
+                  pagination={false}
+                  rowClassName="rfp-crm-row"
+                  rowKey="leadId"
+                  rowSelection={{
+                    selectedRowKeys: selectedLeadKeys,
+                    onChange: (keys) => setSelectedLeadKeys(keys.map(String)),
+                  }}
+                  tableLayout="fixed"
+                  expandable={{
+                    expandedRowRender: (lead) => (
+                      <div className="grant-expanded-row">
+                        <Paragraph>{lead.description}</Paragraph>
+                        <Text strong>Why this matters: </Text>
+                        <Text>{lead.whyThisMatters}</Text>
+                        <br />
+                        <Text strong>Startup opportunity: </Text>
+                        <Text>{lead.startupOpportunity}</Text>
+                      </div>
+                    ),
+                  }}
+                  scroll={{ x: 1240 }}
+                />
+              )}
+            </>
+          ) : null}
         </Space>
       </Card>
+
+      <Modal
+        title={portalGrant ? `Generate Response: ${portalGrant.title}` : 'Generate Response'}
+        open={Boolean(portalGrant)}
+        onCancel={() => {
+          setPortalGrant(null)
+          setPortalQuestions(null)
+        }}
+        footer={[
+          <Button
+            key="cancel"
+            onClick={() => {
+              setPortalGrant(null)
+              setPortalQuestions(null)
+            }}
+          >
+            Cancel
+          </Button>,
+          <Button
+            key="continue"
+            type="primary"
+            loading={isReadingPortal || Boolean(generatingGrantId)}
+            onClick={() => void continueAfterPortalLogin()}
+          >
+            Continue after login
+          </Button>,
+        ]}
+        width={820}
+      >
+        <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+          <Alert
+            type="info"
+            showIcon
+            message="Log in to the grant portal"
+            description="OpenClaw opened the application portal in a new tab. Log in or create the account there, handle any MFA/CAPTCHA, then come back and click Continue after login."
+          />
+          {portalGrant ? (
+            <div>
+              <Text type="secondary">Application portal</Text>
+              <Paragraph>
+                <a href={portalGrant.applicationUrl || portalGrant.sourceUrl} target="_blank" rel="noreferrer">
+                  {portalGrant.applicationUrl || portalGrant.sourceUrl}
+                </a>
+              </Paragraph>
+            </div>
+          ) : null}
+          {portalQuestions?.needsLogin ? (
+            <Alert
+              type="warning"
+              showIcon
+              message="Still seeing a login page"
+              description={portalQuestions.message || 'The application questions are not visible yet. Finish logging in, navigate to the application form if needed, then click Continue after login again.'}
+            />
+          ) : null}
+          {portalQuestions && !portalQuestions.needsLogin ? (
+            <Alert
+              type="success"
+              showIcon
+              message="Application questions detected"
+              description={`OpenClaw found ${portalQuestions.questions.length} visible form field${portalQuestions.questions.length === 1 ? '' : 's'} and is ready to generate question-specific answers.`}
+            />
+          ) : null}
+        </Space>
+      </Modal>
+
+      <Modal
+        title={generatedDraft?.draftTitle || 'Generated Grant Response'}
+        open={Boolean(generatedDraft)}
+        onCancel={() => setGeneratedDraft(null)}
+        footer={<Button type="primary" onClick={() => setGeneratedDraft(null)}>Done</Button>}
+        width={920}
+      >
+        {generatedDraft ? (
+          <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+            <Alert
+              type="info"
+              showIcon
+              message="Draft generated"
+              description="The user should review this before OpenClaw fills anything into a grant portal. Final submission stays manual."
+            />
+            {generatedDraft.questionResponses?.length ? (
+              <div>
+                <Title level={5}>Question-Specific Responses</Title>
+                <Space direction="vertical" size="small" style={{ width: '100%' }}>
+                  {generatedDraft.questionResponses.map((response, index) => (
+                    <Card key={`${response.fieldName}-${index}`} size="small">
+                      <Space direction="vertical" size={4}>
+                        <Text strong>{response.question || `Question ${index + 1}`}</Text>
+                        <Paragraph>{response.answer || '[Answer needs review]'}</Paragraph>
+                        <Space wrap>
+                          <Tag color={response.confidence === 'high' ? 'green' : response.confidence === 'medium' ? 'gold' : 'default'}>
+                            {response.confidence}
+                          </Tag>
+                          {response.needsUserReview ? <Tag color="red">Review</Tag> : null}
+                        </Space>
+                        {response.missingInfo.length ? (
+                          <Text type="secondary">Missing: {response.missingInfo.join(', ')}</Text>
+                        ) : null}
+                      </Space>
+                    </Card>
+                  ))}
+                </Space>
+              </div>
+            ) : null}
+            {Object.entries(generatedDraft.sections).map(([key, value]) => (
+              value ? (
+                <div key={key}>
+                  <Title level={5}>{key.replace(/([A-Z])/g, ' $1').replace(/^./, (char) => char.toUpperCase())}</Title>
+                  <Paragraph>{value}</Paragraph>
+                </div>
+              ) : null
+            ))}
+            {generatedDraft.missingInformation.length ? (
+              <div>
+                <Title level={5}>Missing Information</Title>
+                <ul>
+                  {generatedDraft.missingInformation.map((item) => <li key={item}>{item}</li>)}
+                </ul>
+              </div>
+            ) : null}
+            {generatedDraft.complianceChecklist.length ? (
+              <div>
+                <Title level={5}>Compliance Checklist</Title>
+                <ul>
+                  {generatedDraft.complianceChecklist.map((item) => <li key={item}>{item}</li>)}
+                </ul>
+              </div>
+            ) : null}
+            {generatedDraft.portalInstructions ? (
+              <div>
+                <Title level={5}>Portal Instructions</Title>
+                <Paragraph>{generatedDraft.portalInstructions}</Paragraph>
+              </div>
+            ) : null}
+          </Space>
+        ) : null}
+      </Modal>
     </div>
   )
 }
