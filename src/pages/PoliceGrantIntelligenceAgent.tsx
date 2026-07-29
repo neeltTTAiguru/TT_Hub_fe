@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Alert, Button, Card, Input, Modal, Popconfirm, Skeleton, Space, Table, Tag, Typography } from 'antd'
+import { Alert, Button, Card, Input, List, Modal, Popconfirm, Skeleton, Space, Table, Tag, Typography, Upload, message } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { Link, useParams } from 'react-router-dom'
 import {
   deletePoliceGrantLead,
   discoverGrantOpportunities,
   generateGrantResponse,
+  generateUploadedGrantApplicationResponse,
   type GrantApplicationDraft,
   type GrantApplicationQuestionsResponse,
   type GrantOpportunity,
@@ -13,6 +14,7 @@ import {
   getUsers,
   readGrantApplicationQuestions,
   surfPoliceGrantDatabase,
+  uploadGrantApplication,
   type PoliceGrantLead,
   type User,
 } from '../lib/api'
@@ -48,6 +50,167 @@ function sortLeadsByPriority(leadsToSort: PoliceGrantLead[]) {
   })
 }
 
+function formatDraftForDownload(draft: GrantApplicationDraft) {
+  const sections = Object.entries(draft.sections)
+    .filter(([, value]) => Boolean(value))
+    .map(([key, value]) => [
+      key.replace(/([A-Z])/g, ' $1').replace(/^./, (char) => char.toUpperCase()),
+      value,
+    ].join('\n\n'))
+
+  const questionResponses = draft.questionResponses?.length
+    ? [
+        'Question-Specific Responses',
+        ...draft.questionResponses.map((response, index) => [
+          `${index + 1}. ${response.question || `Question ${index + 1}`}`,
+          response.answer || '[Answer needs review]',
+          `Confidence: ${response.confidence}`,
+          response.needsUserReview ? 'Needs review: yes' : 'Needs review: no',
+          response.missingInfo.length ? `Missing info: ${response.missingInfo.join(', ')}` : '',
+        ].filter(Boolean).join('\n')),
+      ].join('\n\n')
+    : ''
+
+  return [
+    draft.draftTitle || 'Generated Grant Response',
+    `Status: ${draft.status}`,
+    '',
+    questionResponses,
+    ...sections,
+    draft.missingInformation.length
+      ? ['Missing Information', ...draft.missingInformation.map((item) => `- ${item}`)].join('\n')
+      : '',
+    draft.complianceChecklist.length
+      ? ['Compliance Checklist', ...draft.complianceChecklist.map((item) => `- ${item}`)].join('\n')
+      : '',
+    draft.recommendedNextSteps.length
+      ? ['Recommended Next Steps', ...draft.recommendedNextSteps.map((item) => `- ${item}`)].join('\n')
+      : '',
+    draft.portalInstructions ? ['Portal Instructions', draft.portalInstructions].join('\n\n') : '',
+  ].filter(Boolean).join('\n\n---\n\n')
+}
+
+function escapePdfText(value: string) {
+  return value.replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)')
+}
+
+function wrapPdfLine(value: string, maxChars: number) {
+  const words = value.split(/\s+/).filter(Boolean)
+  const lines: string[] = []
+  let currentLine = ''
+
+  for (const word of words) {
+    const nextLine = currentLine ? `${currentLine} ${word}` : word
+
+    if (nextLine.length > maxChars && currentLine) {
+      lines.push(currentLine)
+      currentLine = word
+    } else {
+      currentLine = nextLine
+    }
+  }
+
+  if (currentLine) {
+    lines.push(currentLine)
+  }
+
+  return lines.length ? lines : ['']
+}
+
+function createDraftPdfBlob(draft: GrantApplicationDraft) {
+  const pageWidth = 612
+  const pageHeight = 792
+  const margin = 54
+  const lineHeight = 14
+  const contentWidthChars = 86
+  const lines = formatDraftForDownload(draft)
+    .replace(/\n---\n/g, '\n\n')
+    .split('\n')
+    .flatMap((line) => line.trim() ? wrapPdfLine(line.trim(), contentWidthChars) : [''])
+
+  const pages: string[][] = []
+  let currentPage: string[] = []
+  let currentY = pageHeight - margin
+
+  for (const line of lines) {
+    if (currentY < margin) {
+      pages.push(currentPage)
+      currentPage = []
+      currentY = pageHeight - margin
+    }
+
+    currentPage.push(line)
+    currentY -= lineHeight
+  }
+
+  if (currentPage.length) {
+    pages.push(currentPage)
+  }
+
+  const objects: string[] = []
+  const pageObjectIds: number[] = []
+
+  objects.push('<< /Type /Catalog /Pages 2 0 R >>')
+  objects.push('')
+
+  for (const pageLines of pages) {
+    const contentObjectId = objects.length + 2
+    const pageObjectId = objects.length + 3
+    pageObjectIds.push(pageObjectId)
+
+    let y = pageHeight - margin
+    const textCommands = pageLines.map((line) => {
+      const command = `BT /F1 11 Tf ${margin} ${y} Td (${escapePdfText(line)}) Tj ET`
+      y -= lineHeight
+      return command
+    }).join('\n')
+
+    objects.push(`<< /Length ${textCommands.length} >>\nstream\n${textCommands}\nendstream`)
+    objects.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /Resources << /Font << /F1 3 0 R >> >> /Contents ${contentObjectId} 0 R >>`)
+  }
+
+  objects[1] = `<< /Type /Pages /Kids [${pageObjectIds.map((id) => `${id} 0 R`).join(' ')}] /Count ${pageObjectIds.length} >>`
+  objects.splice(2, 0, '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>')
+
+  const pdfParts = ['%PDF-1.4\n']
+  const offsets = [0]
+
+  objects.forEach((object, index) => {
+    offsets[index + 1] = pdfParts.join('').length
+    pdfParts.push(`${index + 1} 0 obj\n${object}\nendobj\n`)
+  })
+
+  const xrefOffset = pdfParts.join('').length
+  pdfParts.push(`xref\n0 ${objects.length + 1}\n`)
+  pdfParts.push('0000000000 65535 f \n')
+
+  for (let index = 1; index <= objects.length; index += 1) {
+    pdfParts.push(`${String(offsets[index]).padStart(10, '0')} 00000 n \n`)
+  }
+
+  pdfParts.push(`trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`)
+
+  return new Blob([pdfParts.join('')], { type: 'application/pdf' })
+}
+
+function downloadDraft(draft: GrantApplicationDraft) {
+  const safeTitle = (draft.draftTitle || 'grant-response-draft')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 80) || 'grant-response-draft'
+  const blob = createDraftPdfBlob(draft)
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+
+  link.href = url
+  link.download = `${safeTitle}.pdf`
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
+}
+
 export default function PoliceGrantIntelligenceAgent() {
   const { applicationUserId } = useParams()
   const [leads, setLeads] = useState<PoliceGrantLead[]>([])
@@ -66,6 +229,8 @@ export default function PoliceGrantIntelligenceAgent() {
   const [portalGrant, setPortalGrant] = useState<GrantOpportunity | null>(null)
   const [portalQuestions, setPortalQuestions] = useState<GrantApplicationQuestionsResponse | null>(null)
   const [isReadingPortal, setIsReadingPortal] = useState(false)
+  const [isUploadingGrantApplication, setIsUploadingGrantApplication] = useState(false)
+  const [isGeneratingUploadedResponse, setIsGeneratingUploadedResponse] = useState(false)
 
   useEffect(() => {
     const load = async () => {
@@ -216,6 +381,46 @@ export default function PoliceGrantIntelligenceAgent() {
       setError(deleteError instanceof Error ? deleteError.message : 'Failed to delete selected leads.')
     } finally {
       setIsDeleting(false)
+    }
+  }
+
+  const handleUploadGrantApplication = async (file: File) => {
+    if (!applicationUser || isUploadingGrantApplication) {
+      return
+    }
+
+    setIsUploadingGrantApplication(true)
+    setError('')
+
+    try {
+      const updatedUser = await uploadGrantApplication(applicationUser._id, file)
+      setApplicationUser(updatedUser)
+      message.success('Grant application uploaded')
+    } catch (uploadError) {
+      setError(uploadError instanceof Error ? uploadError.message : 'Failed to upload grant application.')
+    } finally {
+      setIsUploadingGrantApplication(false)
+    }
+  }
+
+  const handleGenerateUploadedResponse = async () => {
+    const latestUpload = applicationUser?.uploadedGrantApplications?.[0]
+
+    if (!applicationUser || !latestUpload?._id || isGeneratingUploadedResponse) {
+      return
+    }
+
+    setIsGeneratingUploadedResponse(true)
+    setGeneratedDraft(null)
+    setError('')
+
+    try {
+      const result = await generateUploadedGrantApplicationResponse(applicationUser._id, latestUpload._id)
+      setGeneratedDraft(result.draft)
+    } catch (generateError) {
+      setError(generateError instanceof Error ? generateError.message : 'Failed to generate a response from the uploaded grant application.')
+    } finally {
+      setIsGeneratingUploadedResponse(false)
     }
   }
 
@@ -426,14 +631,59 @@ export default function PoliceGrantIntelligenceAgent() {
       {lastSurfText ? <Alert type="info" showIcon message="Latest surf" description={lastSurfText} /> : null}
       {applicationUser ? (
         <Card className="section-card">
-          <Space direction="vertical" size={4}>
-            <Text type="secondary">Selected Application User</Text>
-            <Text strong>{applicationUser.name}</Text>
-            <Text>
-              {[applicationUser.agencyName, applicationUser.city, applicationUser.state].filter(Boolean).join(' · ')}
-            </Text>
-            <Text type="secondary">{applicationUser.grantProjectFocus || 'No grant focus set'}</Text>
-          </Space>
+          <div className="grant-application-context-row">
+            <Space direction="vertical" size={4}>
+              <Text type="secondary">Selected Application User</Text>
+              <Text strong>{applicationUser.name}</Text>
+              <Text>
+                {[applicationUser.agencyName, applicationUser.city, applicationUser.state].filter(Boolean).join(' · ')}
+              </Text>
+              <Text type="secondary">{applicationUser.grantProjectFocus || 'No grant focus set'}</Text>
+            </Space>
+            <Space direction="vertical" align="end" size={8}>
+              <Upload
+                accept=".pdf,.txt,.md,.csv,application/pdf,text/plain"
+                maxCount={1}
+                showUploadList={false}
+                beforeUpload={(file) => {
+                  void handleUploadGrantApplication(file)
+                  return false
+                }}
+              >
+                <Button type="primary" loading={isUploadingGrantApplication}>
+                  Upload Grant Application
+                </Button>
+              </Upload>
+              <Button
+                onClick={() => void handleGenerateUploadedResponse()}
+                loading={isGeneratingUploadedResponse}
+                disabled={!applicationUser.uploadedGrantApplications?.length}
+              >
+                Generate Response
+              </Button>
+              {applicationUser.uploadedGrantApplications?.length ? (
+                <Text type="secondary">
+                  {applicationUser.uploadedGrantApplications.length} uploaded
+                </Text>
+              ) : null}
+            </Space>
+          </div>
+          {applicationUser.uploadedGrantApplications?.length ? (
+            <List
+              size="small"
+              className="grant-upload-list"
+              dataSource={applicationUser.uploadedGrantApplications.slice(0, 3)}
+              renderItem={(upload) => (
+                <List.Item>
+                  <Space wrap>
+                    <Text strong>{upload.fileName}</Text>
+                    <Tag>{Math.max(1, Math.round(upload.sizeBytes / 1024))} KB</Tag>
+                    {upload.truncated ? <Tag color="gold">Text truncated</Tag> : null}
+                  </Space>
+                </List.Item>
+              )}
+            />
+          ) : null}
         </Card>
       ) : null}
 
@@ -612,7 +862,14 @@ export default function PoliceGrantIntelligenceAgent() {
         title={generatedDraft?.draftTitle || 'Generated Grant Response'}
         open={Boolean(generatedDraft)}
         onCancel={() => setGeneratedDraft(null)}
-        footer={<Button type="primary" onClick={() => setGeneratedDraft(null)}>Done</Button>}
+        footer={generatedDraft ? (
+          <Space>
+            <Button onClick={() => downloadDraft(generatedDraft)}>
+              Download Draft
+            </Button>
+            <Button type="primary" onClick={() => setGeneratedDraft(null)}>Done</Button>
+          </Space>
+        ) : null}
         width={920}
       >
         {generatedDraft ? (

@@ -29,17 +29,12 @@ import TrustedTechHubSpotAssistant from './pages/TrustedTechHubSpotAssistant'
 import Settings from './pages/Settings'
 import NotFound from './pages/NotFound'
 import Users from './pages/Users'
-import { getAdminAccess, setAccessTokenProvider } from './lib/api'
+import { setAccessTokenProvider } from './lib/api'
 import './styles/app.css'
 
 const { Header, Sider, Content } = Layout
 const { Text, Title } = Typography
 const auth0Audience = import.meta.env.VITE_AUTH0_AUDIENCE
-const bootstrapAdminEmails = String(import.meta.env.VITE_ADMIN_EMAILS || 'neel@trustedtechnology.ai')
-  .split(',')
-  .map((email) => email.trim().toLowerCase())
-  .filter(Boolean)
-
 function getAuthAuthorizationParams(extra?: Record<string, string>) {
   return {
     ...(auth0Audience ? { audience: auth0Audience } : {}),
@@ -49,59 +44,18 @@ function getAuthAuthorizationParams(extra?: Record<string, string>) {
 }
 
 const baseNavItems = [
-  { key: '/', label: <Link to="/">Hub Overview</Link> },
   { key: '/trusted-tech-assistant', label: <Link to="/trusted-tech-assistant">Trusted Tech Assistant</Link> },
   { key: '/hubspot-assistant', label: <Link to="/hubspot-assistant">Trusted Tech HubSpot Assistant</Link> },
-  { key: '/market-research', label: <Link to="/market-research">Market Researcher</Link> },
-  { key: '/sam-gov-monitor', label: <Link to="/sam-gov-monitor">SAM.gov Monitor</Link> },
-  { key: '/grant-applications', label: <Link to="/grant-applications">Grant Application Agent</Link> },
-  { key: '/rfp-response-agent', label: <Link to="/rfp-response-agent">RFP Response Agent</Link> },
-  { key: '/linkedin-surfer', label: <Link to="/linkedin-surfer">LinkedIn Surfer</Link> },
-  { key: '/twitter-surfer', label: <Link to="/twitter-surfer">Twitter Surfer</Link> },
-  { key: '/reports', label: <Link to="/reports">Reports</Link> },
 ]
-
-const adminNavItem = { key: '/users', label: <Link to="/users">Admin</Link> }
 
 function AppShell({ isDark, onToggle }: { isDark: boolean; onToggle: () => void }) {
   const location = useLocation()
   const { user, logout } = useAuth0()
-  const [hasAdminAccess, setHasAdminAccess] = useState(false)
-  const isBootstrapAdmin = Boolean(
-    user?.email && bootstrapAdminEmails.includes(user.email.toLowerCase()),
-  ) || user?.name === 'Neel Palle'
-  const navItems = useMemo(
-    () => (hasAdminAccess || isBootstrapAdmin ? [...baseNavItems, adminNavItem] : baseNavItems),
-    [hasAdminAccess, isBootstrapAdmin],
-  )
-  const selectedNavKey = navItems.find((item) =>
+  const selectedNavKey = baseNavItems.find((item) =>
     item.key === '/'
       ? location.pathname === '/'
       : location.pathname === item.key || location.pathname.startsWith(`${item.key}/`),
   )?.key
-
-  useEffect(() => {
-    let isMounted = true
-
-    const loadAdminAccess = async () => {
-      try {
-        await getAdminAccess()
-        if (isMounted) {
-          setHasAdminAccess(true)
-        }
-      } catch {
-        if (isMounted) {
-          setHasAdminAccess(false)
-        }
-      }
-    }
-
-    void loadAdminAccess()
-
-    return () => {
-      isMounted = false
-    }
-  }, [])
 
   return (
     <Layout className="app-shell">
@@ -117,7 +71,7 @@ function AppShell({ isDark, onToggle }: { isDark: boolean; onToggle: () => void 
         </div>
         <Menu
           mode="inline"
-          items={navItems}
+          items={baseNavItems}
           selectedKeys={selectedNavKey ? [selectedNavKey] : []}
         />
       </Sider>

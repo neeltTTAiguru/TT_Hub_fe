@@ -14,6 +14,7 @@ import {
   Table,
   Tag,
   Typography,
+  Upload,
   message,
 } from 'antd'
 import { Link, useNavigate, useParams } from 'react-router-dom'
@@ -24,6 +25,7 @@ import {
   getGrantOpportunities,
   getUsers,
   searchGrantOpportunities,
+  uploadGrantApplication,
   type GrantOpportunity,
   type User,
 } from '../lib/api'
@@ -75,6 +77,7 @@ export default function GrantApplicationAgent() {
   const [isLoadingApplications, setIsLoadingApplications] = useState(true)
   const [isSavingApplicationUser, setIsSavingApplicationUser] = useState(false)
   const [isDeletingApplications, setIsDeletingApplications] = useState(false)
+  const [isUploadingGrantApplication, setIsUploadingGrantApplication] = useState(false)
   const [isSearching, setIsSearching] = useState(false)
   const [applicationSearchText, setApplicationSearchText] = useState('')
   const [selectedApplicationKeys, setSelectedApplicationKeys] = useState<string[]>([])
@@ -249,7 +252,29 @@ export default function GrantApplicationAgent() {
     }
   }
 
+  const handleUploadGrantApplication = async (file: File) => {
+    if (!selectedUser || isUploadingGrantApplication) {
+      return
+    }
+
+    setIsUploadingGrantApplication(true)
+    setCrmError('')
+
+    try {
+      const updatedUser = await uploadGrantApplication(selectedUser._id, file)
+      setApplicationUsers((currentUsers) =>
+        currentUsers.map((user) => (user._id === updatedUser._id ? updatedUser : user)),
+      )
+      message.success('Grant application uploaded')
+    } catch (error) {
+      setCrmError(error instanceof Error ? error.message : 'Failed to upload grant application.')
+    } finally {
+      setIsUploadingGrantApplication(false)
+    }
+  }
+
   const buildGrantContext = () => {
+    const uploadedApplications = selectedUser?.uploadedGrantApplications || []
     const selectedUserContext = selectedUser
       ? [
           'Selected grant application user:',
@@ -261,6 +286,13 @@ export default function GrantApplicationAgent() {
           `Project focus: ${selectedUser.grantProjectFocus || 'Unknown'}`,
           `Known needs: ${selectedUser.promptVariables?.knownNeeds || 'Unknown'}`,
           `Grant requirements: ${selectedUser.promptVariables?.grantRequirements || 'Not provided yet'}`,
+          uploadedApplications.length
+            ? `Uploaded grant application materials:\n${uploadedApplications.slice(0, 5).map((upload, index) => [
+                `${index + 1}. ${upload.fileName}`,
+                `Uploaded: ${upload.uploadedAt ? new Date(upload.uploadedAt).toLocaleString() : 'Unknown'}`,
+                `Extracted text excerpt:\n${upload.extractedText.slice(0, 6000)}${upload.truncated ? '\n[Text was truncated for storage.]' : ''}`,
+              ].join('\n')).join('\n\n')}`
+            : 'Uploaded grant application materials: None',
         ].join('\n')
       : ''
 
@@ -568,6 +600,50 @@ export default function GrantApplicationAgent() {
     </Card>
   )
 
+  const uploadedApplicationsPanel = selectedUser ? (
+    <Card className="section-card" title="Uploaded Grant Applications">
+      <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+        {crmError ? <Alert type="error" showIcon message="Grant application upload failed" description={crmError} /> : null}
+
+        <Upload
+          accept=".pdf,.txt,.md,.csv,application/pdf,text/plain"
+          maxCount={1}
+          showUploadList={false}
+          beforeUpload={(file) => {
+            void handleUploadGrantApplication(file)
+            return false
+          }}
+        >
+          <Button type="primary" loading={isUploadingGrantApplication}>
+            Upload Grant Application
+          </Button>
+        </Upload>
+
+        <List
+          locale={{ emptyText: 'No grant applications uploaded yet.' }}
+          dataSource={selectedUser.uploadedGrantApplications || []}
+          renderItem={(upload) => (
+            <List.Item>
+              <Space direction="vertical" size={4} style={{ width: '100%' }}>
+                <Space wrap>
+                  <Text strong>{upload.fileName}</Text>
+                  <Tag>{Math.max(1, Math.round(upload.sizeBytes / 1024))} KB</Tag>
+                  {upload.truncated ? <Tag color="gold">Text truncated</Tag> : null}
+                </Space>
+                <Text type="secondary">
+                  Uploaded {upload.uploadedAt ? new Date(upload.uploadedAt).toLocaleString() : 'recently'}
+                </Text>
+                <Paragraph type="secondary" ellipsis={{ rows: 2, expandable: true, symbol: 'more' }} style={{ margin: 0 }}>
+                  {upload.extractedText}
+                </Paragraph>
+              </Space>
+            </List.Item>
+          )}
+        />
+      </Space>
+    </Card>
+  ) : null
+
   const workspaceHeader = selectedUser ? (
     <Card className="section-card grant-application-context">
       <div className="grant-application-context-row">
@@ -600,6 +676,7 @@ export default function GrantApplicationAgent() {
       renderBeforeChat={
         <>
           {isApplicationWorkspace ? workspaceHeader : crmPanel}
+          {isApplicationWorkspace && selectedUser ? uploadedApplicationsPanel : null}
           {isApplicationWorkspace && selectedUser ? discoveryPanel : null}
         </>
       }

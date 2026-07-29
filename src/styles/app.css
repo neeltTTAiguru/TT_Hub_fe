@@ -108,6 +108,12 @@
   border-radius: var(--app-radius);
 }
 
+.twitter-signal {
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius);
+  padding: 12px;
+}
+
 .table-shell {
   background: var(--app-surface);
   border-radius: var(--app-radius);
