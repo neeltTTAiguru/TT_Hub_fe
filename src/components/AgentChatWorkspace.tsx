@@ -30,6 +30,8 @@ type AgentChatWorkspaceProps = {
   showInitialAssistantMessage?: boolean
   showChatWorkspace?: boolean
   chatTitle?: string
+  assistantLabel?: string
+  backendLabel?: string
   renderBeforeChat?: ReactNode
   children?: ReactNode
   renderChatTools?: (helpers: {
@@ -52,6 +54,8 @@ export default function AgentChatWorkspace({
   showInitialAssistantMessage = true,
   showChatWorkspace = true,
   chatTitle = 'OpenClaw Chat',
+  assistantLabel = 'OpenClaw',
+  backendLabel = 'OpenAI via backend',
   renderBeforeChat,
   children,
   renderChatTools,
@@ -139,7 +143,7 @@ export default function AgentChatWorkspace({
       const response = await sendAgentChat(agentId, messagesForBackend)
       setChatMessages((current) => [...current, response.message])
     } catch (submitError) {
-      setChatError(submitError instanceof Error ? submitError.message : 'OpenClaw could not respond right now.')
+      setChatError(submitError instanceof Error ? submitError.message : `${assistantLabel} could not respond right now.`)
     } finally {
       setIsChatting(false)
     }
@@ -264,13 +268,13 @@ export default function AgentChatWorkspace({
             <Card
               className="section-card"
               title={chatTitle || undefined}
-              extra={showBackendTag && agent ? <Tag color="gold">OpenAI via backend</Tag> : null}
+              extra={showBackendTag && agent ? <Tag color="gold">{backendLabel}</Tag> : null}
             >
               <Space direction="vertical" size="middle" style={{ width: '100%' }}>
                 {showChatIntro ? <Text type="secondary">{intro}</Text> : null}
 
                 {chatError ? (
-                  <Alert type="error" showIcon message="OpenClaw chat is unavailable" description={chatError} />
+                  <Alert type="error" showIcon message={`${assistantLabel} chat is unavailable`} description={chatError} />
                 ) : null}
 
                 <div className="chat-shell">
@@ -332,7 +336,7 @@ export default function AgentChatWorkspace({
                           key={`${entry.role}-${index}`}
                           className={`chat-message ${entry.role === 'user' ? 'chat-message-user' : 'chat-message-assistant'}`}
                         >
-                          <div className="chat-message-label">{entry.role === 'user' ? 'You' : 'OpenClaw'}</div>
+                          <div className="chat-message-label">{entry.role === 'user' ? 'You' : assistantLabel}</div>
                           <div className="chat-message-body">
                             <ChatMessageContent content={entry.content} />
                           </div>
@@ -341,7 +345,7 @@ export default function AgentChatWorkspace({
 
                       {isChatting ? (
                         <div className="chat-message chat-message-assistant">
-                          <div className="chat-message-label">OpenClaw</div>
+                          <div className="chat-message-label">{assistantLabel}</div>
                           <div className="chat-message-body">
                             <p>Thinking through the request...</p>
                           </div>

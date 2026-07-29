@@ -5,14 +5,16 @@ export default function TrustedTechAssistant() {
     <AgentChatWorkspace
       agentId="trusted-tech-assistant"
       title="Trusted Tech Assistant"
-      subtitle="Chat directly with Trusted Tech's internal assistant."
-      intro="OpenClaw is ready to chat as Trusted Tech's internal assistant. Ask about company context, positioning, research already in the hub, or what to do next."
+      subtitle="Work directly with Hermes, Trusted Tech's connected AI assistant."
+      intro="Hermes is ready to help with company context, positioning, research in the Smart Hub, and your next best action."
       emptyPrompt='Try: "What do we already know about Trusted Tech positioning, and what should we tighten up next?"'
       showAgentOverview={false}
       showThreadControls={false}
       showChatIntro={false}
-      showBackendTag={false}
-      chatTitle="Chat"
+      showBackendTag
+      chatTitle="Talk to Hermes"
+      assistantLabel="Hermes"
+      backendLabel="Hermes on Trusted Cloud"
     />
   )
 }

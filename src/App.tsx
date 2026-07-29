@@ -23,7 +23,9 @@ import GrantApplicationAgent from './pages/GrantApplicationAgent'
 import RfpResponseCrm from './pages/RfpResponseCrm'
 import RfpResponseAgent from './pages/RfpResponseAgent'
 import LinkedInSurfer from './pages/LinkedInSurfer'
+import TwitterSurfer from './pages/TwitterSurfer'
 import TrustedTechAssistant from './pages/TrustedTechAssistant'
+import TrustedTechHubSpotAssistant from './pages/TrustedTechHubSpotAssistant'
 import Settings from './pages/Settings'
 import NotFound from './pages/NotFound'
 import Users from './pages/Users'
@@ -49,11 +51,13 @@ function getAuthAuthorizationParams(extra?: Record<string, string>) {
 const baseNavItems = [
   { key: '/', label: <Link to="/">Hub Overview</Link> },
   { key: '/trusted-tech-assistant', label: <Link to="/trusted-tech-assistant">Trusted Tech Assistant</Link> },
+  { key: '/hubspot-assistant', label: <Link to="/hubspot-assistant">Trusted Tech HubSpot Assistant</Link> },
   { key: '/market-research', label: <Link to="/market-research">Market Researcher</Link> },
   { key: '/sam-gov-monitor', label: <Link to="/sam-gov-monitor">SAM.gov Monitor</Link> },
   { key: '/grant-applications', label: <Link to="/grant-applications">Grant Application Agent</Link> },
   { key: '/rfp-response-agent', label: <Link to="/rfp-response-agent">RFP Response Agent</Link> },
   { key: '/linkedin-surfer', label: <Link to="/linkedin-surfer">LinkedIn Surfer</Link> },
+  { key: '/twitter-surfer', label: <Link to="/twitter-surfer">Twitter Surfer</Link> },
   { key: '/reports', label: <Link to="/reports">Reports</Link> },
 ]
 
@@ -106,7 +110,7 @@ function AppShell({ isDark, onToggle }: { isDark: boolean; onToggle: () => void 
           <div className="brand">
             <div className="brand-mark">T</div>
             <div>
-              <div>OpenClaw Hub</div>
+              <div>Trusted Tech Smart Hub</div>
               <div className="brand-subtitle">Trusted Tech</div>
             </div>
           </div>
@@ -120,7 +124,7 @@ function AppShell({ isDark, onToggle }: { isDark: boolean; onToggle: () => void 
 
       <Layout>
         <Header className="app-header">
-          <Text strong>Trusted Tech Operating Hub</Text>
+          <Text strong>Trusted Tech Smart Hub</Text>
           <div className="theme-toggle">
             {user?.name ? <Text type="secondary">Signed in as {user.name}</Text> : null}
             <span>{isDark ? 'Dark' : 'Light'} mode</span>
@@ -145,6 +149,7 @@ function AppShell({ isDark, onToggle }: { isDark: boolean; onToggle: () => void 
           <Routes>
             <Route path="/" element={<HubOverview />} />
             <Route path="/trusted-tech-assistant" element={<TrustedTechAssistant />} />
+            <Route path="/hubspot-assistant" element={<TrustedTechHubSpotAssistant />} />
             <Route path="/market-research" element={<Dashboard />} />
             <Route path="/sam-gov-monitor" element={<SamGovMonitor />} />
             <Route path="/police-grants" element={<PoliceGrantIntelligenceAgent />} />
@@ -154,6 +159,7 @@ function AppShell({ isDark, onToggle }: { isDark: boolean; onToggle: () => void 
             <Route path="/rfp-response-agent" element={<RfpResponseCrm />} />
             <Route path="/rfp-response-agent/:rfpId" element={<RfpResponseAgent />} />
             <Route path="/linkedin-surfer" element={<LinkedInSurfer />} />
+            <Route path="/twitter-surfer" element={<TwitterSurfer />} />
             <Route path="/reports" element={<Reports />} />
             <Route path="/users" element={<Users />} />
             <Route path="/settings" element={<Settings />} />
@@ -216,7 +222,7 @@ function LoginScreen() {
       <Card className="auth-card">
         <Space direction="vertical" size={24} style={{ width: '100%' }}>
           <Title level={1} className="auth-title">
-            OpenClaw Hub
+            Trusted Tech Smart Hub
           </Title>
           <Text type="secondary" className="auth-copy">
             Sign in with Auth0 to access Trusted Tech products and protected workflows.

@@ -1,4 +1,4 @@
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:3000').replace(/\/$/, '')
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000').replace(/\/$/, '')
 
 let accessTokenProvider: null | ((forceRefresh?: boolean) => Promise<string>) = null
 
@@ -205,6 +205,7 @@ export type ChatThread = {
 export type AgentChatResponse = {
   message: AgentChatMessage
   meta: {
+    provider?: 'hermes' | 'openai'
     model: string
     responseId: string
   }
@@ -238,6 +239,15 @@ export type User = {
     knownNeeds: string
     grantRequirements: string
   }
+  uploadedGrantApplications?: Array<{
+    _id?: string
+    fileName: string
+    contentType: string
+    sizeBytes: number
+    extractedText: string
+    truncated: boolean
+    uploadedAt: string
+  }>
   status: 'active' | 'invited' | 'inactive'
   createdAt: string
   updatedAt: string
@@ -381,6 +391,16 @@ export type GrantApplicationDraftResponse = {
   }
 }
 
+export type UploadedGrantApplicationDraftResponse = {
+  draft: GrantApplicationDraft
+  upload: NonNullable<User['uploadedGrantApplications']>[number]
+  user: User
+  meta: {
+    model: string
+    responseId: string
+  }
+}
+
 export type GrantApplicationQuestionsResponse = {
   opportunity: GrantOpportunity
   applicationUrl: string
@@ -448,6 +468,84 @@ export type LinkedInPostCaptureResponse = {
   }>
 }
 
+export type TwitterPostCaptureResponse = {
+  title: string
+  url: string
+  keyword: string
+  screenshotDataUrl?: string
+  posts: Array<{
+    author: string
+    handle: string
+    text: string
+    postedAt: string
+    url: string
+    selector?: string
+  }>
+}
+
+export type TwitterSignalPost = TwitterPostCaptureResponse['posts'][number] & {
+  search: string
+  sourcePage: string
+  signal: {
+    score: number
+    matchedTerms: string[]
+    hasBodyCameraLanguage: boolean
+    hasPublicSafetyLanguage: boolean
+  }
+}
+
+export type TwitterConnectionStatus = {
+  connected: boolean
+  browserReady: boolean
+  currentUrl: string
+  title: string
+  readyState: string
+  needsLogin: boolean
+  source: 'openclaw-browser'
+  message: string
+}
+
+export type TwitterSurferSyncResponse = {
+  searches: string[]
+  filter: string
+  posts: TwitterSignalPost[]
+  errors: Array<{
+    search: string
+    message: string
+  }>
+  report: {
+    summary: string
+    opportunitySignals: TwitterSignalPost[]
+    weakSignals: TwitterSignalPost[]
+    recommendedNextSteps: string[]
+  }
+  researchRun: ResearchRun | null
+}
+
+export type TwitterSurferTaskRun = {
+  id: string
+  title: string
+  task: string
+  status: 'running' | 'completed' | 'failed'
+  durationMinutes: number
+  startedAt: string
+  endsAt: string
+  completedAt: string
+  searches: string[]
+  posts: TwitterSignalPost[]
+  errors: Array<{
+    search: string
+    message: string
+  }>
+  report: TwitterSurferSyncResponse['report']
+  researchRun: ResearchRun | null
+  progress: {
+    roundsAttempted: number
+    lastRoundAt: string
+  }
+  stoppedByUser: boolean
+}
+
 export type LinkedInBrowserSessionResponse = {
   ok: boolean
   page: {
@@ -500,7 +598,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     const body = await response.text()
-    let message = body
+    let message = body.trim()
 
     try {
       const parsed = JSON.parse(body) as ApiErrorPayload
@@ -508,7 +606,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
         message = parsed.message
       }
     } catch {
-      // Keep the raw response body when the payload is not JSON.
+      const contentType = response.headers.get('content-type') || ''
+      if (contentType.includes('text/html') || /^<!doctype html/i.test(message) || /^<html/i.test(message)) {
+        message = `Trusted Tech Hub API returned an HTML error for ${path}. Confirm the backend route is mounted and the frontend API base URL points to the Express API.`
+      }
     }
 
     if (response.status === 401 && /unauthorized/i.test(message)) {
@@ -583,6 +684,75 @@ export function updateUser(userId: string, payload: Partial<User>) {
     method: 'PATCH',
     body: JSON.stringify(payload),
   })
+}
+
+export async function uploadGrantApplication(userId: string, file: File) {
+  const headers = new Headers()
+  headers.set('Content-Type', file.type || 'application/octet-stream')
+  headers.set('X-File-Name', encodeURIComponent(file.name || 'grant-application-upload'))
+
+  if (accessTokenProvider) {
+    const token = await accessTokenProvider()
+    if (token) {
+      headers.set('Authorization', `Bearer ${token}`)
+    }
+  }
+
+  let response: Response
+
+  try {
+    response = await fetch(`${API_BASE_URL}/users/${encodeURIComponent(userId)}/grant-applications`, {
+      method: 'POST',
+      headers,
+      body: file,
+    })
+
+    if (response.status === 401 && accessTokenProvider) {
+      const refreshedToken = await accessTokenProvider(true)
+      if (refreshedToken) {
+        headers.set('Authorization', `Bearer ${refreshedToken}`)
+      }
+
+      response = await fetch(`${API_BASE_URL}/users/${encodeURIComponent(userId)}/grant-applications`, {
+        method: 'POST',
+        headers,
+        body: file,
+      })
+    }
+  } catch (error) {
+    if (error instanceof TypeError) {
+      throw new Error(`Trusted Tech Hub API is unavailable at ${API_BASE_URL}. Start the backend and try again.`)
+    }
+
+    throw error
+  }
+
+  if (!response.ok) {
+    const body = await response.text()
+    let message = body.trim()
+
+    try {
+      const parsed = JSON.parse(body) as ApiErrorPayload
+      if (parsed.message) {
+        message = parsed.message
+      }
+    } catch {
+      // Keep the raw response text when the API returns a non-JSON upload error.
+    }
+
+    throw new Error(message || `Upload failed with ${response.status}`)
+  }
+
+  return response.json() as Promise<User>
+}
+
+export function generateUploadedGrantApplicationResponse(userId: string, uploadId: string) {
+  return request<UploadedGrantApplicationDraftResponse>(
+    `/users/${encodeURIComponent(userId)}/grant-applications/${encodeURIComponent(uploadId)}/generate-response`,
+    {
+      method: 'POST',
+    },
+  )
 }
 
 export function deleteUser(userId: string) {
@@ -862,5 +1032,61 @@ export function searchLinkedInPosts(payload: { keyword: string }) {
   return request<LinkedInPostCaptureResponse>('/linkedin-surfer/search-posts', {
     method: 'POST',
     body: JSON.stringify(payload),
+  })
+}
+
+export function openTwitterSession(payload?: { url?: string }) {
+  return request<LinkedInBrowserSessionResponse>('/twitter-surfer/open-session', {
+    method: 'POST',
+    body: JSON.stringify(payload ?? {}),
+  })
+}
+
+export function getTwitterScreenshot() {
+  return request<BrowserScreenshotResponse>('/twitter-surfer/screenshot', {
+    method: 'POST',
+  })
+}
+
+export function getTwitterConnectionStatus() {
+  return request<TwitterConnectionStatus>('/twitter-surfer/connection-status')
+}
+
+export function getTwitterSurferRuns() {
+  return request<ResearchRun[]>('/twitter-surfer/runs')
+}
+
+export function getTwitterSurferTaskRuns() {
+  return request<TwitterSurferTaskRun[]>('/twitter-surfer/task-runs')
+}
+
+export function getTwitterSurferTaskRun(runId: string) {
+  return request<TwitterSurferTaskRun>(`/twitter-surfer/task-runs/${encodeURIComponent(runId)}`)
+}
+
+export function startTwitterSurferTaskRun(payload: { task: string; durationMinutes?: number }) {
+  return request<TwitterSurferTaskRun>('/twitter-surfer/task-runs', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function stopTwitterSurferTaskRun(runId: string) {
+  return request<TwitterSurferTaskRun>(`/twitter-surfer/task-runs/${encodeURIComponent(runId)}/stop`, {
+    method: 'POST',
+  })
+}
+
+export function searchTwitterPosts(payload: { keyword: string; filter?: string }) {
+  return request<TwitterPostCaptureResponse>('/twitter-surfer/search-posts', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function runTwitterSurfer(payload?: { searches?: string[]; filter?: string }) {
+  return request<TwitterSurferSyncResponse>('/twitter-surfer/sync', {
+    method: 'POST',
+    body: JSON.stringify(payload ?? {}),
   })
 }
