@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useAuth0 } from '@auth0/auth0-react'
-import { BrowserRouter, Link, Route, Routes, useLocation } from 'react-router-dom'
+import { BrowserRouter, Link, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import {
   Alert,
   Button,
@@ -14,21 +14,10 @@ import {
   Typography,
 } from 'antd'
 import { getAntdTheme } from './theme'
-import HubOverview from './pages/HubOverview'
-import Dashboard from './pages/Dashboard'
-import Reports from './pages/Reports'
-import SamGovMonitor from './pages/SamGovMonitor'
-import PoliceGrantIntelligenceAgent from './pages/PoliceGrantIntelligenceAgent'
-import GrantApplicationAgent from './pages/GrantApplicationAgent'
-import RfpResponseCrm from './pages/RfpResponseCrm'
-import RfpResponseAgent from './pages/RfpResponseAgent'
-import LinkedInSurfer from './pages/LinkedInSurfer'
-import TwitterSurfer from './pages/TwitterSurfer'
 import TrustedTechAssistant from './pages/TrustedTechAssistant'
 import TrustedTechHubSpotAssistant from './pages/TrustedTechHubSpotAssistant'
 import Settings from './pages/Settings'
 import NotFound from './pages/NotFound'
-import Users from './pages/Users'
 import { setAccessTokenProvider } from './lib/api'
 import './styles/app.css'
 
@@ -44,8 +33,14 @@ function getAuthAuthorizationParams(extra?: Record<string, string>) {
 }
 
 const baseNavItems = [
-  { key: '/trusted-tech-assistant', label: <Link to="/trusted-tech-assistant">Trusted Tech Assistant</Link> },
-  { key: '/hubspot-assistant', label: <Link to="/hubspot-assistant">Trusted Tech HubSpot Assistant</Link> },
+  {
+    key: '/trusted-tech-assistant',
+    label: <Link to="/trusted-tech-assistant">Hermes Trusted Tech Assistant</Link>,
+  },
+  {
+    key: '/hubspot-assistant',
+    label: <Link to="/hubspot-assistant">Hermes HubSpot Assistant</Link>,
+  },
 ]
 
 function AppShell({ isDark, onToggle }: { isDark: boolean; onToggle: () => void }) {
@@ -101,21 +96,9 @@ function AppShell({ isDark, onToggle }: { isDark: boolean; onToggle: () => void 
         </Header>
         <Content className="app-content">
           <Routes>
-            <Route path="/" element={<HubOverview />} />
+            <Route path="/" element={<Navigate to="/trusted-tech-assistant" replace />} />
             <Route path="/trusted-tech-assistant" element={<TrustedTechAssistant />} />
             <Route path="/hubspot-assistant" element={<TrustedTechHubSpotAssistant />} />
-            <Route path="/market-research" element={<Dashboard />} />
-            <Route path="/sam-gov-monitor" element={<SamGovMonitor />} />
-            <Route path="/police-grants" element={<PoliceGrantIntelligenceAgent />} />
-            <Route path="/police-grants/:applicationUserId" element={<PoliceGrantIntelligenceAgent />} />
-            <Route path="/grant-applications" element={<GrantApplicationAgent />} />
-            <Route path="/grant-applications/:applicationUserId" element={<GrantApplicationAgent />} />
-            <Route path="/rfp-response-agent" element={<RfpResponseCrm />} />
-            <Route path="/rfp-response-agent/:rfpId" element={<RfpResponseAgent />} />
-            <Route path="/linkedin-surfer" element={<LinkedInSurfer />} />
-            <Route path="/twitter-surfer" element={<TwitterSurfer />} />
-            <Route path="/reports" element={<Reports />} />
-            <Route path="/users" element={<Users />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
