@@ -17,6 +17,8 @@ import {
 const { Paragraph, Text } = Typography
 const { TextArea } = Input
 
+const RAW_PROVIDER_ERROR = /api call failed|rate\s*limit|tokens per min|\bTPM\b|platform\.openai\.com\/account\/rate-limits/i
+
 type AgentChatWorkspaceProps = {
   agentId: string
   title: string
@@ -32,6 +34,7 @@ type AgentChatWorkspaceProps = {
   chatTitle?: string
   assistantLabel?: string
   backendLabel?: string
+  showRefreshButton?: boolean
   renderBeforeChat?: ReactNode
   children?: ReactNode
   renderChatTools?: (helpers: {
@@ -39,6 +42,8 @@ type AgentChatWorkspaceProps = {
     currentChatInput: string
   }) => ReactNode
   buildMessageContext?: () => string
+  queryingLabel?: string
+  suppressChatErrors?: boolean
 }
 
 export default function AgentChatWorkspace({
@@ -56,10 +61,13 @@ export default function AgentChatWorkspace({
   chatTitle = 'OpenClaw Chat',
   assistantLabel = 'OpenClaw',
   backendLabel = 'OpenAI via backend',
+  showRefreshButton = false,
   renderBeforeChat,
   children,
   renderChatTools,
   buildMessageContext,
+  queryingLabel = 'Thinking through the request...',
+  suppressChatErrors = false,
 }: AgentChatWorkspaceProps) {
   const { isAuthenticated } = useAuth0()
   const [agent, setAgent] = useState<AgentDetail | null>(null)
@@ -82,6 +90,7 @@ export default function AgentChatWorkspace({
   const [isChatting, setIsChatting] = useState(false)
   const [isSavingThread, setIsSavingThread] = useState(false)
   const [isThreadSidebarOpen, setIsThreadSidebarOpen] = useState(false)
+  const [isRefreshing, setIsRefreshing] = useState(false)
   const chatEndRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
@@ -143,9 +152,33 @@ export default function AgentChatWorkspace({
       const response = await sendAgentChat(agentId, messagesForBackend)
       setChatMessages((current) => [...current, response.message])
     } catch (submitError) {
-      setChatError(submitError instanceof Error ? submitError.message : `${assistantLabel} could not respond right now.`)
+      if (suppressChatErrors) {
+        setChatMessages((current) => [...current, { role: 'assistant', content: queryingLabel }])
+      } else {
+        setChatError(submitError instanceof Error ? submitError.message : `${assistantLabel} could not respond right now.`)
+      }
     } finally {
       setIsChatting(false)
+    }
+  }
+
+  const handleRefreshAgent = async () => {
+    if (isRefreshing || isChatting) return
+    setIsRefreshing(true)
+    setError('')
+    setChatError('')
+    try {
+      const [agentResponse, threadsResponse] = await Promise.all([
+        getAgent(agentId),
+        isAuthenticated ? getChatThreads(agentId) : Promise.resolve([]),
+      ])
+      setAgent(agentResponse)
+      setSavedThreads(threadsResponse)
+      message.success(`${assistantLabel} refreshed`)
+    } catch (refreshError) {
+      setChatError(refreshError instanceof Error ? refreshError.message : `Failed to refresh ${assistantLabel}.`)
+    } finally {
+      setIsRefreshing(false)
     }
   }
 
@@ -268,12 +301,21 @@ export default function AgentChatWorkspace({
             <Card
               className="section-card"
               title={chatTitle || undefined}
-              extra={showBackendTag && agent ? <Tag color="gold">{backendLabel}</Tag> : null}
+              extra={(showBackendTag && agent) || showRefreshButton ? (
+                <Space size="small" wrap>
+                  {showBackendTag && agent ? <Tag color="gold">{backendLabel}</Tag> : null}
+                  {showRefreshButton ? (
+                    <Button onClick={() => void handleRefreshAgent()} loading={isRefreshing} disabled={isChatting}>
+                      Refresh
+                    </Button>
+                  ) : null}
+                </Space>
+              ) : null}
             >
               <Space direction="vertical" size="middle" style={{ width: '100%' }}>
                 {showChatIntro ? <Text type="secondary">{intro}</Text> : null}
 
-                {chatError ? (
+                {chatError && !suppressChatErrors ? (
                   <Alert type="error" showIcon message={`${assistantLabel} chat is unavailable`} description={chatError} />
                 ) : null}
 
@@ -338,7 +380,13 @@ export default function AgentChatWorkspace({
                         >
                           <div className="chat-message-label">{entry.role === 'user' ? 'You' : assistantLabel}</div>
                           <div className="chat-message-body">
-                            <ChatMessageContent content={entry.content} />
+                            <ChatMessageContent
+                              content={
+                                suppressChatErrors && entry.role === 'assistant' && RAW_PROVIDER_ERROR.test(entry.content)
+                                  ? queryingLabel
+                                  : entry.content
+                              }
+                            />
                           </div>
                         </div>
                       ))}
@@ -347,7 +395,7 @@ export default function AgentChatWorkspace({
                         <div className="chat-message chat-message-assistant">
                           <div className="chat-message-label">{assistantLabel}</div>
                           <div className="chat-message-body">
-                            <p>Thinking through the request...</p>
+                            <p>{queryingLabel}</p>
                           </div>
                         </div>
                       ) : null}

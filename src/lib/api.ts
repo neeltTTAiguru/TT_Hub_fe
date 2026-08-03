@@ -1,5 +1,9 @@
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000').replace(/\/$/, '')
 
+export function contentOperationsAssetUrl(assetId: string) {
+  return `${API_BASE_URL}/content-operations-download/asset/${encodeURIComponent(assetId)}`
+}
+
 let accessTokenProvider: null | ((forceRefresh?: boolean) => Promise<string>) = null
 
 export function setAccessTokenProvider(provider: null | ((forceRefresh?: boolean) => Promise<string>)) {
@@ -628,6 +632,157 @@ export function getAgents() {
 
 export function getAgent(agentId: string) {
   return request<AgentDetail>(`/agents/${agentId}`)
+}
+
+export type ContentOpportunity = {
+  id: string
+  primaryKeyword: string
+  title: string
+  buyerIntent: string
+  businessFit: number | null
+  searchVolume: number | null
+  keywordDifficulty: number | null
+  trafficPotential: number | null
+  currentPosition: number | null
+  competitorGap: string
+  conversionPotential: string
+  revenuePath: string
+  score: number | null
+  rationale: string
+  source: 'ahrefs'
+}
+
+export type ContentOperationsRun = {
+  runId: string
+  targetDomain: string
+  requestType: string
+  userInstructions: string
+  workflowMode: 'manual' | 'balanced' | 'draft_automation'
+  currentStage: string
+  status: 'ready' | 'running' | 'waiting_for_approval' | 'completed' | 'error' | 'stopped'
+  researchOnly: boolean
+  opportunities: ContentOpportunity[]
+  selectedOpportunity: ContentOpportunity | null
+  brief: Record<string, unknown> | null
+  article: string
+  heroImage?: {
+    assetId: string
+    altText: string
+    caption: string
+  } | null
+  testPublication: {
+    published: boolean
+    slug: string
+    title: string
+    publishedAt: string | null
+    url: string
+  }
+  wordpressPublication?: {
+    postId: number | null
+    status: string
+    slug: string
+    title: string
+    createdAt: string | null
+    url: string
+  }
+  stages: Array<{
+    stage: string
+    status: string
+    input?: unknown
+    tool: string
+    result: unknown
+    explanation: string
+    output: unknown
+    completedAt: string
+  }>
+  toolCallsUsed: string[]
+  approval: {
+    opportunity: boolean
+    brief: boolean
+    article: boolean
+    publish: boolean
+  }
+  errors: string[]
+  createdAt: string
+  updatedAt: string
+}
+
+export type ContentIntegrationMap = Record<string, {
+  label: string
+  status: 'connected' | 'not_configured' | 'partially_configured'
+}>
+
+export function getContentOperationsIntegrations() {
+  return request<ContentIntegrationMap>('/content-operations/integrations')
+}
+
+export function getContentOperationsRuns() {
+  return request<ContentOperationsRun[]>('/content-operations/runs')
+}
+
+export function createContentOperationsRun(payload: {
+  targetDomain: string
+  requestType: string
+  userInstructions: string
+  workflowMode: ContentOperationsRun['workflowMode']
+  researchOnly: boolean
+}) {
+  return request<ContentOperationsRun>('/content-operations/runs', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function stopContentOperationsRun(runId: string) {
+  return request<ContentOperationsRun>(`/content-operations/runs/${encodeURIComponent(runId)}/stop`, {
+    method: 'POST',
+  })
+}
+
+export function restartContentOperationsRun(runId: string) {
+  return request<ContentOperationsRun>(`/content-operations/runs/${encodeURIComponent(runId)}/restart`, {
+    method: 'POST',
+  })
+}
+
+export function approveContentOperationsGate(
+  runId: string,
+  payload: {
+    gate: 'opportunity' | 'brief' | 'article'
+    opportunityId?: string
+    brief?: Record<string, unknown>
+  },
+) {
+  return request<ContentOperationsRun>(`/content-operations/runs/${encodeURIComponent(runId)}/approve`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function publishContentOperationsTestPost(runId: string) {
+  return request<ContentOperationsRun>(
+    `/content-operations/runs/${encodeURIComponent(runId)}/test-publish`,
+    { method: 'POST' },
+  )
+}
+
+export function createContentOperationsWordPressDraft(runId: string) {
+  return request<ContentOperationsRun>(
+    `/content-operations/runs/${encodeURIComponent(runId)}/wordpress-draft`,
+    { method: 'POST' },
+  )
+}
+
+export function getContentOperationsBlogPosts() {
+  return request<ContentOperationsRun[]>('/content-operations/blog')
+}
+
+export async function downloadContentOperationsPdf(runId: string) {
+  const result = await request<{ url: string }>(
+    `/content-operations/runs/${encodeURIComponent(runId)}/pdf-link`,
+    { method: 'POST' },
+  )
+  window.location.assign(`${API_BASE_URL}${result.url}`)
 }
 
 export function getCompanyContext() {

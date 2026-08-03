@@ -16,9 +16,15 @@ import {
 import { getAntdTheme } from './theme'
 import TrustedTechAssistant from './pages/TrustedTechAssistant'
 import TrustedTechHubSpotAssistant from './pages/TrustedTechHubSpotAssistant'
+import TrustedTechAhrefsAssistant from './pages/TrustedTechAhrefsAssistant'
+import ContentOperations from './pages/ContentOperations'
+import ContentOperationsBlog from './pages/ContentOperationsBlog'
+import WordPressDraftTestAgent from './pages/WordPressDraftTestAgent'
+import WordPressDraftEditor from './pages/WordPressDraftEditor'
 import Settings from './pages/Settings'
 import NotFound from './pages/NotFound'
 import { setAccessTokenProvider } from './lib/api'
+import trustedTechnologyPrimaryLogo from './assets/trusted-technology-primary-logo.png'
 import './styles/app.css'
 
 const { Header, Sider, Content } = Layout
@@ -35,11 +41,27 @@ function getAuthAuthorizationParams(extra?: Record<string, string>) {
 const baseNavItems = [
   {
     key: '/trusted-tech-assistant',
-    label: <Link to="/trusted-tech-assistant">Hermes Trusted Tech Assistant</Link>,
+    label: <Link to="/trusted-tech-assistant">TT-Hermes-brain</Link>,
   },
   {
     key: '/hubspot-assistant',
-    label: <Link to="/hubspot-assistant">Hermes HubSpot Assistant</Link>,
+    label: <Link to="/hubspot-assistant">Hermes HubSpot Deal Pipeline Assistant</Link>,
+  },
+  {
+    key: '/assistants/content-operations',
+    label: <Link to="/assistants/content-operations">Hermes Content Operations</Link>,
+  },
+  {
+    key: '/assistants/content-operations/blog',
+    label: <Link to="/assistants/content-operations/blog">↳ Content Operations Blog</Link>,
+  },
+  {
+    key: '/assistants/wordpress-draft-test',
+    label: <Link to="/assistants/wordpress-draft-test">↳ WordPress Draft Test</Link>,
+  },
+  {
+    key: '/assistants/wordpress-draft-editor',
+    label: <Link to="/assistants/wordpress-draft-editor">↳ WordPress Content Assistant</Link>,
   },
 ]
 
@@ -57,11 +79,12 @@ function AppShell({ isDark, onToggle }: { isDark: boolean; onToggle: () => void 
       <Sider className="app-sider" width={220} breakpoint="lg" collapsedWidth={0}>
         <div style={{ padding: 20 }}>
           <div className="brand">
-            <div className="brand-mark">T</div>
-            <div>
-              <div>Trusted Tech Smart Hub</div>
-              <div className="brand-subtitle">Trusted Tech</div>
-            </div>
+            <img
+              className="brand-logo"
+              src={trustedTechnologyPrimaryLogo}
+              alt="Trusted Technology Solutions"
+            />
+            <div className="brand-subtitle">Smart Hub</div>
           </div>
         </div>
         <Menu
@@ -99,6 +122,12 @@ function AppShell({ isDark, onToggle }: { isDark: boolean; onToggle: () => void 
             <Route path="/" element={<Navigate to="/trusted-tech-assistant" replace />} />
             <Route path="/trusted-tech-assistant" element={<TrustedTechAssistant />} />
             <Route path="/hubspot-assistant" element={<TrustedTechHubSpotAssistant />} />
+            <Route path="/ahrefs-assistant" element={<TrustedTechAhrefsAssistant />} />
+            <Route path="/assistants/content-operations" element={<ContentOperations />} />
+            <Route path="/assistants/content-operations/blog" element={<ContentOperationsBlog />} />
+            <Route path="/assistants/content-operations/blog/:slug" element={<ContentOperationsBlog />} />
+            <Route path="/assistants/wordpress-draft-test" element={<WordPressDraftTestAgent />} />
+            <Route path="/assistants/wordpress-draft-editor" element={<WordPressDraftEditor />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
@@ -300,6 +329,8 @@ function AuthenticatedApp({ isDark, onToggle }: { isDark: boolean; onToggle: () 
         authorizationParams: getAuthAuthorizationParams(),
       }),
     )
+    // The API client must not render until its Auth0 token provider is installed.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setIsTokenProviderReady(true)
 
     return () => {
