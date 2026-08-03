@@ -1099,6 +1099,40 @@
   text-decoration: underline;
 }
 
+.chat-rich-table-shell {
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--app-border);
+  border-radius: 10px;
+}
+
+.chat-rich-table {
+  width: 100%;
+  min-width: 560px;
+  border-collapse: collapse;
+  background: var(--app-surface);
+}
+
+.chat-rich-table th,
+.chat-rich-table td {
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--app-border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.chat-rich-table th {
+  background: var(--app-surface-alt);
+  color: var(--app-text);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.chat-rich-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
 .chat-composer {
   display: grid;
   gap: 12px;

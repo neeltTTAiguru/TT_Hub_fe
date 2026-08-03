@@ -5,9 +5,18 @@ type ChatMessageContentProps = {
 }
 
 function renderInline(text: string): ReactNode[] {
-  const parts = text.split(/(https?:\/\/\S+|\*\*[^*]+\*\*)/g).filter(Boolean)
+  const parts = text.split(/(\[[^\]]+\]\(https?:\/\/[^)]+\)|https?:\/\/\S+|\*\*[^*]+\*\*)/g).filter(Boolean)
 
   return parts.map((part, index) => {
+    const markdownLink = part.match(/^\[([^\]]+)\]\((https?:\/\/[^)]+)\)$/)
+    if (markdownLink) {
+      return (
+        <a key={`${markdownLink[2]}-${index}`} href={markdownLink[2]} target="_blank" rel="noreferrer">
+          {markdownLink[1]}
+        </a>
+      )
+    }
+
     if (part.startsWith('http://') || part.startsWith('https://')) {
       return (
         <a key={`${part}-${index}`} href={part} target="_blank" rel="noreferrer">
@@ -37,6 +46,18 @@ function isStrongHeading(line: string) {
   return trimmed.startsWith('**') && trimmed.endsWith('**') && trimmed.length > 4
 }
 
+function tableCells(line: string) {
+  return line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((cell) => cell.trim())
+}
+
+function isTableRow(line: string) {
+  return line.includes('|') && tableCells(line).length > 1
+}
+
+function isTableSeparator(line: string) {
+  return isTableRow(line) && tableCells(line).every((cell) => /^:?-{3,}:?$/.test(cell))
+}
+
 export default function ChatMessageContent({ content }: ChatMessageContentProps) {
   const blocks = content.split(/\n{2,}/).map((block) => block.trim()).filter(Boolean)
 
@@ -47,6 +68,37 @@ export default function ChatMessageContent({ content }: ChatMessageContentProps)
 
         if (!lines.length) {
           return null
+        }
+
+        const tableStart = lines.findIndex(
+          (line, index) => isTableRow(line) && index + 1 < lines.length && isTableSeparator(lines[index + 1]),
+        )
+
+        if (tableStart >= 0) {
+          let tableEnd = tableStart + 2
+          while (tableEnd < lines.length && isTableRow(lines[tableEnd])) tableEnd += 1
+          const headers = tableCells(lines[tableStart])
+          const rows = lines.slice(tableStart + 2, tableEnd).map(tableCells)
+          return (
+            <div key={blockIndex} className="chat-rich-block">
+              {lines.slice(0, tableStart).map((line, index) => <p key={`before-${index}`}>{renderInline(line)}</p>)}
+              <div className="chat-rich-table-shell">
+                <table className="chat-rich-table">
+                  <thead>
+                    <tr>{headers.map((header, index) => <th key={index}>{renderInline(header)}</th>)}</tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((row, rowIndex) => (
+                      <tr key={rowIndex}>
+                        {headers.map((_, cellIndex) => <td key={cellIndex}>{renderInline(row[cellIndex] || '')}</td>)}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {lines.slice(tableEnd).map((line, index) => <p key={`after-${index}`}>{renderInline(line)}</p>)}
+            </div>
+          )
         }
 
         if (lines.every(isBulletLine)) {
