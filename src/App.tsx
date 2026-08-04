@@ -45,11 +45,11 @@ const baseNavItems = [
   },
   {
     key: '/hubspot-assistant',
-    label: <Link to="/hubspot-assistant">Hermes HubSpot Deal Pipeline Assistant</Link>,
+    label: <Link to="/hubspot-assistant">TT-Hubspot</Link>,
   },
   {
     key: '/assistants/content-operations',
-    label: <Link to="/assistants/content-operations">Hermes Content Operations</Link>,
+    label: <Link to="/assistants/content-operations">TT- Content Generator</Link>,
   },
   {
     key: '/assistants/content-operations/blog',
