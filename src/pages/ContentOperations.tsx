@@ -315,7 +315,7 @@ export default function ContentOperations() {
       <div className="page-header">
         <div>
           <Space align="center" wrap>
-            <h1 className="page-title">TT- Content Generator</h1>
+            <h1 className="page-title">Content Generator</h1>
             <Tag color="gold">Hermes Content Pipeline</Tag>
           </Space>
           <p className="page-subtitle">

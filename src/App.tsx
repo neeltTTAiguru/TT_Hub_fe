@@ -41,15 +41,15 @@ function getAuthAuthorizationParams(extra?: Record<string, string>) {
 const baseNavItems = [
   {
     key: '/trusted-tech-assistant',
-    label: <Link to="/trusted-tech-assistant">TT-Hermes-brain</Link>,
+    label: <Link to="/trusted-tech-assistant">Brain</Link>,
   },
   {
     key: '/hubspot-assistant',
-    label: <Link to="/hubspot-assistant">TT-Hubspot</Link>,
+    label: <Link to="/hubspot-assistant">Hubspot</Link>,
   },
   {
     key: '/assistants/content-operations',
-    label: <Link to="/assistants/content-operations">TT- Content Generator</Link>,
+    label: <Link to="/assistants/content-operations">Content Generator</Link>,
   },
   {
     key: '/assistants/content-operations/blog',

@@ -4,7 +4,7 @@ export default function TrustedTechAssistant() {
   return (
     <AgentChatWorkspace
       agentId="trusted-tech-assistant"
-      title="TT-Hermes-brain"
+      title="Brain"
       subtitle="Work directly with Hermes, Trusted Tech's connected AI assistant."
       intro="Hermes is ready to help with company context, positioning, research in the Smart Hub, and your next best action."
       emptyPrompt='Try: "What do we already know about Trusted Tech positioning, and what should we tighten up next?"'
@@ -13,7 +13,7 @@ export default function TrustedTechAssistant() {
       showChatIntro={false}
       showBackendTag
       chatTitle="Talk to Hermes"
-      assistantLabel="TT-Hermes-brain"
+      assistantLabel="Brain"
       backendLabel="Hermes on Trusted Cloud"
     />
   )
