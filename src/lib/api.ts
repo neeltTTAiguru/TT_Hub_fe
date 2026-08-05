@@ -215,6 +215,24 @@ export type AgentChatResponse = {
   }
 }
 
+export type BrainMemoryProposal = {
+  title: string
+  content: string
+  department: 'shared' | 'sales' | 'marketing' | 'operations' | 'research'
+  sensitivity: 'internal' | 'public'
+  source?: string
+}
+
+export type BrainMemoryResult = {
+  slug: string
+  title: string
+  department: BrainMemoryProposal['department']
+  sensitivity: BrainMemoryProposal['sensitivity']
+  source: string
+  lifecycle: 'approved'
+  verified: boolean
+}
+
 export type User = {
   _id: string
   name: string
@@ -979,6 +997,13 @@ export function sendAgentChat(agentId: string, messages: AgentChatMessage[]) {
   return request<AgentChatResponse>(`/agents/${agentId}/chat`, {
     method: 'POST',
     body: JSON.stringify({ messages }),
+  })
+}
+
+export function saveBrainMemory(proposal: BrainMemoryProposal) {
+  return request<BrainMemoryResult>('/agents/trusted-tech-assistant/memory', {
+    method: 'POST',
+    body: JSON.stringify({ proposal, confirmed: true }),
   })
 }
 

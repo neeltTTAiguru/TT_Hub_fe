@@ -53,31 +53,47 @@ const baseNavItems = [
     label: <Link to="/youtrack-assistant">YouTrack</Link>,
   },
   {
-    key: '/assistants/content-operations',
-    label: <Link to="/assistants/content-operations">Content Generator</Link>,
+    key: 'content-generator-menu',
+    label: 'Content Generator',
+    children: [
+      {
+        key: '/assistants/content-operations',
+        label: <Link to="/assistants/content-operations">Overview</Link>,
+      },
+      {
+        key: '/assistants/content-operations/blog',
+        label: <Link to="/assistants/content-operations/blog">Content Operations Blog</Link>,
+      },
+      {
+        key: '/assistants/wordpress-draft-test',
+        label: <Link to="/assistants/wordpress-draft-test">WordPress Draft Test</Link>,
+      },
+      {
+        key: '/assistants/wordpress-draft-editor',
+        label: <Link to="/assistants/wordpress-draft-editor">WordPress Content Assistant</Link>,
+      },
+    ],
   },
-  {
-    key: '/assistants/content-operations/blog',
-    label: <Link to="/assistants/content-operations/blog">↳ Content Operations Blog</Link>,
-  },
-  {
-    key: '/assistants/wordpress-draft-test',
-    label: <Link to="/assistants/wordpress-draft-test">↳ WordPress Draft Test</Link>,
-  },
-  {
-    key: '/assistants/wordpress-draft-editor',
-    label: <Link to="/assistants/wordpress-draft-editor">↳ WordPress Content Assistant</Link>,
-  },
+]
+
+const contentGeneratorPaths = [
+  '/assistants/content-operations/blog',
+  '/assistants/wordpress-draft-test',
+  '/assistants/wordpress-draft-editor',
+  '/assistants/content-operations',
 ]
 
 function AppShell({ isDark, onToggle }: { isDark: boolean; onToggle: () => void }) {
   const location = useLocation()
   const { user, logout } = useAuth0()
-  const selectedNavKey = baseNavItems.find((item) =>
-    item.key === '/'
-      ? location.pathname === '/'
-      : location.pathname === item.key || location.pathname.startsWith(`${item.key}/`),
+  const selectedNavKey = contentGeneratorPaths.find((path) =>
+    location.pathname === path || location.pathname.startsWith(`${path}/`),
+  ) || baseNavItems.find((item) =>
+    !item.children && (location.pathname === item.key || location.pathname.startsWith(`${item.key}/`)),
   )?.key
+  const contentGeneratorOpen = contentGeneratorPaths.some((path) =>
+    location.pathname === path || location.pathname.startsWith(`${path}/`),
+  )
 
   return (
     <Layout className="app-shell">
@@ -96,6 +112,7 @@ function AppShell({ isDark, onToggle }: { isDark: boolean; onToggle: () => void 
           mode="inline"
           items={baseNavItems}
           selectedKeys={selectedNavKey ? [selectedNavKey] : []}
+          defaultOpenKeys={contentGeneratorOpen ? ['content-generator-menu'] : []}
         />
       </Sider>
 

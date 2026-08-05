@@ -5,16 +5,17 @@ export default function TrustedTechAssistant() {
     <AgentChatWorkspace
       agentId="trusted-tech-assistant"
       title="Brain"
-      subtitle="Work directly with Hermes, Trusted Tech's connected AI assistant."
-      intro="Hermes is ready to help with company context, positioning, research in the Smart Hub, and your next best action."
-      emptyPrompt='Try: "What do we already know about Trusted Tech positioning, and what should we tighten up next?"'
+      subtitle="Search Trusted Tech’s approved GBrain memory, reason with company context, and explicitly save knowledge worth remembering."
+      intro="Brain uses Hermes to search approved GBrain memory before answering. It never adds conversation content to GBrain unless you review and confirm a separate Save to Brain request."
+      emptyPrompt='Ask Brain: "What does GBrain know about Trusted Technology’s positioning?"'
       showAgentOverview={false}
       showThreadControls={false}
       showChatIntro={false}
       showBackendTag
-      chatTitle="Talk to Hermes"
+      chatTitle="Talk to Brain"
       assistantLabel="Brain"
-      backendLabel="Hermes on Trusted Cloud"
+      backendLabel="Hermes + GBrain"
+      enableBrainMemorySave
     />
   )
 }

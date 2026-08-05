@@ -1,16 +1,18 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useAuth0 } from '@auth0/auth0-react'
-import { Alert, Button, Card, List, Space, Spin, Tag, Typography, Input, message } from 'antd'
+import { Alert, Button, Card, List, Space, Spin, Tag, Typography, Input, message, Modal, Select } from 'antd'
 import ChatMessageContent from './ChatMessageContent'
 import {
   createChatThread,
   getAgent,
   getChatThreads,
   sendAgentChat,
+  saveBrainMemory,
   updateChatThread,
   type AgentChatMessage,
   type AgentDetail,
+  type BrainMemoryProposal,
   type ChatThread,
 } from '../lib/api'
 
@@ -44,6 +46,15 @@ type AgentChatWorkspaceProps = {
   buildMessageContext?: () => string
   queryingLabel?: string
   suppressChatErrors?: boolean
+  enableBrainMemorySave?: boolean
+}
+
+const EMPTY_MEMORY_PROPOSAL: BrainMemoryProposal = {
+  title: '',
+  content: '',
+  department: 'shared',
+  sensitivity: 'internal',
+  source: '',
 }
 
 export default function AgentChatWorkspace({
@@ -68,6 +79,7 @@ export default function AgentChatWorkspace({
   buildMessageContext,
   queryingLabel = 'Thinking through the request...',
   suppressChatErrors = false,
+  enableBrainMemorySave = false,
 }: AgentChatWorkspaceProps) {
   const { isAuthenticated } = useAuth0()
   const [agent, setAgent] = useState<AgentDetail | null>(null)
@@ -91,6 +103,10 @@ export default function AgentChatWorkspace({
   const [isSavingThread, setIsSavingThread] = useState(false)
   const [isThreadSidebarOpen, setIsThreadSidebarOpen] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [memoryModalOpen, setMemoryModalOpen] = useState(false)
+  const [memoryReviewing, setMemoryReviewing] = useState(false)
+  const [isSavingMemory, setIsSavingMemory] = useState(false)
+  const [memoryProposal, setMemoryProposal] = useState<BrainMemoryProposal>(EMPTY_MEMORY_PROPOSAL)
   const chatEndRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
@@ -255,6 +271,57 @@ export default function AgentChatWorkspace({
     }
   }
 
+  const openMemoryProposal = () => {
+    const latestUserMessage = [...chatMessages].reverse().find((entry) => entry.role === 'user')?.content || ''
+    setMemoryProposal({ ...EMPTY_MEMORY_PROPOSAL, content: latestUserMessage })
+    setMemoryReviewing(false)
+    setMemoryModalOpen(true)
+  }
+
+  const closeMemoryProposal = () => {
+    if (isSavingMemory) return
+    setMemoryModalOpen(false)
+    setMemoryReviewing(false)
+  }
+
+  const reviewMemoryProposal = () => {
+    if (memoryProposal.title.trim().length < 3) {
+      message.error('Add a short, descriptive memory title.')
+      return
+    }
+    if (memoryProposal.content.trim().length < 10) {
+      message.error('Memory content must contain at least 10 characters.')
+      return
+    }
+    setMemoryReviewing(true)
+  }
+
+  const confirmMemorySave = async () => {
+    setIsSavingMemory(true)
+    try {
+      const saved = await saveBrainMemory({
+        ...memoryProposal,
+        title: memoryProposal.title.trim(),
+        content: memoryProposal.content.trim(),
+        source: memoryProposal.source?.trim(),
+      })
+      setMemoryModalOpen(false)
+      setMemoryReviewing(false)
+      message.success(`Saved and verified in GBrain: ${saved.title}`)
+      setChatMessages((current) => [
+        ...current,
+        {
+          role: 'assistant',
+          content: `Saved to GBrain and verified.\n\n- Memory: ${saved.title}\n- ID: \`${saved.slug}\`\n- Category: ${saved.department}\n- Sensitivity: ${saved.sensitivity}`,
+        },
+      ])
+    } catch (saveError) {
+      message.error(saveError instanceof Error ? saveError.message : 'GBrain could not save this memory.')
+    } finally {
+      setIsSavingMemory(false)
+    }
+  }
+
   return (
     <div className="page">
       <div>
@@ -301,9 +368,14 @@ export default function AgentChatWorkspace({
             <Card
               className="section-card"
               title={chatTitle || undefined}
-              extra={(showBackendTag && agent) || showRefreshButton ? (
+              extra={(showBackendTag && agent) || showRefreshButton || enableBrainMemorySave ? (
                 <Space size="small" wrap>
                   {showBackendTag && agent ? <Tag color="gold">{backendLabel}</Tag> : null}
+                  {enableBrainMemorySave ? (
+                    <Button onClick={openMemoryProposal} disabled={isChatting || !isAuthenticated}>
+                      Save to Brain
+                    </Button>
+                  ) : null}
                   {showRefreshButton ? (
                     <Button onClick={() => void handleRefreshAgent()} loading={isRefreshing} disabled={isChatting}>
                       Refresh
@@ -429,6 +501,102 @@ export default function AgentChatWorkspace({
           ) : null}
 
           {children}
+
+          {enableBrainMemorySave ? (
+            <Modal
+              title={memoryReviewing ? 'Confirm memory' : 'Propose a memory'}
+              open={memoryModalOpen}
+              onCancel={closeMemoryProposal}
+              closable={!isSavingMemory}
+              maskClosable={!isSavingMemory}
+              footer={memoryReviewing ? [
+                <Button key="back" onClick={() => setMemoryReviewing(false)} disabled={isSavingMemory}>Back</Button>,
+                <Button key="confirm" type="primary" danger loading={isSavingMemory} onClick={() => void confirmMemorySave()}>
+                  Confirm and save to GBrain
+                </Button>,
+              ] : [
+                <Button key="cancel" onClick={closeMemoryProposal}>Cancel</Button>,
+                <Button key="review" type="primary" onClick={reviewMemoryProposal}>Review memory</Button>,
+              ]}
+            >
+              {memoryReviewing ? (
+                <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+                  <Alert
+                    type="warning"
+                    showIcon
+                    message="This is a separate action from saving a chat thread."
+                    description="Confirming will write this approved knowledge to GBrain. Conversations are never stored there automatically."
+                  />
+                  <div><Text type="secondary">Title</Text><Paragraph strong>{memoryProposal.title}</Paragraph></div>
+                  <div><Text type="secondary">Memory</Text><Paragraph>{memoryProposal.content}</Paragraph></div>
+                  <Space wrap>
+                    <Tag>{memoryProposal.department}</Tag>
+                    <Tag color={memoryProposal.sensitivity === 'public' ? 'green' : 'blue'}>{memoryProposal.sensitivity}</Tag>
+                  </Space>
+                  {memoryProposal.source ? <div><Text type="secondary">Source</Text><Paragraph>{memoryProposal.source}</Paragraph></div> : null}
+                </Space>
+              ) : (
+                <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+                  <Alert
+                    type="info"
+                    showIcon
+                    message="Nothing is saved until you review and confirm."
+                    description="Do not include passwords, API keys, tokens, or unnecessary personal information."
+                  />
+                  <div style={{ width: '100%' }}>
+                    <Text strong>Title</Text>
+                    <Input
+                      value={memoryProposal.title}
+                      maxLength={160}
+                      placeholder="Example: Preferred content audience"
+                      onChange={(event) => setMemoryProposal((current) => ({ ...current, title: event.target.value }))}
+                    />
+                  </div>
+                  <div style={{ width: '100%' }}>
+                    <Text strong>What should Brain remember?</Text>
+                    <TextArea
+                      value={memoryProposal.content}
+                      maxLength={8000}
+                      autoSize={{ minRows: 5, maxRows: 10 }}
+                      onChange={(event) => setMemoryProposal((current) => ({ ...current, content: event.target.value }))}
+                    />
+                  </div>
+                  <Space wrap style={{ width: '100%' }}>
+                    <Select
+                      value={memoryProposal.department}
+                      style={{ width: 170 }}
+                      options={[
+                        { value: 'shared', label: 'Shared' },
+                        { value: 'sales', label: 'Sales' },
+                        { value: 'marketing', label: 'Marketing' },
+                        { value: 'operations', label: 'Operations' },
+                        { value: 'research', label: 'Research' },
+                      ]}
+                      onChange={(department) => setMemoryProposal((current) => ({ ...current, department }))}
+                    />
+                    <Select
+                      value={memoryProposal.sensitivity}
+                      style={{ width: 170 }}
+                      options={[
+                        { value: 'internal', label: 'Internal' },
+                        { value: 'public', label: 'Public' },
+                      ]}
+                      onChange={(sensitivity) => setMemoryProposal((current) => ({ ...current, sensitivity }))}
+                    />
+                  </Space>
+                  <div style={{ width: '100%' }}>
+                    <Text strong>Source or reference (optional)</Text>
+                    <Input
+                      value={memoryProposal.source}
+                      maxLength={500}
+                      placeholder="Document, URL, meeting, or decision reference"
+                      onChange={(event) => setMemoryProposal((current) => ({ ...current, source: event.target.value }))}
+                    />
+                  </div>
+                </Space>
+              )}
+            </Modal>
+          ) : null}
         </>
       )}
     </div>
