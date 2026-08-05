@@ -16,6 +16,7 @@ import {
 import { getAntdTheme } from './theme'
 import TrustedTechAssistant from './pages/TrustedTechAssistant'
 import TrustedTechHubSpotAssistant from './pages/TrustedTechHubSpotAssistant'
+import TrustedTechYouTrackAssistant from './pages/TrustedTechYouTrackAssistant'
 import TrustedTechAhrefsAssistant from './pages/TrustedTechAhrefsAssistant'
 import ContentOperations from './pages/ContentOperations'
 import ContentOperationsBlog from './pages/ContentOperationsBlog'
@@ -46,6 +47,10 @@ const baseNavItems = [
   {
     key: '/hubspot-assistant',
     label: <Link to="/hubspot-assistant">Hubspot</Link>,
+  },
+  {
+    key: '/youtrack-assistant',
+    label: <Link to="/youtrack-assistant">YouTrack</Link>,
   },
   {
     key: '/assistants/content-operations',
@@ -122,6 +127,7 @@ function AppShell({ isDark, onToggle }: { isDark: boolean; onToggle: () => void 
             <Route path="/" element={<Navigate to="/trusted-tech-assistant" replace />} />
             <Route path="/trusted-tech-assistant" element={<TrustedTechAssistant />} />
             <Route path="/hubspot-assistant" element={<TrustedTechHubSpotAssistant />} />
+            <Route path="/youtrack-assistant" element={<TrustedTechYouTrackAssistant />} />
             <Route path="/ahrefs-assistant" element={<TrustedTechAhrefsAssistant />} />
             <Route path="/assistants/content-operations" element={<ContentOperations />} />
             <Route path="/assistants/content-operations/blog" element={<ContentOperationsBlog />} />
