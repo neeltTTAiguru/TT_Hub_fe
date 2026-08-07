@@ -6,12 +6,14 @@ import ChatMessageContent from './ChatMessageContent'
 import {
   createChatThread,
   getAgent,
+  getAgents,
   getChatThreads,
   sendAgentChat,
   saveBrainMemory,
   updateChatThread,
   type AgentChatMessage,
   type AgentDetail,
+  type AgentChatResponse,
   type BrainMemoryProposal,
   type ChatThread,
 } from '../lib/api'
@@ -47,12 +49,27 @@ type AgentChatWorkspaceProps = {
   queryingLabel?: string
   suppressChatErrors?: boolean
   enableBrainMemorySave?: boolean
+  chatSidePanel?: ReactNode
+  onChatResponse?: (response: AgentChatResponse) => void
 }
+
+const COMPANY_SECTION = 'company'
+const COMPANY_SECTION_LABEL = 'Trusted Tech Company'
+
+// Only agents actually offered in the product get a brain section. The agent
+// catalog returns planned/internal agents too (WordPress test, Market Researcher,
+// grant/RFP/social surfers), which must not appear as save targets.
+const OFFERED_AGENT_IDS = new Set([
+  'trusted-tech-assistant',
+  'trusted-tech-hubspot-assistant',
+  'trusted-tech-youtrack-assistant',
+  'content-operations-assistant',
+])
 
 const EMPTY_MEMORY_PROPOSAL: BrainMemoryProposal = {
   title: '',
   content: '',
-  department: 'shared',
+  section: COMPANY_SECTION,
   sensitivity: 'internal',
   source: '',
 }
@@ -80,6 +97,8 @@ export default function AgentChatWorkspace({
   queryingLabel = 'Thinking through the request...',
   suppressChatErrors = false,
   enableBrainMemorySave = false,
+  chatSidePanel,
+  onChatResponse,
 }: AgentChatWorkspaceProps) {
   const { isAuthenticated } = useAuth0()
   const [agent, setAgent] = useState<AgentDetail | null>(null)
@@ -107,6 +126,9 @@ export default function AgentChatWorkspace({
   const [memoryReviewing, setMemoryReviewing] = useState(false)
   const [isSavingMemory, setIsSavingMemory] = useState(false)
   const [memoryProposal, setMemoryProposal] = useState<BrainMemoryProposal>(EMPTY_MEMORY_PROPOSAL)
+  const [sectionOptions, setSectionOptions] = useState<Array<{ value: string; label: string }>>([
+    { value: COMPANY_SECTION, label: COMPANY_SECTION_LABEL },
+  ])
   const chatEndRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
@@ -115,13 +137,24 @@ export default function AgentChatWorkspace({
       setError('')
 
       try {
-        const [agentResponse, threadsResponse] = await Promise.all([
+        const [agentResponse, threadsResponse, agentsResponse] = await Promise.all([
           getAgent(agentId),
           isAuthenticated ? getChatThreads(agentId) : Promise.resolve([]),
+          enableBrainMemorySave ? getAgents() : Promise.resolve([]),
         ])
 
         setAgent(agentResponse)
         setSavedThreads(threadsResponse)
+        if (enableBrainMemorySave) {
+          // Section picker: "Trusted Tech Company" (all agents) plus one entry per
+          // agent, so a memory can be scoped to exactly the agent that will use it.
+          setSectionOptions([
+            { value: COMPANY_SECTION, label: COMPANY_SECTION_LABEL },
+            ...agentsResponse
+              .filter((entry) => OFFERED_AGENT_IDS.has(entry.id))
+              .map((entry) => ({ value: entry.id, label: entry.name })),
+          ])
+        }
       } catch (loadError) {
         setError(loadError instanceof Error ? loadError.message : 'Failed to load agent workspace.')
       } finally {
@@ -130,7 +163,7 @@ export default function AgentChatWorkspace({
     }
 
     void load()
-  }, [agentId, isAuthenticated])
+  }, [agentId, isAuthenticated, enableBrainMemorySave])
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -167,6 +200,7 @@ export default function AgentChatWorkspace({
     try {
       const response = await sendAgentChat(agentId, messagesForBackend)
       setChatMessages((current) => [...current, response.message])
+      onChatResponse?.(response)
     } catch (submitError) {
       if (suppressChatErrors) {
         setChatMessages((current) => [...current, { role: 'assistant', content: queryingLabel }])
@@ -312,7 +346,7 @@ export default function AgentChatWorkspace({
         ...current,
         {
           role: 'assistant',
-          content: `Saved to GBrain and verified.\n\n- Memory: ${saved.title}\n- ID: \`${saved.slug}\`\n- Category: ${saved.department}\n- Sensitivity: ${saved.sensitivity}`,
+          content: `Saved to GBrain and verified.\n\n- Memory: ${saved.title}\n- ID: \`${saved.slug}\`\n- Section: ${sectionOptions.find((option) => option.value === saved.section)?.label ?? saved.section}\n- Sensitivity: ${saved.sensitivity}`,
         },
       ])
     } catch (saveError) {
@@ -427,7 +461,8 @@ export default function AgentChatWorkspace({
                     </aside>
                   ) : null}
 
-                  <div className="chat-main">
+                  <div className={chatSidePanel ? 'chat-workspace-grid' : undefined}>
+                    <div className="chat-main">
                     {showThreadControls ? (
                       <div className="chat-toolbar">
                         <Button onClick={() => setIsThreadSidebarOpen((current) => !current)}>
@@ -494,6 +529,8 @@ export default function AgentChatWorkspace({
                         </Button>
                       </div>
                     </div>
+                    </div>
+                    {chatSidePanel}
                   </div>
                 </div>
               </Space>
@@ -530,7 +567,7 @@ export default function AgentChatWorkspace({
                   <div><Text type="secondary">Title</Text><Paragraph strong>{memoryProposal.title}</Paragraph></div>
                   <div><Text type="secondary">Memory</Text><Paragraph>{memoryProposal.content}</Paragraph></div>
                   <Space wrap>
-                    <Tag>{memoryProposal.department}</Tag>
+                    <Tag color="gold">{sectionOptions.find((option) => option.value === memoryProposal.section)?.label ?? memoryProposal.section}</Tag>
                     <Tag color={memoryProposal.sensitivity === 'public' ? 'green' : 'blue'}>{memoryProposal.sensitivity}</Tag>
                   </Space>
                   {memoryProposal.source ? <div><Text type="secondary">Source</Text><Paragraph>{memoryProposal.source}</Paragraph></div> : null}
@@ -561,28 +598,32 @@ export default function AgentChatWorkspace({
                       onChange={(event) => setMemoryProposal((current) => ({ ...current, content: event.target.value }))}
                     />
                   </div>
-                  <Space wrap style={{ width: '100%' }}>
-                    <Select
-                      value={memoryProposal.department}
-                      style={{ width: 170 }}
-                      options={[
-                        { value: 'shared', label: 'Shared' },
-                        { value: 'sales', label: 'Sales' },
-                        { value: 'marketing', label: 'Marketing' },
-                        { value: 'operations', label: 'Operations' },
-                        { value: 'research', label: 'Research' },
-                      ]}
-                      onChange={(department) => setMemoryProposal((current) => ({ ...current, department }))}
-                    />
-                    <Select
-                      value={memoryProposal.sensitivity}
-                      style={{ width: 170 }}
-                      options={[
-                        { value: 'internal', label: 'Internal' },
-                        { value: 'public', label: 'Public' },
-                      ]}
-                      onChange={(sensitivity) => setMemoryProposal((current) => ({ ...current, sensitivity }))}
-                    />
+                  <Space direction="vertical" size={4} style={{ width: '100%' }}>
+                    <Text strong>Save to which part of the brain?</Text>
+                    <Space wrap>
+                      <Select
+                        value={memoryProposal.section}
+                        style={{ width: 260 }}
+                        // "Trusted Tech Company" = readable by every agent. Any other choice
+                        // scopes the memory to just that agent (the section that will use it).
+                        options={sectionOptions}
+                        onChange={(section) => setMemoryProposal((current) => ({ ...current, section }))}
+                      />
+                      <Select
+                        value={memoryProposal.sensitivity}
+                        style={{ width: 170 }}
+                        options={[
+                          { value: 'internal', label: 'Internal' },
+                          { value: 'public', label: 'Public' },
+                        ]}
+                        onChange={(sensitivity) => setMemoryProposal((current) => ({ ...current, sensitivity }))}
+                      />
+                    </Space>
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      {memoryProposal.section === COMPANY_SECTION
+                        ? 'Every agent can read this.'
+                        : `Only ${sectionOptions.find((option) => option.value === memoryProposal.section)?.label ?? 'the selected agent'} will read this.`}
+                    </Text>
                   </Space>
                   <div style={{ width: '100%' }}>
                     <Text strong>Source or reference (optional)</Text>

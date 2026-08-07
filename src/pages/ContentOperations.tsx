@@ -1,110 +1,96 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Alert, Button, Card, Checkbox, Empty, Input, Modal, Space, Spin, Tag, Typography, message } from 'antd'
 import {
-  Alert,
-  Button,
-  Card,
-  Collapse,
-  Form,
-  Input,
-  Modal,
-  Radio,
-  Select,
-  Space,
-  Spin,
-  Tag,
-  Typography,
-  message,
-} from 'antd'
-import {
-  approveContentOperationsGate,
-  createContentOperationsWordPressDraft,
   createContentOperationsRun,
+  deleteContentOperationsRun,
+  downloadContentOperationsPdf,
   getContentOperationsIntegrations,
   getContentOperationsRuns,
-  publishContentOperationsTestPost,
-  restartContentOperationsRun,
+  getWordPressDraftPreview,
+  publishContentOperationsWordPress,
   stopContentOperationsRun,
   type ContentIntegrationMap,
   type ContentOperationsRun,
-  type ContentOpportunity,
+  type WordPressDraftPreview,
 } from '../lib/api'
 
 const { Paragraph, Text } = Typography
 const { TextArea } = Input
 
-const stages = [
-  ['opportunity_research', 'Opportunity Research Agent', 'Discovers SEO opportunities.', 'Ahrefs MCP'],
-  ['opportunity_scoring', 'Opportunity Scoring Agent', 'Prioritizes business and search value.', 'Hermes + Ahrefs'],
-  ['content_decision', 'Content Decision Agent', 'Chooses the right content action.', 'Limited available data'],
-  ['seo_brief', 'SEO Brief Agent', 'Builds the approved content strategy.', 'Hermes'],
-  ['article_writing', 'Article Writing Agent', 'Writes the article from the approved brief.', 'Hermes'],
-  ['surfer', 'Surfer Optimization Agent', 'Optimizes an approved draft.', 'SurferSEO'],
-  ['wordpress', 'WordPress Draft Agent', 'Creates a draft post without publishing.', 'WordPress'],
-  ['human_review', 'Human Review', 'Requires a factual and brand approval.', 'Trusted Tech reviewer'],
-  ['publishing', 'Publishing Agent', 'Publishes only after confirmation.', 'WordPress'],
-  ['tracking', 'Performance Tracking Agent', 'Tracks results at scheduled checkpoints.', 'GSC + GA4 + Ahrefs'],
+const pipelineStages = [
+  ['opportunity_research', 'Ahrefs research', 'Hermes researches current keyword and competitor signals through Ahrefs MCP.'],
+  ['opportunity_scoring', 'Opportunity selection', 'The strongest relevant opportunity is selected from the evidence.'],
+  ['seo_brief', 'SEO brief', 'Hermes turns the selected opportunity into a structured article plan.'],
+  ['article_writing', 'Article writing', 'Hermes writes the complete Trusted Tech article from the approved context.'],
+  ['human_review', 'Draft safety review', 'The article passes a draft-only factual and brand gate.'],
+  ['image_generation', 'Article images', 'The article topic drives a featured image and relevant section imagery using the approved T500 camera reference.'],
+  ['wordpress_draft', 'WordPress draft', 'The final article is created as an unpublished WordPress draft.'],
 ] as const
-
-const requestOptions = [
-  ['find_content_opportunities', 'Find content opportunities'],
-  ['create_content_roadmap', 'Create a content roadmap'],
-  ['create_seo_brief', 'Create an SEO brief'],
-  ['generate_article', 'Generate an article'],
-  ['refresh_content', 'Refresh existing content'],
-  ['analyze_competitor', 'Analyze a competitor'],
-  ['find_content_gaps', 'Find content gaps'],
-  ['technical_seo', 'Review technical SEO issues'],
-].map(([value, label]) => ({ value, label }))
 
 function displayStatus(value: string) {
   return value.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
 }
 
-function stageStatus(
-  run: ContentOperationsRun | null,
-  stage: string,
-  integrations: ContentIntegrationMap,
-) {
-  const stageEntry = run?.stages.find((entry) => entry.stage === stage)
-  const failedToolResult = /\b(?:unreachable|unavailable|failed|failure|error|could not|unable to|no usable data|rate limit|quota)\b/i
-    .test(String(stageEntry?.result || ''))
-  if (stageEntry && failedToolResult) return 'Error'
-  if (run?.status === 'error' && run.currentStage === stage) return 'Error'
-  if (run?.status === 'stopped' && run.currentStage === stage) return 'Stopped'
-  const completed = Boolean(stageEntry)
-  if (completed) return 'Complete'
-  if (stage === 'wordpress') {
-    return integrations.wordpress?.status === 'connected' ? 'Ready' : 'Not configured'
-  }
-  if (stage === 'publishing') return 'Intentionally disabled'
-  if (['surfer', 'tracking'].includes(stage)) return 'Not configured'
-  if (!run) return 'Ready'
-  if (run.currentStage === stage) return run.status === 'running' ? 'Running' : 'Waiting'
-  if (stage === 'content_decision' && run.opportunities.length) return 'Needs review'
-  if (stage === 'human_review' && run.article) return run.approval.article ? 'Complete' : 'Needs review'
-  return 'Ready'
+function escapeHtml(value: string) {
+  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
 
-function statusColor(status: string) {
-  if (status === 'Complete' || status === 'Connected') return 'green'
-  if (status === 'Running') return 'processing'
-  if (status === 'Needs review' || status === 'Waiting') return 'gold'
-  if (status === 'Error') return 'red'
-  if (status === 'Stopped') return 'default'
+function previewDocument(preview: WordPressDraftPreview) {
+  const links = (preview.stylesheets || []).map((href) => `<link rel="stylesheet" href="${escapeHtml(href)}">`).join('\n')
+  const inlineStyles = (preview.inlineStyles || []).map((css) => `<style>${css.replace(/<\/style/gi, '<\\/style')}</style>`).join('\n')
+  const base = escapeHtml(preview.siteUrl || 'https://trustedtechnology.ai/')
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><base href="${base}/">${links}${inlineStyles}<style>html,body{margin:0;min-height:100%;background:#fff}body{font-family:Ubuntu,Roboto,Arial,sans-serif;color:#000}img{max-width:100%;height:auto}.tt-field-guide,.tt-field-guide *{font-family:Ubuntu,Roboto,Arial,sans-serif!important}.tt-field-guide p,.tt-field-guide li{font-size:16px!important;line-height:1.7!important}</style></head><body class="single single-post"><div class="wp-site-blocks"><main class="wp-block-group is-layout-constrained"><article class="wp-block-post"><div class="entry-content wp-block-post-content is-layout-constrained">${preview.content}</div></article></main></div></body></html>`
+}
+
+function wordpressEditorUrl(preview: WordPressDraftPreview) {
+  return `${preview.siteUrl.replace(/\/$/, '')}/wp-admin/post.php?post=${encodeURIComponent(preview.id)}&action=edit`
+}
+
+function stageState(run: ContentOperationsRun | null, stageId: string, index: number) {
+  if (!run) return index === 0 ? 'ready' : 'pending'
+  if (run.stages.some((stage) => stage.stage === stageId)) return 'complete'
+  if (run.status === 'error' && run.currentStage === stageId) return 'error'
+  if (run.status === 'stopped') return 'stopped'
+  const currentIndex = pipelineStages.findIndex(([id]) => id === run.currentStage)
+  const automaticStillRunning = run.workflowMode === 'draft_automation'
+    && !run.stages.some((stage) => stage.stage === 'wordpress_draft')
+    && !['error', 'stopped'].includes(run.status)
+  if (currentIndex === index || ((run.status === 'running' || automaticStillRunning) && currentIndex < 0 && index === run.stages.length)) return 'running'
+  return 'pending'
+}
+
+function stateColor(state: string) {
+  if (state === 'complete') return 'green'
+  if (state === 'running') return 'processing'
+  if (state === 'error') return 'red'
   return 'default'
 }
 
 export default function ContentOperations() {
-  const [form] = Form.useForm()
+  const [request, setRequest] = useState('')
   const [run, setRun] = useState<ContentOperationsRun | null>(null)
   const [runs, setRuns] = useState<ContentOperationsRun[]>([])
   const [integrations, setIntegrations] = useState<ContentIntegrationMap>({})
+  const [preview, setPreview] = useState<WordPressDraftPreview | null>(null)
   const [busy, setBusy] = useState(false)
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [pdfLoading, setPdfLoading] = useState(false)
+  const [publishing, setPublishing] = useState(false)
   const [error, setError] = useState('')
-  const [detailStage, setDetailStage] = useState<string | null>(null)
-  const [articleLength, setArticleLength] = useState('standard')
-  const [activeStage, setActiveStage] = useState('')
-  const [publishConfirmOpen, setPublishConfirmOpen] = useState(false)
+  const [selectedRunIds, setSelectedRunIds] = useState<string[]>([])
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+
+  const loadPreview = useCallback(async (postId: number) => {
+    setPreviewLoading(true)
+    try {
+      setPreview(await getWordPressDraftPreview(postId))
+    } catch (previewError) {
+      setError(previewError instanceof Error ? previewError.message : 'The WordPress preview could not be loaded.')
+    } finally {
+      setPreviewLoading(false)
+    }
+  }, [])
 
   useEffect(() => {
     const load = async () => {
@@ -115,475 +101,278 @@ export default function ContentOperations() {
         ])
         setIntegrations(integrationData)
         setRuns(runData)
-        if (runData[0]) setRun(runData[0])
+        const latest = runData[0] || null
+        setRun(latest)
       } catch (loadError) {
-        setError(loadError instanceof Error ? loadError.message : 'Unable to load Content Operations.')
+        setError(loadError instanceof Error ? loadError.message : 'Content Generator could not load.')
       }
     }
-
     void load()
-  }, [])
+  }, [loadPreview])
 
+  const activeRunId = run?.runId
+  const activeRunStatus = run?.status
+  const activeRunFinished = Boolean(run?.stages.some((stage) => stage.stage === 'wordpress_draft'))
+  const shouldPollActiveRun = Boolean(activeRunId)
+    && activeRunStatus !== 'error'
+    && activeRunStatus !== 'stopped'
+    && !activeRunFinished
   useEffect(() => {
-    if (!run || run.status !== 'running') return
+    if (!activeRunId || !shouldPollActiveRun) return
     const timer = window.setInterval(async () => {
       try {
-        const latestRuns = await getContentOperationsRuns()
-        const refreshed = latestRuns.find((item) => item.runId === run.runId)
-        setRuns(latestRuns)
-        if (refreshed) {
-          setRun(refreshed)
-          if (refreshed.status !== 'running') {
-            setBusy(false)
-            setActiveStage('')
-            if (refreshed.status === 'error') setError(refreshed.errors.at(-1) || 'The content pipeline failed.')
+        const runData = await getContentOperationsRuns()
+        const refreshed = runData.find((item) => item.runId === activeRunId)
+        setRuns(runData)
+        if (!refreshed) return
+        setRun(refreshed)
+        if (refreshed.status !== 'running') {
+          setBusy(false)
+          if (refreshed.wordpressPublication?.postId) {
+            message.success('WordPress article is ready — select Show final WordPress article to review it')
+          } else if (refreshed.status === 'error') {
+            setError(refreshed.errors.at(-1) || 'The content pipeline failed.')
           }
         }
-      } catch (refreshError) {
-        setError(refreshError instanceof Error ? refreshError.message : 'Unable to refresh the active run.')
+      } catch (pollError) {
+        setBusy(false)
+        setError(pollError instanceof Error ? pollError.message : 'The active pipeline could not be refreshed.')
       }
-    }, 1000)
+    }, 750)
     return () => window.clearInterval(timer)
-  }, [run?.runId, run?.status])
+  }, [activeRunId, shouldPollActiveRun])
 
-  const execute = async (researchOnly: boolean) => {
-    const values = await form.validateFields()
-    setRun(null)
-    setDetailStage(null)
+  const generate = async () => {
+    if (!request.trim() || busy) return
     setBusy(true)
-    setActiveStage('opportunity_research')
     setError('')
+    setPreview(null)
     try {
-      setIntegrations(await getContentOperationsIntegrations())
-      const created = await createContentOperationsRun({ ...values, researchOnly })
+      const created = await createContentOperationsRun({
+        targetDomain: 'trustedtechnology.ai',
+        requestType: 'generate_article',
+        userInstructions: request.trim(),
+        workflowMode: 'draft_automation',
+        researchOnly: false,
+      })
       setRun(created)
-      setRuns((current) => [created, ...current])
-    } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : 'The content pipeline failed.')
+      setRuns((current) => [created, ...current.filter((item) => item.runId !== created.runId)])
+    } catch (generateError) {
       setBusy(false)
-      setActiveStage('')
-      try {
-        const latestRuns = await getContentOperationsRuns()
-        setRuns(latestRuns)
-        if (latestRuns[0]) setRun(latestRuns[0])
-      } catch {
-        // Preserve the original pipeline error when refreshing the failed run also fails.
-      }
-    } finally {
-      // The polling loop owns the busy state while the asynchronous run is active.
+      setError(generateError instanceof Error ? generateError.message : 'The content pipeline could not start.')
     }
   }
 
-  const stopRun = async () => {
+  const stop = async () => {
     if (!run || run.status !== 'running') return
-    setError('')
-    try {
-      const stopped = await stopContentOperationsRun(run.runId)
-      setRun(stopped)
-      setRuns((current) => current.map((item) => item.runId === stopped.runId ? stopped : item))
-      setBusy(false)
-      setActiveStage('')
-      message.info('Content run stopped')
-    } catch (stopError) {
-      setError(stopError instanceof Error ? stopError.message : 'Unable to stop the run.')
-    }
+    const stopped = await stopContentOperationsRun(run.runId)
+    setRun(stopped)
+    setBusy(false)
   }
 
-  const restartRun = async () => {
-    if (!run) return
-    setRun(null)
-    setDetailStage(null)
-    setError('')
-    setBusy(true)
-    setActiveStage('opportunity_research')
-    try {
-      setIntegrations(await getContentOperationsIntegrations())
-      const restarted = await restartContentOperationsRun(run.runId)
-      setRun(restarted)
-      setRuns((current) => [restarted, ...current])
-    } catch (restartError) {
-      setBusy(false)
-      setActiveStage('')
-      setError(restartError instanceof Error ? restartError.message : 'Unable to restart the run.')
-    }
+  const publish = () => {
+    if (!run?.wordpressPublication?.postId || publishing) return
+    const title = run.wordpressPublication.title || 'this article'
+    Modal.confirm({
+      title: 'Publish to the live blog?',
+      content: `"${title}" will go live at trustedtechnology.ai and appear on the blog immediately. Review the preview first — publishing is public.`,
+      okText: 'Publish live',
+      cancelText: 'Not yet',
+      onOk: async () => {
+        // Resolve the modal regardless of outcome, then surface success/failure as a
+        // toast. Re-throwing here would keep the confirm modal open and hide the error
+        // banner behind it — which looks like "nothing happened".
+        setPublishing(true)
+        setError('')
+        try {
+          const published = await publishContentOperationsWordPress(run.runId)
+          setRun(published)
+          setRuns((current) => current.map((item) => (item.runId === published.runId ? published : item)))
+          message.success('Published live — the post is on the blog now')
+        } catch (publishError) {
+          const messageText = publishError instanceof Error ? publishError.message : 'The article could not be published.'
+          setError(messageText)
+          message.error(`Publish failed: ${messageText}`)
+        } finally {
+          setPublishing(false)
+        }
+      },
+    })
   }
 
-  const approveOpportunity = async (opportunity: ContentOpportunity) => {
-    if (!run) return
-    setBusy(true)
-    setActiveStage('seo_brief')
+  const deleteSelectedDrafts = async () => {
+    const targets = runs.filter((item) => selectedRunIds.includes(item.runId))
+    if (!targets.length) return
+    setDeleting(true)
     setError('')
     try {
-      setRun(await approveContentOperationsGate(run.runId, {
-        gate: 'opportunity',
-        opportunityId: opportunity.id,
-      }))
-    } catch (approvalError) {
-      setError(approvalError instanceof Error ? approvalError.message : 'Opportunity approval failed.')
+      const results = await Promise.allSettled(targets.map((item) => deleteContentOperationsRun(item.runId)))
+      const deletedRunIds = results
+        .filter((result): result is PromiseFulfilledResult<{ runId: string; wordpressAction: 'none' | 'trashed_draft' | 'left_published' }> => result.status === 'fulfilled')
+        .map((result) => result.value.runId)
+      const failures = results
+        .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+        .map((result) => result.reason instanceof Error ? result.reason.message : 'Draft could not be deleted.')
+      setRuns((current) => current.filter((item) => !deletedRunIds.includes(item.runId)))
+      if (run && deletedRunIds.includes(run.runId)) {
+        const remaining = runs.filter((item) => !deletedRunIds.includes(item.runId))
+        setRun(remaining[0] || null)
+        setPreview(null)
+      }
+      setSelectedRunIds((current) => current.filter((runId) => !deletedRunIds.includes(runId)))
+      setDeleteConfirmOpen(false)
+      if (deletedRunIds.length) message.success(`${deletedRunIds.length} generated article${deletedRunIds.length === 1 ? '' : 's'} removed`)
+      if (failures.length) setError(`Some selected entries were not removed: ${failures.join(' | ')}`)
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : 'The selected WordPress drafts could not be deleted.')
     } finally {
-      setBusy(false)
-      setActiveStage('')
+      setDeleting(false)
     }
   }
 
-  const approveBrief = async () => {
-    if (!run?.brief) return
-    setBusy(true)
-    setActiveStage('article_writing')
-    setError('')
-    try {
-      setRun(await approveContentOperationsGate(run.runId, {
-        gate: 'brief',
-        brief: { ...run.brief, articleLength },
-      }))
-    } catch (approvalError) {
-      setError(approvalError instanceof Error ? approvalError.message : 'Brief approval failed.')
-    } finally {
-      setBusy(false)
-      setActiveStage('')
-    }
-  }
-
-  const approveArticle = async () => {
-    if (!run) return
-    setBusy(true)
-    setActiveStage('human_review')
-    try {
-      setRun(await approveContentOperationsGate(run.runId, { gate: 'article' }))
-      message.success('Article approved for export')
-    } catch (approvalError) {
-      setError(approvalError instanceof Error ? approvalError.message : 'Article approval failed.')
-    } finally {
-      setBusy(false)
-      setActiveStage('')
-    }
-  }
-
-  const publishToTestBlog = async () => {
-    if (!run) return false
-    setBusy(true)
-    setActiveStage('publishing')
-    setError('')
-    try {
-      const published = await publishContentOperationsTestPost(run.runId)
-      setRun(published)
-      message.success('Published to the local Content Operations test blog')
-      return true
-    } catch (publishError) {
-      setError(publishError instanceof Error ? publishError.message : 'Test publishing failed.')
-      return false
-    } finally {
-      setBusy(false)
-      setActiveStage('')
-    }
-  }
-
-  const createWordPressDraft = async () => {
-    if (!run) return
-    setBusy(true)
-    setActiveStage('wordpress_draft')
-    setError('')
-    try {
-      const drafted = await createContentOperationsWordPressDraft(run.runId)
-      setRun(drafted)
-      message.success('WordPress draft created; nothing was published live')
-    } catch (draftError) {
-      setError(draftError instanceof Error ? draftError.message : 'WordPress draft creation failed.')
-    } finally {
-      setBusy(false)
-      setActiveStage('')
-    }
-  }
-
-  const downloadArticle = () => {
-    if (!run?.article) return
-    const url = URL.createObjectURL(new Blob([run.article], { type: 'text/markdown' }))
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `${run.brief?.slug || 'trusted-tech-article'}.md`
-    link.click()
-    URL.revokeObjectURL(url)
-  }
-
-  const selectedDetail = useMemo(
-    () => run?.stages.find((entry) => entry.stage === detailStage),
-    [detailStage, run],
-  )
+  const srcDoc = useMemo(() => preview ? previewDocument(preview) : '', [preview])
+  const wordpressReady = integrations.wordpress?.status === 'connected'
+  const ahrefsReady = integrations.ahrefs?.status === 'connected'
 
   return (
-    <div className="page content-operations">
+    <div className="page content-generator-workspace">
       <div className="page-header">
         <div>
-          <Space align="center" wrap>
-            <h1 className="page-title">Content Generator</h1>
-            <Tag color="gold">Hermes Content Pipeline</Tag>
-          </Space>
-          <p className="page-subtitle">
-            Research, plan, write, optimize, review, publish, and track Trusted Tech content from one workspace.
-          </p>
+          <Space align="center" wrap><h1 className="page-title">Content Generator</h1><Tag color="gold">Hermes → WordPress</Tag></Space>
+          <p className="page-subtitle">Request one article, watch each real workflow step complete, then review the final WordPress draft.</p>
         </div>
-        <Tag color={run?.status === 'completed' ? 'green' : run?.status === 'error' ? 'red' : 'processing'}>
-          {displayStatus(run?.status || 'ready')}
-        </Tag>
+        <Space wrap>
+          <Tag color={ahrefsReady ? 'green' : 'red'}>Ahrefs {ahrefsReady ? 'connected' : 'not configured'}</Tag>
+          <Tag color={wordpressReady ? 'green' : 'red'}>WordPress {wordpressReady ? 'connected' : 'not configured'}</Tag>
+        </Space>
       </div>
 
-      {error ? <Alert type="error" showIcon message="Content pipeline issue" description={error} /> : null}
+      {error ? <Alert type="error" showIcon closable onClose={() => setError('')} message="Content pipeline issue" description={error} /> : null}
 
-      <Card className="section-card" title="Start a content request">
-        <Form
-          form={form}
-          layout="vertical"
-          initialValues={{
-            targetDomain: 'trustedtechnology.ai',
-            requestType: 'find_content_opportunities',
-            workflowMode: 'balanced',
-          }}
-        >
-          <div className="content-request-grid">
-            <Form.Item label="Target website" name="targetDomain" rules={[{ required: true }]}>
-              <Input />
-            </Form.Item>
-            <Form.Item label="Request type" name="requestType" rules={[{ required: true }]}>
-              <Select options={requestOptions} />
-            </Form.Item>
-            <Form.Item label="Workflow mode" name="workflowMode" rules={[{ required: true }]}>
-              <Select options={[
-                { value: 'manual', label: 'Manual' },
-                { value: 'balanced', label: 'Balanced' },
-                { value: 'draft_automation', label: 'Draft automation' },
-              ]} />
-            </Form.Item>
-          </div>
-          <Form.Item label="User instructions" name="userInstructions" rules={[{ required: true }]}>
+      <div className="content-generator-grid">
+        <Card className="section-card content-generator-request" title="Request an article or blog">
+          <Space direction="vertical" size="middle" style={{ width: '100%' }}>
             <TextArea
-              rows={5}
-              placeholder="Find the strongest content opportunity for Trusted Technology and create an SEO brief."
+              value={request}
+              onChange={(event) => setRequest(event.target.value)}
+              placeholder="Example: Create an article explaining how the T500 can support repossession operations."
+              autoSize={{ minRows: 8, maxRows: 16 }}
+              onPressEnter={(event) => { if (!event.shiftKey) { event.preventDefault(); void generate() } }}
             />
-          </Form.Item>
-          <Space wrap>
-            <Button type="primary" loading={busy} onClick={() => void execute(false)}>
-              Run Content Pipeline
+            <Button type="primary" block size="large" loading={busy} disabled={!request.trim() || !ahrefsReady || !wordpressReady} onClick={() => void generate()}>
+              Generate WordPress draft
             </Button>
-            <Button loading={busy} onClick={() => void execute(true)}>Research Only</Button>
-            <Button danger disabled={run?.status !== 'running'} onClick={() => void stopRun()}>
-              Stop run
-            </Button>
-            <Button disabled={!run || run.status === 'running'} onClick={() => void restartRun()}>
-              Restart run
-            </Button>
+            {run?.status === 'running' ? <Button danger block onClick={() => void stop()}>Stop workflow</Button> : null}
+            <Text type="secondary">The final action creates an unpublished WordPress draft. Nothing is published automatically.</Text>
+            {runs.length ? (
+              <div className="content-run-list-header">
+                <Text strong>Generated articles</Text>
+                <Button danger size="small" disabled={!selectedRunIds.length} onClick={() => setDeleteConfirmOpen(true)}>
+                  Delete selected{selectedRunIds.length ? ` (${selectedRunIds.length})` : ''}
+                </Button>
+              </div>
+            ) : null}
+            {runs.length ? (
+              <div className="content-run-list">
+                {runs.map((item) => {
+                  const isTrashed = item.wordpressPublication?.status === 'trash'
+                  return (
+                    <div className={`content-run-item${run?.runId === item.runId ? ' content-run-item-active' : ''}`} key={item.runId}>
+                      <Checkbox
+                        aria-label={`Select ${item.wordpressPublication?.title || item.userInstructions.slice(0, 72)}`}
+                        checked={selectedRunIds.includes(item.runId)}
+                        onChange={(event) => setSelectedRunIds((current) => event.target.checked
+                          ? [...current, item.runId]
+                          : current.filter((runId) => runId !== item.runId))}
+                      />
+                      <button
+                        type="button"
+        onClick={() => {
+                          setRun(item)
+                          setPreview(null)
+                        }}
+                      >
+                        <strong>{item.wordpressPublication?.title || item.userInstructions.slice(0, 72)}</strong>
+                        <span>{isTrashed ? 'In WordPress Trash' : displayStatus(item.status)}</span>
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            ) : null}
           </Space>
-        </Form>
-      </Card>
-
-      <Card className="section-card" title="Connection status">
-        <div className="integration-grid">
-          {Object.values(integrations).map((integration) => {
-            const connected = integration.status === 'connected'
-            return (
-              <div className="integration-item" key={integration.label}>
-                <Text>{integration.label}</Text>
-                <Tag color={connected ? 'green' : 'default'}>
-                  {connected ? 'Connected' : displayStatus(integration.status)}
-                </Tag>
-              </div>
-            )
-          })}
-        </div>
-      </Card>
-
-      <div className="pipeline-train-shell" aria-label="Content pipeline">
-      <div className="pipeline-train">
-        {stages.map(([id, name, description, tool], index) => {
-          const status = stageStatus(run, id, integrations)
-          const completed = run?.stages.find((entry) => entry.stage === id)
-          const stageError = run?.currentStage === id && ['error', 'stopped'].includes(run.status)
-            ? run.errors.at(-1)
-            : ''
-          const active = activeStage === id || (
-            !activeStage &&
-            (run?.currentStage === id ||
-              (run?.currentStage === 'opportunity_approval' && id === 'content_decision') ||
-              (run?.currentStage === 'brief_approval' && id === 'seo_brief') ||
-              (run?.currentStage === 'article_approval' && id === 'human_review'))
-          )
-          return (
-            <div className="pipeline-train-segment" key={id}>
-            <Card className={`pipeline-card${active ? ' pipeline-card-active' : ''}`}>
-              <div className="pipeline-step-number">{index + 1}</div>
-              <div className="hub-panel-header">
-                <Text strong>{name}</Text>
-                <Tag color={statusColor(status)}>{status}</Tag>
-              </div>
-              <Paragraph className="panel-copy">{description}</Paragraph>
-              <Text type="secondary">Tool: {tool}</Text>
-              <Paragraph className="pipeline-last-action">
-                Last action: {stageError || (completed?.result ? String(completed.result).slice(0, 140) : 'None yet')}
-              </Paragraph>
-              <Button size="small" onClick={() => setDetailStage(id)}>Open details</Button>
-            </Card>
-            {index < stages.length - 1 ? <span className="pipeline-train-arrow" aria-hidden="true">→</span> : null}
-            </div>
-          )
-        })}
-      </div>
-      </div>
-
-      {run ? (
-        <Card className="section-card" title="Current pipeline run">
-          <div className="run-summary">
-            <Text><strong>Run ID:</strong> {run.runId}</Text>
-            <Text><strong>Target:</strong> {run.targetDomain}</Text>
-            <Text><strong>Current stage:</strong> {displayStatus(run.currentStage)}</Text>
-            <Text><strong>Started:</strong> {new Date(run.createdAt).toLocaleString()}</Text>
-            <Text><strong>Tool calls:</strong> {run.toolCallsUsed.join(', ') || 'None recorded'}</Text>
-          </div>
         </Card>
-      ) : null}
 
-      {run?.opportunities.length ? (
-        <Card className="section-card" title="Content opportunities">
-          <div className="opportunity-grid">
-            {run.opportunities.map((opportunity) => (
-              <Card key={opportunity.id} type="inner" title={opportunity.title || opportunity.primaryKeyword}>
-                <Space direction="vertical" style={{ width: '100%' }}>
-                  <Tag color="gold">Score: {opportunity.score ?? 'N/A'}</Tag>
-                  <Text><strong>Keyword:</strong> {opportunity.primaryKeyword}</Text>
-                  <Text>Volume: {opportunity.searchVolume ?? 'Unavailable'}</Text>
-                  <Text>Difficulty: {opportunity.keywordDifficulty ?? 'Unavailable'}</Text>
-                  <Text>Traffic potential: {opportunity.trafficPotential ?? 'Unavailable'}</Text>
-                  <Paragraph>{opportunity.rationale}</Paragraph>
-                  {!run.researchOnly && !run.approval.opportunity ? (
-                    <Button type="primary" disabled={busy} onClick={() => void approveOpportunity(opportunity)}>
-                      Select and approve
-                    </Button>
-                  ) : null}
-                </Space>
-              </Card>
-            ))}
+        <Card className="section-card content-generator-progress" title="Workflow progress">
+          <div className="content-stage-list">
+            {pipelineStages.map(([id, label, description], index) => {
+              const state = stageState(run, id, index)
+              const completed = run?.stages.find((stage) => stage.stage === id)
+              const legacyImageStage = id === 'image_generation' && !completed && run?.stages.some((stage) => stage.stage === 'wordpress_draft')
+              return (
+                <div className={`content-stage content-stage-${legacyImageStage ? 'complete' : state}`} key={id}>
+                  <div className="content-stage-index">{state === 'complete' || legacyImageStage ? '✓' : index + 1}</div>
+                  <div><div className="content-stage-heading"><Text strong>{label}</Text><Tag color={stateColor(legacyImageStage ? 'complete' : state)}>{legacyImageStage ? 'Legacy complete' : displayStatus(state)}</Tag></div><Paragraph>{legacyImageStage ? 'This article was completed before automatic image generation was added.' : completed?.result ? String(completed.result) : description}</Paragraph></div>
+                </div>
+              )
+            })}
           </div>
+          {busy ? <div className="content-generator-running"><Spin /><Text>Hermes is running the next step…</Text></div> : null}
         </Card>
-      ) : null}
 
-      {run?.brief ? (
-        <Card className="section-card" title="SEO brief">
-          <Collapse items={Object.entries(run.brief).map(([key, value]) => ({
-            key,
-            label: displayStatus(key),
-            children: <pre className="content-json">{typeof value === 'string' ? value : JSON.stringify(value, null, 2)}</pre>,
-          }))} />
-          {!run.approval.brief ? (
-            <Space style={{ marginTop: 16 }} wrap>
-              <Radio.Group value={articleLength} onChange={(event) => setArticleLength(event.target.value)}>
-                <Radio.Button value="short">Short</Radio.Button>
-                <Radio.Button value="standard">Standard</Radio.Button>
-                <Radio.Button value="long-form">Long-form</Radio.Button>
-              </Radio.Group>
-              <Button type="primary" loading={busy} onClick={() => void approveBrief()}>
-                Approve brief and draft article
-              </Button>
+        <Card
+          className="section-card content-generator-preview"
+          title="Final WordPress article"
+          extra={preview ? (
+            <Space>
+              <Button onClick={() => void loadPreview(preview.id)} loading={previewLoading}>Reload preview</Button>
+              <Button loading={pdfLoading} onClick={async () => {
+                if (!run) return
+                setPdfLoading(true)
+                try {
+                  await downloadContentOperationsPdf(run.runId)
+                } catch (pdfError) {
+                  setError(pdfError instanceof Error ? pdfError.message : 'The PDF could not be downloaded.')
+                } finally {
+                  setPdfLoading(false)
+                }
+              }}>Download PDF</Button>
+              <Button href={wordpressEditorUrl(preview)} target="_blank" rel="noreferrer">Open in WordPress</Button>
+              {run?.wordpressPublication?.status === 'publish' ? (
+                <Button type="primary" ghost href={run.wordpressPublication.url || undefined} target="_blank" rel="noreferrer">View live post ✓</Button>
+              ) : (
+                <Button type="primary" loading={publishing} disabled={!run?.wordpressPublication?.postId} onClick={publish}>Publish to blog</Button>
+              )}
             </Space>
           ) : null}
+        >
+          {previewLoading ? <div className="wordpress-preview-empty"><Spin size="large" /></div> : null}
+          {!previewLoading && !preview && run?.status === 'completed' && run.wordpressPublication?.postId && run.wordpressPublication.status !== 'trash' ? (
+            <div className="wordpress-preview-empty">
+              <Empty description="Your WordPress article is ready.">
+                <Button type="primary" size="large" onClick={() => void loadPreview(run.wordpressPublication!.postId!)}>
+                  Show final WordPress article
+                </Button>
+              </Empty>
+            </div>
+          ) : null}
+          {!previewLoading && !preview && !(run?.status === 'completed' && run.wordpressPublication?.postId && run.wordpressPublication.status !== 'trash') ? <div className="wordpress-preview-empty"><Empty description={run?.status === 'running' ? 'The final article will unlock when every step is complete.' : 'Generate an article to see the final WordPress version.'} /></div> : null}
+          {preview ? <iframe title={`WordPress draft ${preview.id} preview`} className="wordpress-preview-frame" sandbox="" srcDoc={srcDoc} /> : null}
         </Card>
-      ) : null}
-
-      {run?.article ? (
-        <Card className="section-card" title="Article draft">
-          <pre className="article-preview">{run.article}</pre>
-          <Space wrap>
-            <Button onClick={() => void navigator.clipboard.writeText(run.article)}>Copy article</Button>
-            <Button onClick={downloadArticle}>Download Markdown</Button>
-            {!run.approval.article ? (
-              <Button type="primary" loading={busy} onClick={() => void approveArticle()}>Approve article</Button>
-            ) : null}
-            {run.approval.article && !run.testPublication?.published ? (
-              <Button
-                type="primary"
-                loading={busy}
-                onClick={() => setPublishConfirmOpen(true)}
-              >
-                Publish to test blog
-              </Button>
-            ) : null}
-            {run.testPublication?.published ? (
-              <Button href="/assistants/content-operations/blog">View test blog</Button>
-            ) : null}
-            <Button disabled>Send to Surfer</Button>
-            {run.wordpressPublication?.postId ? (
-              <Button href={run.wordpressPublication.url || undefined} target="_blank">
-                View WordPress draft
-              </Button>
-            ) : (
-              <Button
-                disabled={!run.approval.article || integrations.wordpress?.status !== 'connected'}
-                loading={busy && activeStage === 'wordpress_draft'}
-                onClick={() => void createWordPressDraft()}
-              >
-                Create WordPress draft
-              </Button>
-            )}
-          </Space>
-        </Card>
-      ) : null}
-
-      {runs.length > 1 ? (
-        <Card className="section-card" title="Recent runs">
-          <Select
-            style={{ width: '100%' }}
-            value={run?.runId}
-            onChange={(runId) => setRun(runs.find((item) => item.runId === runId) || null)}
-            options={runs.map((item) => ({
-              value: item.runId,
-              label: `${item.targetDomain} — ${displayStatus(item.status)} — ${new Date(item.createdAt).toLocaleString()}`,
-            }))}
-          />
-        </Card>
-      ) : null}
-
+      </div>
       <Modal
-        title="Publish to the local test blog?"
-        open={publishConfirmOpen}
-        okText="Publish test post"
-        confirmLoading={busy}
-        onCancel={() => setPublishConfirmOpen(false)}
-        onOk={async () => {
-          if (await publishToTestBlog()) setPublishConfirmOpen(false)
-        }}
+        title="Delete selected generated articles?"
+        open={deleteConfirmOpen}
+        okText={`Delete ${selectedRunIds.length} selected`}
+        okButtonProps={{ danger: true }}
+        confirmLoading={deleting}
+        onCancel={() => { if (!deleting) setDeleteConfirmOpen(false) }}
+        onOk={() => void deleteSelectedDrafts()}
       >
         <Paragraph>
-          This publishes only inside the Smart Hub test blog. It does not contact WordPress or change the public website.
+          The selected entries will be removed from this list. Attached WordPress drafts will be moved to Trash; already-published WordPress posts will remain live.
         </Paragraph>
       </Modal>
-
-      <Modal
-        title={detailStage ? displayStatus(detailStage) : 'Stage details'}
-        open={Boolean(detailStage)}
-        footer={null}
-        onCancel={() => setDetailStage(null)}
-      >
-        {selectedDetail ? (
-          <Space direction="vertical">
-            <Text><strong>Tool:</strong> {selectedDetail.tool}</Text>
-            <Text><strong>Result:</strong> {String(selectedDetail.result)}</Text>
-            <Text><strong>Why:</strong> {selectedDetail.explanation}</Text>
-            <pre className="content-json">{JSON.stringify(selectedDetail.output, null, 2)}</pre>
-          </Space>
-        ) : run && detailStage === run.currentStage && run.errors.length ? (
-          <Alert
-            type={run.status === 'stopped' ? 'warning' : 'error'}
-            message={run.status === 'stopped' ? 'Run stopped' : 'Stage failed'}
-            description={run.errors.at(-1)}
-            showIcon
-          />
-        ) : (
-          <Alert
-            type="info"
-            message="No completed action"
-            description="This stage has not run yet or its integration is not configured."
-          />
-        )}
-      </Modal>
-
-      {busy ? <div className="pipeline-busy"><Spin size="large" /><Text>Hermes is running the content pipeline…</Text></div> : null}
     </div>
   )
 }

@@ -19,9 +19,6 @@ import TrustedTechHubSpotAssistant from './pages/TrustedTechHubSpotAssistant'
 import TrustedTechYouTrackAssistant from './pages/TrustedTechYouTrackAssistant'
 import TrustedTechAhrefsAssistant from './pages/TrustedTechAhrefsAssistant'
 import ContentOperations from './pages/ContentOperations'
-import ContentOperationsBlog from './pages/ContentOperationsBlog'
-import WordPressDraftTestAgent from './pages/WordPressDraftTestAgent'
-import WordPressDraftEditor from './pages/WordPressDraftEditor'
 import Settings from './pages/Settings'
 import NotFound from './pages/NotFound'
 import { setAccessTokenProvider } from './lib/api'
@@ -58,28 +55,13 @@ const baseNavItems = [
     children: [
       {
         key: '/assistants/content-operations',
-        label: <Link to="/assistants/content-operations">Overview</Link>,
-      },
-      {
-        key: '/assistants/content-operations/blog',
-        label: <Link to="/assistants/content-operations/blog">Content Operations Blog</Link>,
-      },
-      {
-        key: '/assistants/wordpress-draft-test',
-        label: <Link to="/assistants/wordpress-draft-test">WordPress Draft Test</Link>,
-      },
-      {
-        key: '/assistants/wordpress-draft-editor',
-        label: <Link to="/assistants/wordpress-draft-editor">WordPress Content Assistant</Link>,
+        label: <Link to="/assistants/content-operations">Generate Article</Link>,
       },
     ],
   },
 ]
 
 const contentGeneratorPaths = [
-  '/assistants/content-operations/blog',
-  '/assistants/wordpress-draft-test',
-  '/assistants/wordpress-draft-editor',
   '/assistants/content-operations',
 ]
 
@@ -147,10 +129,9 @@ function AppShell({ isDark, onToggle }: { isDark: boolean; onToggle: () => void 
             <Route path="/youtrack-assistant" element={<TrustedTechYouTrackAssistant />} />
             <Route path="/ahrefs-assistant" element={<TrustedTechAhrefsAssistant />} />
             <Route path="/assistants/content-operations" element={<ContentOperations />} />
-            <Route path="/assistants/content-operations/blog" element={<ContentOperationsBlog />} />
-            <Route path="/assistants/content-operations/blog/:slug" element={<ContentOperationsBlog />} />
-            <Route path="/assistants/wordpress-draft-test" element={<WordPressDraftTestAgent />} />
-            <Route path="/assistants/wordpress-draft-editor" element={<WordPressDraftEditor />} />
+            <Route path="/assistants/content-operations/blog/*" element={<Navigate to="/assistants/content-operations" replace />} />
+            <Route path="/assistants/wordpress-draft-test" element={<Navigate to="/assistants/content-operations" replace />} />
+            <Route path="/assistants/wordpress-draft-editor" element={<Navigate to="/assistants/content-operations" replace />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="*" element={<NotFound />} />
           </Routes>

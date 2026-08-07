@@ -1000,6 +1000,184 @@
   min-width: 0;
 }
 
+.chat-workspace-grid {
+  display: grid;
+  grid-template-columns: minmax(360px, 0.9fr) minmax(420px, 1.1fr);
+  gap: 16px;
+  min-width: 0;
+}
+
+.wordpress-preview-panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 12px;
+  min-width: 0;
+  min-height: 620px;
+  padding: 12px;
+  border: 1px solid var(--app-border);
+  border-radius: 14px;
+  background: var(--app-surface-alt);
+}
+
+.wordpress-preview-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.wordpress-preview-toolbar > div:first-child {
+  display: grid;
+  gap: 2px;
+}
+
+.wordpress-preview-frame {
+  width: 100%;
+  height: 100%;
+  min-height: 550px;
+  border: 1px solid var(--app-border);
+  border-radius: 10px;
+  background: #fff;
+}
+
+.wordpress-preview-empty {
+  display: grid;
+  place-items: center;
+  min-height: 520px;
+}
+
+.content-generator-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, .72fr) minmax(360px, .9fr) minmax(460px, 1.38fr);
+  gap: 18px;
+  align-items: stretch;
+}
+
+.content-generator-grid > .ant-card {
+  min-width: 0;
+  margin: 0;
+}
+
+.content-generator-request,
+.content-generator-progress,
+.content-generator-preview {
+  min-height: 680px;
+}
+
+.content-generator-preview .ant-card-body {
+  height: calc(100% - 58px);
+}
+
+.content-stage-list {
+  display: grid;
+  gap: 10px;
+}
+
+.content-stage {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--app-border);
+  border-radius: 14px;
+  background: var(--app-surface-alt);
+  transition: border-color 160ms ease, background 160ms ease;
+}
+
+.content-stage-running {
+  border-color: var(--app-primary);
+  background: color-mix(in srgb, var(--app-primary) 10%, var(--app-surface));
+}
+
+.content-stage-complete {
+  border-color: color-mix(in srgb, #4f8a62 55%, var(--app-border));
+}
+
+.content-stage-index {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  background: var(--app-primary);
+  color: #fff;
+  font-weight: 800;
+}
+
+.content-stage-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.content-stage p {
+  margin: 6px 0 0;
+  color: var(--app-text-muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.content-generator-running {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.content-run-list {
+  display: grid;
+  gap: 8px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.content-run-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.content-run-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--app-border);
+  border-radius: 12px;
+  background: var(--app-surface-alt);
+}
+
+.content-run-item-active {
+  border-color: var(--app-primary);
+}
+
+.content-run-item > button {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 2px;
+  border: 0;
+  background: transparent;
+  color: var(--app-text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.content-run-item > button strong,
+.content-run-item > button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.content-run-item > button span {
+  color: var(--app-text-muted);
+  font-size: 12px;
+}
+
 .chat-toolbar {
   display: flex;
   align-items: center;
@@ -2018,6 +2196,20 @@
 
   .chat-message {
     max-width: 100%;
+  }
+
+  .chat-workspace-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .content-generator-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .content-generator-request,
+  .content-generator-progress,
+  .content-generator-preview {
+    min-height: auto;
   }
 
   .chat-sidebar {

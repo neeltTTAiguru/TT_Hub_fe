@@ -213,12 +213,33 @@ export type AgentChatResponse = {
     model: string
     responseId: string
   }
+  wordpressDraft?: {
+    id: number
+    title: string
+    type: 'post' | 'page'
+    reviewUrl: string
+  }
+}
+
+export type WordPressDraftPreview = {
+  id: number
+  type: 'post' | 'page'
+  title: string
+  content: string
+  excerpt: string
+  reviewUrl: string
+  siteUrl: string
+  stylesheets: string[]
+  inlineStyles: string[]
+  modified: string
 }
 
 export type BrainMemoryProposal = {
   title: string
   content: string
-  department: 'shared' | 'sales' | 'marketing' | 'operations' | 'research'
+  // The brain "section" to save into: 'company' (readable by every agent) or a
+  // specific agent id (scopes the memory so only that agent retrieves it).
+  section: string
   sensitivity: 'internal' | 'public'
   source?: string
 }
@@ -226,7 +247,9 @@ export type BrainMemoryProposal = {
 export type BrainMemoryResult = {
   slug: string
   title: string
-  department: BrainMemoryProposal['department']
+  department: string
+  allowedAgents: string[]
+  section: string
   sensitivity: BrainMemoryProposal['sensitivity']
   source: string
   lifecycle: 'approved'
@@ -791,6 +814,27 @@ export function createContentOperationsWordPressDraft(runId: string) {
   )
 }
 
+export function publishContentOperationsWordPress(runId: string) {
+  return request<ContentOperationsRun>(
+    `/content-operations/runs/${encodeURIComponent(runId)}/wordpress-publish`,
+    { method: 'POST' },
+  )
+}
+
+export function deleteContentOperationsWordPressDraft(runId: string) {
+  return request<ContentOperationsRun>(
+    `/content-operations/runs/${encodeURIComponent(runId)}/wordpress-draft`,
+    { method: 'DELETE' },
+  )
+}
+
+export function deleteContentOperationsRun(runId: string) {
+  return request<{ runId: string; wordpressAction: 'none' | 'trashed_draft' | 'left_published' }>(
+    `/content-operations/runs/${encodeURIComponent(runId)}`,
+    { method: 'DELETE' },
+  )
+}
+
 export function getContentOperationsBlogPosts() {
   return request<ContentOperationsRun[]>('/content-operations/blog')
 }
@@ -998,6 +1042,10 @@ export function sendAgentChat(agentId: string, messages: AgentChatMessage[]) {
     method: 'POST',
     body: JSON.stringify({ messages }),
   })
+}
+
+export function getWordPressDraftPreview(postId: number) {
+  return request<WordPressDraftPreview>(`/agents/wordpress-draft-editor/preview/${encodeURIComponent(postId)}`)
 }
 
 export function saveBrainMemory(proposal: BrainMemoryProposal) {
