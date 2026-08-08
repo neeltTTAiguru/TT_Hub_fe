@@ -51,6 +51,39 @@ type AgentChatWorkspaceProps = {
   enableBrainMemorySave?: boolean
   chatSidePanel?: ReactNode
   onChatResponse?: (response: AgentChatResponse) => void
+  // Storage key for autosaving the in-progress conversation to the browser so a
+  // refresh/freeze doesn't lose it. Defaults to the agentId; pass a more specific
+  // key (e.g. per competitor) to keep separate drafts.
+  draftKey?: string
+}
+
+const DRAFT_PREFIX = 'tt-chat-draft:'
+
+function loadChatDraft(key: string): AgentChatMessage[] | null {
+  try {
+    const raw = localStorage.getItem(`${DRAFT_PREFIX}${key}`)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? (parsed as AgentChatMessage[]) : null
+  } catch {
+    return null
+  }
+}
+
+function saveChatDraft(key: string, messages: AgentChatMessage[]) {
+  try {
+    localStorage.setItem(`${DRAFT_PREFIX}${key}`, JSON.stringify(messages))
+  } catch {
+    // Ignore quota / disabled-storage errors — autosave is best-effort.
+  }
+}
+
+function clearChatDraft(key: string) {
+  try {
+    localStorage.removeItem(`${DRAFT_PREFIX}${key}`)
+  } catch {
+    // no-op
+  }
 }
 
 const COMPANY_SECTION = 'company'
@@ -100,21 +133,19 @@ export default function AgentChatWorkspace({
   enableBrainMemorySave = false,
   chatSidePanel,
   onChatResponse,
+  draftKey,
 }: AgentChatWorkspaceProps) {
   const { isAuthenticated } = useAuth0()
+  const draftStorageKey = draftKey ?? agentId
   const [agent, setAgent] = useState<AgentDetail | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
-  const [chatMessages, setChatMessages] = useState<AgentChatMessage[]>(
-    showInitialAssistantMessage
-      ? [
-          {
-            role: 'assistant',
-            content: intro,
-          },
-        ]
-      : [],
-  )
+  const [chatMessages, setChatMessages] = useState<AgentChatMessage[]>(() => {
+    // Restore an autosaved in-progress conversation (survives refresh / freeze).
+    const draft = loadChatDraft(draftStorageKey)
+    if (draft && draft.some((entry) => entry.role === 'user')) return draft
+    return showInitialAssistantMessage ? [{ role: 'assistant', content: intro }] : []
+  })
   const [savedThreads, setSavedThreads] = useState<ChatThread[]>([])
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null)
   const [chatInput, setChatInput] = useState('')
@@ -169,6 +200,16 @@ export default function AgentChatWorkspace({
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [chatMessages, isChatting])
+
+  // Autosave the working conversation so a refresh or freeze doesn't lose it.
+  // Only persist once there's real user content; an intro-only view clears it.
+  useEffect(() => {
+    if (chatMessages.some((entry) => entry.role === 'user')) {
+      saveChatDraft(draftStorageKey, chatMessages)
+    } else {
+      clearChatDraft(draftStorageKey)
+    }
+  }, [chatMessages, draftStorageKey])
 
   const handleSendChat = async () => {
     const trimmedInput = chatInput.trim()

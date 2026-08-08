@@ -322,6 +322,7 @@ export default function CompetitorAnalyst() {
         renderBeforeChat={sectionsGrid}
         buildMessageContext={buildChatContext}
         chatSidePanel={sectionPanel}
+        draftKey={`competitor-analyst:${selected}`}
       />
 
       <Modal
