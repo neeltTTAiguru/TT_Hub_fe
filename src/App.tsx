@@ -15,6 +15,7 @@ import {
 } from 'antd'
 import { getAntdTheme } from './theme'
 import TrustedTechAssistant from './pages/TrustedTechAssistant'
+import CompetitorAnalyst from './pages/CompetitorAnalyst'
 import TrustedTechHubSpotAssistant from './pages/TrustedTechHubSpotAssistant'
 import TrustedTechYouTrackAssistant from './pages/TrustedTechYouTrackAssistant'
 import TrustedTechAhrefsAssistant from './pages/TrustedTechAhrefsAssistant'
@@ -40,6 +41,10 @@ const baseNavItems = [
   {
     key: '/trusted-tech-assistant',
     label: <Link to="/trusted-tech-assistant">Brain</Link>,
+  },
+  {
+    key: '/competitor-analyst',
+    label: <Link to="/competitor-analyst">Competitor Analyst</Link>,
   },
   {
     key: '/hubspot-assistant',
@@ -125,6 +130,7 @@ function AppShell({ isDark, onToggle }: { isDark: boolean; onToggle: () => void 
           <Routes>
             <Route path="/" element={<Navigate to="/trusted-tech-assistant" replace />} />
             <Route path="/trusted-tech-assistant" element={<TrustedTechAssistant />} />
+            <Route path="/competitor-analyst" element={<CompetitorAnalyst />} />
             <Route path="/hubspot-assistant" element={<TrustedTechHubSpotAssistant />} />
             <Route path="/youtrack-assistant" element={<TrustedTechYouTrackAssistant />} />
             <Route path="/ahrefs-assistant" element={<TrustedTechAhrefsAssistant />} />

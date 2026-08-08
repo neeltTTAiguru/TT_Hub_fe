@@ -250,10 +250,23 @@ export type BrainMemoryResult = {
   department: string
   allowedAgents: string[]
   section: string
+  competitor?: string
+  competitorName?: string
   sensitivity: BrainMemoryProposal['sensitivity']
   source: string
   lifecycle: 'approved'
   verified: boolean
+}
+
+export type CompetitorMemoryProposal = {
+  // Slug of the tracked competitor whose brain section to save into.
+  competitor: string
+  // Optional BWC model line item within that section, e.g. "Axon Body 4".
+  model?: string
+  title: string
+  content: string
+  sensitivity: 'internal' | 'public'
+  source?: string
 }
 
 export type User = {
@@ -1052,6 +1065,18 @@ export function saveBrainMemory(proposal: BrainMemoryProposal) {
   return request<BrainMemoryResult>('/agents/trusted-tech-assistant/memory', {
     method: 'POST',
     body: JSON.stringify({ proposal, confirmed: true }),
+  })
+}
+
+// Saves an approved memory into a specific competitor's brain section. The memory
+// is scoped to the Competitor Analyst agent (section) and tagged with the competitor.
+export function saveCompetitorMemory(proposal: CompetitorMemoryProposal) {
+  return request<BrainMemoryResult>('/agents/competitor-analyst/memory', {
+    method: 'POST',
+    body: JSON.stringify({
+      proposal: { ...proposal, section: 'competitor-analyst' },
+      confirmed: true,
+    }),
   })
 }
 

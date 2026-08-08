@@ -61,6 +61,7 @@ const COMPANY_SECTION_LABEL = 'Trusted Tech Company'
 // grant/RFP/social surfers), which must not appear as save targets.
 const OFFERED_AGENT_IDS = new Set([
   'trusted-tech-assistant',
+  'competitor-analyst',
   'trusted-tech-hubspot-assistant',
   'trusted-tech-youtrack-assistant',
   'content-operations-assistant',
