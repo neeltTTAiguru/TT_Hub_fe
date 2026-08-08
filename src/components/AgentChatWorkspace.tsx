@@ -86,6 +86,32 @@ function clearChatDraft(key: string) {
   }
 }
 
+// The "last chat" snapshot is the most recent real conversation for an agent.
+// Unlike the draft, it is NOT cleared when you start a new thread, so it can
+// always be recalled with the "Resume last chat" button.
+const LAST_CHAT_PREFIX = 'tt-chat-last:'
+
+function loadLastChat(key: string): AgentChatMessage[] | null {
+  try {
+    const raw = localStorage.getItem(`${LAST_CHAT_PREFIX}${key}`)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) && parsed.some((entry) => entry?.role === 'user')
+      ? (parsed as AgentChatMessage[])
+      : null
+  } catch {
+    return null
+  }
+}
+
+function saveLastChat(key: string, messages: AgentChatMessage[]) {
+  try {
+    localStorage.setItem(`${LAST_CHAT_PREFIX}${key}`, JSON.stringify(messages))
+  } catch {
+    // best-effort
+  }
+}
+
 const COMPANY_SECTION = 'company'
 const COMPANY_SECTION_LABEL = 'Trusted Tech Company'
 
@@ -146,6 +172,7 @@ export default function AgentChatWorkspace({
     if (draft && draft.some((entry) => entry.role === 'user')) return draft
     return showInitialAssistantMessage ? [{ role: 'assistant', content: intro }] : []
   })
+  const [hasLastChat, setHasLastChat] = useState(() => Boolean(loadLastChat(draftStorageKey)))
   const [savedThreads, setSavedThreads] = useState<ChatThread[]>([])
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null)
   const [chatInput, setChatInput] = useState('')
@@ -202,14 +229,27 @@ export default function AgentChatWorkspace({
   }, [chatMessages, isChatting])
 
   // Autosave the working conversation so a refresh or freeze doesn't lose it.
-  // Only persist once there's real user content; an intro-only view clears it.
+  // Only persist once there's real user content; an intro-only view clears the
+  // draft. The "last chat" snapshot is also updated but never cleared here, so a
+  // new thread doesn't erase the ability to recall the previous conversation.
   useEffect(() => {
     if (chatMessages.some((entry) => entry.role === 'user')) {
       saveChatDraft(draftStorageKey, chatMessages)
+      saveLastChat(draftStorageKey, chatMessages)
+      setHasLastChat(true)
     } else {
       clearChatDraft(draftStorageKey)
     }
   }, [chatMessages, draftStorageKey])
+
+  const handleResumeLastChat = () => {
+    const last = loadLastChat(draftStorageKey)
+    if (!last) return
+    setChatMessages(last)
+    setActiveThreadId(null)
+    setChatError('')
+    setIsThreadSidebarOpen(false)
+  }
 
   const handleSendChat = async () => {
     const trimmedInput = chatInput.trim()
@@ -444,9 +484,14 @@ export default function AgentChatWorkspace({
             <Card
               className="section-card"
               title={chatTitle || undefined}
-              extra={(showBackendTag && agent) || showRefreshButton || enableBrainMemorySave ? (
+              extra={(showBackendTag && agent) || showRefreshButton || enableBrainMemorySave || (hasLastChat && !chatMessages.some((entry) => entry.role === 'user')) ? (
                 <Space size="small" wrap>
                   {showBackendTag && agent ? <Tag color="gold">{backendLabel}</Tag> : null}
+                  {hasLastChat && !chatMessages.some((entry) => entry.role === 'user') ? (
+                    <Button onClick={handleResumeLastChat} disabled={isChatting}>
+                      Resume last chat
+                    </Button>
+                  ) : null}
                   {enableBrainMemorySave ? (
                     <Button onClick={openMemoryProposal} disabled={isChatting || !isAuthenticated}>
                       Save to Brain
