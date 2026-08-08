@@ -559,7 +559,7 @@ export type TwitterConnectionStatus = {
   title: string
   readyState: string
   needsLogin: boolean
-  source: 'openclaw-browser'
+  source: string
   message: string
 }
 
