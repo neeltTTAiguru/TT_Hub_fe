@@ -524,18 +524,20 @@ export default function AgentChatWorkspace({
                   <Button type="primary" onClick={handleNewThread} disabled={isChatting}>
                     New chat
                   </Button>
-                  {isAuthenticated && savedThreads.length ? (
+                  {isAuthenticated ? (
                     <Dropdown
                       trigger={['click']}
                       menu={{
-                        items: savedThreads.slice(0, 20).map((thread) => ({
-                          key: thread._id,
-                          label: thread.title || 'Untitled chat',
-                          onClick: () => handleImportThread(thread._id),
-                        })),
+                        items: savedThreads.length
+                          ? savedThreads.slice(0, 30).map((thread) => ({
+                              key: thread._id,
+                              label: thread.title || 'Untitled chat',
+                              onClick: () => handleImportThread(thread._id),
+                            }))
+                          : [{ key: '__empty', label: 'No saved chats yet — start chatting', disabled: true }],
                       }}
                     >
-                      <Button disabled={isChatting}>History ({savedThreads.length})</Button>
+                      <Button disabled={isChatting}>Saved chats ({savedThreads.length}) ▾</Button>
                     </Dropdown>
                   ) : null}
                   {hasLastChat && !chatMessages.some((entry) => entry.role === 'user') ? (
