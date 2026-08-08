@@ -1088,6 +1088,35 @@ export function getCompetitorSectionMemories(competitor: string) {
   )
 }
 
+export type ResearchedBwcModel = {
+  name: string
+  batteryLife: string
+  resolution: string
+  storage: string
+  weight: string
+  durability: string
+  connectivity: string
+  activation: string
+  notes: string
+}
+
+export type CompetitorWebsiteResearch = {
+  competitor: string
+  competitorName: string
+  website: string
+  pagesRead: string[]
+  overview: string
+  models: ResearchedBwcModel[]
+}
+
+// Reads the competitor's own website and extracts their BWC models + specs.
+export function researchCompetitorWebsite(competitor: string) {
+  return request<CompetitorWebsiteResearch>(
+    `/agents/competitor-analyst/sections/${encodeURIComponent(competitor)}/research`,
+    { method: 'POST' },
+  )
+}
+
 // Saves an approved memory into a specific competitor's brain section. The memory
 // is scoped to the Competitor Analyst agent (section) and tagged with the competitor.
 export function saveCompetitorMemory(proposal: CompetitorMemoryProposal) {

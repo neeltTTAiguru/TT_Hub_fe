@@ -5,8 +5,11 @@ import AgentChatWorkspace from '../components/AgentChatWorkspace'
 import { PUBLIC_SAFETY_COMPETITORS } from '../data/publicSafetyCompetitors'
 import {
   getCompetitorSectionMemories,
+  researchCompetitorWebsite,
   saveCompetitorMemory,
   type CompetitorSectionMemory,
+  type CompetitorWebsiteResearch,
+  type ResearchedBwcModel,
 } from '../lib/api'
 
 const { Paragraph, Text } = Typography
@@ -78,6 +81,11 @@ export default function CompetitorAnalyst() {
   const [sectionStatus, setSectionStatus] = useState<string>('')
   const [sectionLoading, setSectionLoading] = useState(false)
 
+  // Live website research for the selected competitor (the "mini hub").
+  const [research, setResearch] = useState<CompetitorWebsiteResearch | null>(null)
+  const [researching, setResearching] = useState(false)
+  const [researchError, setResearchError] = useState('')
+
   const competitorOptions = useMemo(
     () => PUBLIC_SAFETY_COMPETITORS.map((entry) => ({ value: entry.slug, label: entry.name })),
     [],
@@ -95,6 +103,8 @@ export default function CompetitorAnalyst() {
     setSectionLoading(true)
     setSectionMemories([])
     setSectionStatus('')
+    setResearch(null)
+    setResearchError('')
     getCompetitorSectionMemories(selected)
       .then((result) => {
         if (cancelled) return
@@ -178,8 +188,47 @@ export default function CompetitorAnalyst() {
 
   const selectedName = competitorName(selected)
 
+  const runResearch = async () => {
+    if (researching) return
+    setResearching(true)
+    setResearchError('')
+    try {
+      const result = await researchCompetitorWebsite(selected)
+      setResearch(result)
+      if (!result.models.length) {
+        message.info(`Read ${selectedName}'s site but couldn't extract distinct BWC models. See the overview.`)
+      } else {
+        message.success(`Found ${result.models.length} model(s) on ${selectedName}'s website.`)
+      }
+    } catch (error) {
+      setResearchError(error instanceof Error ? error.message : `Could not read ${selectedName}'s website.`)
+    } finally {
+      setResearching(false)
+    }
+  }
+
+  const prefillFromResearch = (found: ResearchedBwcModel) => {
+    setCompetitor(selected)
+    setModel(found.name)
+    setSpecs({
+      battery: found.batteryLife,
+      resolution: found.resolution,
+      storage: found.storage,
+      weight: found.weight,
+      durability: found.durability,
+      connectivity: found.connectivity,
+      activation: found.activation,
+    })
+    setNotes(found.notes)
+    setSensitivity('internal')
+    setSource(research?.pagesRead?.[0] ?? competitorWebsite(selected))
+    setReviewing(false)
+    setModalOpen(true)
+  }
+
   // Scopes every chat message to the selected competitor and injects the loaded
-  // GBrain section memory so the chat "talks to" that competitor with its memory.
+  // GBrain section memory + any freshly researched website findings so the chat
+  // "talks to" that competitor using its memory and website.
   const buildChatContext = () => {
     const lines = [
       `You are the Competitor Analyst focused exclusively on the competitor "${selectedName}" (${competitorWebsite(selected)}).`,
@@ -191,11 +240,23 @@ export default function CompetitorAnalyst() {
         lines.push(`- ${memory.model || memory.title}: ${memory.summary}`)
       }
     } else {
-      lines.push(
-        `No memory is stored for ${selectedName} yet. Say so plainly and offer to research their BWC lineup if asked.`,
-      )
+      lines.push(`No memory is stored for ${selectedName} yet.`)
     }
-    return lines.join('\n').slice(0, 4000)
+    if (research) {
+      lines.push(`Findings just read from ${selectedName}'s website (${research.pagesRead.join(', ')}):`)
+      if (research.overview) lines.push(research.overview)
+      for (const found of research.models.slice(0, 12)) {
+        const specBits = [
+          found.batteryLife && `battery ${found.batteryLife}`,
+          found.resolution && `resolution ${found.resolution}`,
+          found.storage && `storage ${found.storage}`,
+        ]
+          .filter(Boolean)
+          .join(', ')
+        lines.push(`- ${found.name}${specBits ? `: ${specBits}` : ''}`)
+      }
+    }
+    return lines.join('\n').slice(0, 6000)
   }
 
   const sectionPanel = (
@@ -297,6 +358,104 @@ export default function CompetitorAnalyst() {
     </Card>
   )
 
+  const researchCard = (
+    <Card
+      className="section-card"
+      title={`Mini hub — ${selectedName}`}
+      extra={
+        <Space size="small" wrap>
+          <a href={competitorWebsite(selected)} target="_blank" rel="noreferrer">
+            {competitorWebsite(selected).replace(/^https?:\/\//, '')}
+          </a>
+          <Button type="primary" loading={researching} disabled={!isAuthenticated} onClick={() => void runResearch()}>
+            {researching ? 'Reading website…' : `Read ${selectedName}'s website`}
+          </Button>
+        </Space>
+      }
+    >
+      <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+        <Text type="secondary">
+          Reads {selectedName}'s own website (homepage + product pages), extracts their body-worn camera models and
+          specs, and lets you save any of them into this competitor's brain section.
+        </Text>
+
+        {researchError ? (
+          <Alert type="error" showIcon message={`Couldn't read ${selectedName}'s website`} description={researchError} />
+        ) : null}
+
+        {researching ? (
+          <div style={{ display: 'grid', placeItems: 'center', padding: 24 }}>
+            <Space direction="vertical" align="center">
+              <Spin />
+              <Text type="secondary">Reading {competitorWebsite(selected).replace(/^https?:\/\//, '')}…</Text>
+            </Space>
+          </div>
+        ) : null}
+
+        {research && !researching ? (
+          <>
+            {research.overview ? <Paragraph style={{ margin: 0 }}>{research.overview}</Paragraph> : null}
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              Read from: {research.pagesRead.join(' · ')}
+            </Text>
+            {research.models.length ? (
+              <div
+                style={{
+                  display: 'grid',
+                  gap: 12,
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+                }}
+              >
+                {research.models.map((found) => {
+                  const rows: Array<[string, string]> = [
+                    ['Battery', found.batteryLife],
+                    ['Resolution', found.resolution],
+                    ['Storage', found.storage],
+                    ['Weight', found.weight],
+                    ['Durability', found.durability],
+                    ['Connectivity', found.connectivity],
+                    ['Activation', found.activation],
+                  ].filter(([, value]) => value.trim()) as Array<[string, string]>
+                  return (
+                    <Card key={found.name} size="small">
+                      <Space direction="vertical" size={6} style={{ width: '100%' }}>
+                        <Text strong>{found.name}</Text>
+                        {rows.length ? (
+                          <div style={{ fontSize: 13 }}>
+                            {rows.map(([label, value]) => (
+                              <div key={label}>
+                                <Text type="secondary">{label}: </Text>
+                                <Text>{value}</Text>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <Text type="secondary" style={{ fontSize: 13 }}>
+                            No specs stated on the site.
+                          </Text>
+                        )}
+                        {found.notes ? (
+                          <Paragraph type="secondary" style={{ fontSize: 12, margin: 0 }} ellipsis={{ rows: 3 }}>
+                            {found.notes}
+                          </Paragraph>
+                        ) : null}
+                        <Button size="small" disabled={!isAuthenticated} onClick={() => prefillFromResearch(found)}>
+                          Save to section
+                        </Button>
+                      </Space>
+                    </Card>
+                  )
+                })}
+              </div>
+            ) : (
+              <Text type="secondary">No distinct BWC models were extracted from the site text.</Text>
+            )}
+          </>
+        ) : null}
+      </Space>
+    </Card>
+  )
+
   return (
     <>
       <AgentChatWorkspace
@@ -319,7 +478,12 @@ export default function CompetitorAnalyst() {
         chatTitle={`Talk to ${selectedName}`}
         assistantLabel={selectedName}
         backendLabel="Hermes + GBrain"
-        renderBeforeChat={sectionsGrid}
+        renderBeforeChat={
+          <>
+            {sectionsGrid}
+            {researchCard}
+          </>
+        }
         buildMessageContext={buildChatContext}
         chatSidePanel={sectionPanel}
       />
