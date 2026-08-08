@@ -618,8 +618,13 @@ export type BrowserScreenshotResponse = {
   dataUrl: string
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function request<T>(path: string, init?: RequestInit, options?: { timeoutMs?: number }): Promise<T> {
   let response: Response
+  // Bound slow requests (e.g. HubSpot chat) so the UI never hangs indefinitely.
+  const controller = new AbortController()
+  const timeoutMs = options?.timeoutMs
+  const timeoutTimer =
+    typeof timeoutMs === 'number' && timeoutMs > 0 ? setTimeout(() => controller.abort(), timeoutMs) : null
   const buildHeaders = async (forceRefresh = false) => {
     const headers = new Headers(init?.headers)
     headers.set('Content-Type', 'application/json')
@@ -638,20 +643,28 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     response = await fetch(`${API_BASE_URL}${path}`, {
       ...init,
       headers: await buildHeaders(),
+      signal: controller.signal,
     })
 
     if (response.status === 401 && accessTokenProvider) {
       response = await fetch(`${API_BASE_URL}${path}`, {
         ...init,
         headers: await buildHeaders(true),
+        signal: controller.signal,
       })
     }
   } catch (error) {
+    const errorName = typeof error === 'object' && error !== null ? (error as { name?: string }).name : undefined
+    if (errorName === 'AbortError') {
+      throw new Error('The assistant took too long to respond. Nothing was lost — your chat is saved, please try again.')
+    }
     if (error instanceof TypeError) {
       throw new Error(`Trusted Tech Hub API is unavailable at ${API_BASE_URL}. Start the backend and try again.`)
     }
 
     throw error
+  } finally {
+    if (timeoutTimer) clearTimeout(timeoutTimer)
   }
 
   if (!response.ok) {
@@ -665,8 +678,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       }
     } catch {
       const contentType = response.headers.get('content-type') || ''
-      if (contentType.includes('text/html') || /^<!doctype html/i.test(message) || /^<html/i.test(message)) {
-        message = `Trusted Tech Hub API returned an HTML error for ${path}. Confirm the backend route is mounted and the frontend API base URL points to the Express API.`
+      const looksHtml = contentType.includes('text/html') || /^<!doctype html/i.test(message) || /^<html/i.test(message)
+      if (response.status === 502 || response.status === 503 || response.status === 504) {
+        // Gateway/timeout (common on the slow HubSpot round-trip): reassure, don't scare.
+        message = 'The assistant took too long and the server timed out. Nothing was lost — your chat is saved, please try again.'
+      } else if (looksHtml) {
+        message = `The server returned an unexpected response for ${path}. Nothing was lost — please try again in a moment.`
       }
     }
 
@@ -1051,10 +1068,16 @@ export function createResearchRun(payload: {
 }
 
 export function sendAgentChat(agentId: string, messages: AgentChatMessage[]) {
-  return request<AgentChatResponse>(`/agents/${agentId}/chat`, {
-    method: 'POST',
-    body: JSON.stringify({ messages }),
-  })
+  return request<AgentChatResponse>(
+    `/agents/${agentId}/chat`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ messages }),
+    },
+    // HubSpot (Hermes → HubSpot) can be slow; bound it so the UI fails cleanly
+    // instead of hanging, while the conversation stays saved for retry.
+    { timeoutMs: 120000 },
+  )
 }
 
 export function getWordPressDraftPreview(postId: number) {
