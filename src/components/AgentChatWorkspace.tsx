@@ -5,6 +5,7 @@ import { Alert, Button, Card, Dropdown, List, Space, Spin, Tag, Typography, Inpu
 import ChatMessageContent from './ChatMessageContent'
 import {
   createChatThread,
+  deleteChatThread,
   getAgent,
   getAgents,
   getChatThreads,
@@ -112,6 +113,35 @@ function saveLastChat(key: string, messages: AgentChatMessage[]) {
   }
 }
 
+// Remembers which saved session the restored draft belongs to, so continuing a
+// conversation after a refresh UPDATES that session instead of creating a
+// duplicate.
+const THREAD_ID_PREFIX = 'tt-chat-thread:'
+
+function loadDraftThreadId(key: string): string | null {
+  try {
+    return localStorage.getItem(`${THREAD_ID_PREFIX}${key}`) || null
+  } catch {
+    return null
+  }
+}
+
+function saveDraftThreadId(key: string, threadId: string) {
+  try {
+    localStorage.setItem(`${THREAD_ID_PREFIX}${key}`, threadId)
+  } catch {
+    // best-effort
+  }
+}
+
+function clearDraftThreadId(key: string) {
+  try {
+    localStorage.removeItem(`${THREAD_ID_PREFIX}${key}`)
+  } catch {
+    // no-op
+  }
+}
+
 const COMPANY_SECTION = 'company'
 const COMPANY_SECTION_LABEL = 'Trusted Tech Company'
 
@@ -174,9 +204,16 @@ export default function AgentChatWorkspace({
   })
   const [hasLastChat, setHasLastChat] = useState(() => Boolean(loadLastChat(draftStorageKey)))
   const [savedThreads, setSavedThreads] = useState<ChatThread[]>([])
-  const [activeThreadId, setActiveThreadId] = useState<string | null>(null)
+  const [activeThreadId, setActiveThreadId] = useState<string | null>(() => {
+    // Reconnect a restored draft to its saved session so continuing it updates
+    // that session rather than creating a duplicate.
+    const draft = loadChatDraft(draftStorageKey)
+    return draft && draft.some((entry) => entry.role === 'user') ? loadDraftThreadId(draftStorageKey) : null
+  })
   // Mirror of activeThreadId readable synchronously inside async auto-save.
-  const activeThreadIdRef = useRef<string | null>(null)
+  const activeThreadIdRef = useRef<string | null>(activeThreadId)
+  // Prevents a second create while the first is still in flight (dup guard).
+  const creatingThreadRef = useRef(false)
   const [chatInput, setChatInput] = useState('')
   const [chatError, setChatError] = useState('')
   const [isChatting, setIsChatting] = useState(false)
@@ -246,7 +283,26 @@ export default function AgentChatWorkspace({
 
   useEffect(() => {
     activeThreadIdRef.current = activeThreadId
-  }, [activeThreadId])
+    if (activeThreadId) {
+      saveDraftThreadId(draftStorageKey, activeThreadId)
+    } else {
+      clearDraftThreadId(draftStorageKey)
+    }
+  }, [activeThreadId, draftStorageKey])
+
+  const handleDeleteThread = async (threadId: string) => {
+    try {
+      await deleteChatThread(threadId)
+      setSavedThreads((current) => current.filter((thread) => thread._id !== threadId))
+      if (activeThreadIdRef.current === threadId) {
+        activeThreadIdRef.current = null
+        setActiveThreadId(null)
+      }
+      message.success('Chat deleted')
+    } catch {
+      message.error('Could not delete that chat.')
+    }
+  }
 
   const handleResumeLastChat = () => {
     const last = loadLastChat(draftStorageKey)
@@ -266,6 +322,10 @@ export default function AgentChatWorkspace({
   // after). Best-effort: failures fall back to the localStorage draft/last-chat.
   const autoSaveThread = async (messages: AgentChatMessage[]) => {
     if (!isAuthenticated || !messages.some((entry) => entry.role === 'user')) return
+    const existingId = activeThreadIdRef.current
+    // Don't start a second create while the first is still in flight.
+    if (!existingId && creatingThreadRef.current) return
+    if (!existingId) creatingThreadRef.current = true
     try {
       const payload = {
         agentId,
@@ -273,13 +333,14 @@ export default function AgentChatWorkspace({
         messages,
         thread: { messages },
       }
-      const existingId = activeThreadIdRef.current
       const savedThread = existingId ? await updateChatThread(existingId, payload) : await createChatThread(payload)
       activeThreadIdRef.current = savedThread._id
       setActiveThreadId(savedThread._id)
       setSavedThreads((current) => [savedThread, ...current.filter((thread) => thread._id !== savedThread._id)])
     } catch {
       // Silent — the browser draft still holds the conversation.
+    } finally {
+      creatingThreadRef.current = false
     }
   }
 
@@ -316,7 +377,9 @@ export default function AgentChatWorkspace({
       const finalMessages = [...nextMessages, response.message]
       setChatMessages(finalMessages)
       onChatResponse?.(response)
-      void autoSaveThread(finalMessages)
+      // Await so the session id is set before another message can be sent
+      // (prevents duplicate sessions).
+      await autoSaveThread(finalMessages)
     } catch (submitError) {
       if (suppressChatErrors) {
         setChatMessages((current) => [...current, { role: 'assistant', content: queryingLabel }])
@@ -531,7 +594,39 @@ export default function AgentChatWorkspace({
                         items: savedThreads.length
                           ? savedThreads.slice(0, 30).map((thread) => ({
                               key: thread._id,
-                              label: thread.title || 'Untitled chat',
+                              label: (
+                                <span
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    gap: 12,
+                                    minWidth: 240,
+                                  }}
+                                >
+                                  <span
+                                    style={{
+                                      overflow: 'hidden',
+                                      textOverflow: 'ellipsis',
+                                      whiteSpace: 'nowrap',
+                                      maxWidth: 210,
+                                    }}
+                                  >
+                                    {thread.title || 'Untitled chat'}
+                                  </span>
+                                  <Button
+                                    type="text"
+                                    size="small"
+                                    danger
+                                    onClick={(event) => {
+                                      event.stopPropagation()
+                                      void handleDeleteThread(thread._id)
+                                    }}
+                                  >
+                                    ✕
+                                  </Button>
+                                </span>
+                              ),
                               onClick: () => handleImportThread(thread._id),
                             }))
                           : [{ key: '__empty', label: 'No saved chats yet — start chatting', disabled: true }],

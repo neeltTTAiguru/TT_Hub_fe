@@ -694,6 +694,11 @@ async function request<T>(path: string, init?: RequestInit, options?: { timeoutM
     throw new Error(message || `Request failed with ${response.status}`)
   }
 
+  // 204 No Content (e.g. DELETE) has no body to parse.
+  if (response.status === 204) {
+    return undefined as T
+  }
+
   return response.json()
 }
 
@@ -1197,6 +1202,12 @@ export function updateChatThread(
   return request<ChatThread>(`/chat-threads/${threadId}`, {
     method: 'PATCH',
     body: JSON.stringify(payload),
+  })
+}
+
+export function deleteChatThread(threadId: string) {
+  return request<{ _id: string }>(`/chat-threads/${threadId}`, {
+    method: 'DELETE',
   })
 }
 
