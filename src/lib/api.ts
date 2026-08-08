@@ -1068,6 +1068,26 @@ export function saveBrainMemory(proposal: BrainMemoryProposal) {
   })
 }
 
+export type CompetitorSectionMemory = {
+  slug: string
+  title: string
+  model: string
+  summary: string
+}
+
+export type CompetitorSectionMemories = {
+  competitor: string
+  status: 'ok' | 'disabled' | 'unavailable' | 'invalid'
+  memories: CompetitorSectionMemory[]
+}
+
+// Loads the memory stored in a competitor's brain section (its BWC model spec pages).
+export function getCompetitorSectionMemories(competitor: string) {
+  return request<CompetitorSectionMemories>(
+    `/agents/competitor-analyst/sections/${encodeURIComponent(competitor)}/memories`,
+  )
+}
+
 // Saves an approved memory into a specific competitor's brain section. The memory
 // is scoped to the Competitor Analyst agent (section) and tagged with the competitor.
 export function saveCompetitorMemory(proposal: CompetitorMemoryProposal) {

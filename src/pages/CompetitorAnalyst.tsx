@@ -1,9 +1,13 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useAuth0 } from '@auth0/auth0-react'
-import { Alert, Button, Card, Input, Modal, Select, Space, Tag, Typography, message } from 'antd'
+import { Alert, Button, Card, Input, Modal, Select, Space, Spin, Tag, Typography, message } from 'antd'
 import AgentChatWorkspace from '../components/AgentChatWorkspace'
 import { PUBLIC_SAFETY_COMPETITORS } from '../data/publicSafetyCompetitors'
-import { saveCompetitorMemory } from '../lib/api'
+import {
+  getCompetitorSectionMemories,
+  saveCompetitorMemory,
+  type CompetitorSectionMemory,
+} from '../lib/api'
 
 const { Paragraph, Text } = Typography
 const { TextArea } = Input
@@ -32,6 +36,10 @@ const EMPTY_SPECS: SpecValues = {}
 
 function competitorName(slug: string) {
   return PUBLIC_SAFETY_COMPETITORS.find((entry) => entry.slug === slug)?.name ?? slug
+}
+
+function competitorWebsite(slug: string) {
+  return PUBLIC_SAFETY_COMPETITORS.find((entry) => entry.slug === slug)?.website ?? ''
 }
 
 function buildSpecSheet(name: string, model: string, specs: SpecValues, notes: string) {
@@ -65,10 +73,45 @@ export default function CompetitorAnalyst() {
   const [sensitivity, setSensitivity] = useState<'internal' | 'public'>('internal')
   const [source, setSource] = useState('')
 
+  // Memory loaded from the selected competitor's GBrain section.
+  const [sectionMemories, setSectionMemories] = useState<CompetitorSectionMemory[]>([])
+  const [sectionStatus, setSectionStatus] = useState<string>('')
+  const [sectionLoading, setSectionLoading] = useState(false)
+
   const competitorOptions = useMemo(
     () => PUBLIC_SAFETY_COMPETITORS.map((entry) => ({ value: entry.slug, label: entry.name })),
     [],
   )
+
+  // When a competitor is selected, load that section's memory from GBrain so the
+  // chat (below) can be primed with what we already know about them.
+  useEffect(() => {
+    if (!isAuthenticated || !selected) {
+      setSectionMemories([])
+      setSectionStatus('')
+      return
+    }
+    let cancelled = false
+    setSectionLoading(true)
+    setSectionMemories([])
+    setSectionStatus('')
+    getCompetitorSectionMemories(selected)
+      .then((result) => {
+        if (cancelled) return
+        setSectionMemories(result.memories)
+        setSectionStatus(result.status)
+      })
+      .catch(() => {
+        if (cancelled) return
+        setSectionStatus('unavailable')
+      })
+      .finally(() => {
+        if (!cancelled) setSectionLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [selected, isAuthenticated])
 
   const resetForm = (slug: string) => {
     setCompetitor(slug)
@@ -132,6 +175,60 @@ export default function CompetitorAnalyst() {
       setIsSaving(false)
     }
   }
+
+  const selectedName = competitorName(selected)
+
+  // Scopes every chat message to the selected competitor and injects the loaded
+  // GBrain section memory so the chat "talks to" that competitor with its memory.
+  const buildChatContext = () => {
+    const lines = [
+      `You are the Competitor Analyst focused exclusively on the competitor "${selectedName}" (${competitorWebsite(selected)}).`,
+      `Only discuss ${selectedName}'s body-worn camera portfolio and models. If the user asks about a different company, tell them to select that competitor's section.`,
+    ]
+    if (sectionMemories.length) {
+      lines.push(`Approved ${selectedName} section memory loaded from GBrain (treat as evidence):`)
+      for (const memory of sectionMemories.slice(0, 8)) {
+        lines.push(`- ${memory.model || memory.title}: ${memory.summary}`)
+      }
+    } else {
+      lines.push(
+        `No memory is stored for ${selectedName} yet. Say so plainly and offer to research their BWC lineup if asked.`,
+      )
+    }
+    return lines.join('\n').slice(0, 4000)
+  }
+
+  const sectionPanel = (
+    <aside className="chat-side-panel" style={{ minWidth: 240, maxWidth: 320 }}>
+      <Card size="small" title={`${selectedName} — section memory`}>
+        {sectionLoading ? (
+          <div style={{ display: 'grid', placeItems: 'center', padding: 16 }}>
+            <Spin size="small" />
+          </div>
+        ) : sectionMemories.length ? (
+          <Space direction="vertical" size={8} style={{ width: '100%' }}>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {sectionMemories.length} model{sectionMemories.length === 1 ? '' : 's'} loaded from GBrain
+            </Text>
+            {sectionMemories.map((memory) => (
+              <div key={memory.slug}>
+                <Text strong>{memory.model || memory.title}</Text>
+                <Paragraph type="secondary" style={{ fontSize: 12, margin: 0 }} ellipsis={{ rows: 3 }}>
+                  {memory.summary}
+                </Paragraph>
+              </div>
+            ))}
+          </Space>
+        ) : (
+          <Text type="secondary" style={{ fontSize: 13 }}>
+            {sectionStatus === 'disabled' || sectionStatus === 'unavailable'
+              ? 'GBrain memory is unavailable right now.'
+              : `No BWC models stored for ${selectedName} yet. Add one with “+ Add BWC model”.`}
+          </Text>
+        )}
+      </Card>
+    </aside>
+  )
 
   const sectionsGrid = (
     <Card
@@ -203,19 +300,28 @@ export default function CompetitorAnalyst() {
   return (
     <>
       <AgentChatWorkspace
+        key={selected}
         agentId="competitor-analyst"
         title="Competitor Analyst"
         subtitle="A Research Surfer that tracks Public Safety body-worn camera competitors. Each competitor is a section of its brain; each camera model is a spec page inside it."
-        intro="Competitor Analyst searches approved GBrain memory scoped to the competitor you ask about before answering. Capture each competitor's BWC models and specs with the controls above so the brain retains them."
-        emptyPrompt='Ask: "Compare Axon Body 4 and Motorola V300 on battery life and resolution."'
+        intro={
+          sectionLoading
+            ? `Loading ${selectedName}'s section memory from GBrain…`
+            : sectionMemories.length
+              ? `You're in the ${selectedName} section. I loaded ${sectionMemories.length} stored BWC model${sectionMemories.length === 1 ? '' : 's'} from GBrain — ask me about their cameras and specs.`
+              : `You're in the ${selectedName} section. No BWC memory is stored for them yet — ask me to research, or add a model above.`
+        }
+        emptyPrompt={`Ask about ${selectedName}'s body-worn cameras…`}
         showAgentOverview={false}
         showThreadControls={false}
         showChatIntro={false}
         showBackendTag
-        chatTitle="Talk to Competitor Analyst"
-        assistantLabel="Competitor Analyst"
+        chatTitle={`Talk to ${selectedName}`}
+        assistantLabel={selectedName}
         backendLabel="Hermes + GBrain"
         renderBeforeChat={sectionsGrid}
+        buildMessageContext={buildChatContext}
+        chatSidePanel={sectionPanel}
       />
 
       <Modal
