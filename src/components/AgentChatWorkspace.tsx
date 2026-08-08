@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useAuth0 } from '@auth0/auth0-react'
-import { Alert, Button, Card, List, Space, Spin, Tag, Typography, Input, message, Modal, Select } from 'antd'
+import { Alert, Button, Card, Dropdown, List, Space, Spin, Tag, Typography, Input, message, Modal, Select } from 'antd'
 import ChatMessageContent from './ChatMessageContent'
 import {
   createChatThread,
@@ -175,6 +175,8 @@ export default function AgentChatWorkspace({
   const [hasLastChat, setHasLastChat] = useState(() => Boolean(loadLastChat(draftStorageKey)))
   const [savedThreads, setSavedThreads] = useState<ChatThread[]>([])
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null)
+  // Mirror of activeThreadId readable synchronously inside async auto-save.
+  const activeThreadIdRef = useRef<string | null>(null)
   const [chatInput, setChatInput] = useState('')
   const [chatError, setChatError] = useState('')
   const [isChatting, setIsChatting] = useState(false)
@@ -242,6 +244,10 @@ export default function AgentChatWorkspace({
     }
   }, [chatMessages, draftStorageKey])
 
+  useEffect(() => {
+    activeThreadIdRef.current = activeThreadId
+  }, [activeThreadId])
+
   const handleResumeLastChat = () => {
     const last = loadLastChat(draftStorageKey)
     if (!last) return
@@ -249,6 +255,32 @@ export default function AgentChatWorkspace({
     setActiveThreadId(null)
     setChatError('')
     setIsThreadSidebarOpen(false)
+  }
+
+  const threadTitleFrom = (messages: AgentChatMessage[]) => {
+    const firstUserMessage = messages.find((entry) => entry.role === 'user')?.content.trim()
+    return firstUserMessage ? firstUserMessage.slice(0, 80) : `${title} Thread`
+  }
+
+  // Auto-save the conversation as a session (create on first exchange, update
+  // after). Best-effort: failures fall back to the localStorage draft/last-chat.
+  const autoSaveThread = async (messages: AgentChatMessage[]) => {
+    if (!isAuthenticated || !messages.some((entry) => entry.role === 'user')) return
+    try {
+      const payload = {
+        agentId,
+        title: threadTitleFrom(messages),
+        messages,
+        thread: { messages },
+      }
+      const existingId = activeThreadIdRef.current
+      const savedThread = existingId ? await updateChatThread(existingId, payload) : await createChatThread(payload)
+      activeThreadIdRef.current = savedThread._id
+      setActiveThreadId(savedThread._id)
+      setSavedThreads((current) => [savedThread, ...current.filter((thread) => thread._id !== savedThread._id)])
+    } catch {
+      // Silent — the browser draft still holds the conversation.
+    }
   }
 
   const handleSendChat = async () => {
@@ -281,8 +313,10 @@ export default function AgentChatWorkspace({
 
     try {
       const response = await sendAgentChat(agentId, messagesForBackend)
-      setChatMessages((current) => [...current, response.message])
+      const finalMessages = [...nextMessages, response.message]
+      setChatMessages(finalMessages)
       onChatResponse?.(response)
+      void autoSaveThread(finalMessages)
     } catch (submitError) {
       if (suppressChatErrors) {
         setChatMessages((current) => [...current, { role: 'assistant', content: queryingLabel }])
@@ -484,9 +518,26 @@ export default function AgentChatWorkspace({
             <Card
               className="section-card"
               title={chatTitle || undefined}
-              extra={(showBackendTag && agent) || showRefreshButton || enableBrainMemorySave || (hasLastChat && !chatMessages.some((entry) => entry.role === 'user')) ? (
+              extra={
                 <Space size="small" wrap>
                   {showBackendTag && agent ? <Tag color="gold">{backendLabel}</Tag> : null}
+                  <Button type="primary" onClick={handleNewThread} disabled={isChatting}>
+                    New chat
+                  </Button>
+                  {isAuthenticated && savedThreads.length ? (
+                    <Dropdown
+                      trigger={['click']}
+                      menu={{
+                        items: savedThreads.slice(0, 20).map((thread) => ({
+                          key: thread._id,
+                          label: thread.title || 'Untitled chat',
+                          onClick: () => handleImportThread(thread._id),
+                        })),
+                      }}
+                    >
+                      <Button disabled={isChatting}>History ({savedThreads.length})</Button>
+                    </Dropdown>
+                  ) : null}
                   {hasLastChat && !chatMessages.some((entry) => entry.role === 'user') ? (
                     <Button onClick={handleResumeLastChat} disabled={isChatting}>
                       Resume last chat
@@ -503,7 +554,7 @@ export default function AgentChatWorkspace({
                     </Button>
                   ) : null}
                 </Space>
-              ) : null}
+              }
             >
               <Space direction="vertical" size="middle" style={{ width: '100%' }}>
                 {showChatIntro ? <Text type="secondary">{intro}</Text> : null}
