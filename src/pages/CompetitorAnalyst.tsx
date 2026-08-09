@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useAuth0 } from '@auth0/auth0-react'
-import { Alert, Button, Card, Input, Modal, Select, Space, Spin, Tag, Typography, message } from 'antd'
+import { Alert, Button, Card, Input, Modal, Select, Space, Tag, Typography, message } from 'antd'
 import AgentChatWorkspace from '../components/AgentChatWorkspace'
 import { PUBLIC_SAFETY_COMPETITORS } from '../data/publicSafetyCompetitors'
 import {
@@ -75,7 +75,6 @@ export default function CompetitorAnalyst() {
 
   // Memory loaded from the selected competitor's GBrain section.
   const [sectionMemories, setSectionMemories] = useState<CompetitorSectionMemory[]>([])
-  const [sectionStatus, setSectionStatus] = useState<string>('')
   const [sectionLoading, setSectionLoading] = useState(false)
 
   const competitorOptions = useMemo(
@@ -88,22 +87,17 @@ export default function CompetitorAnalyst() {
   useEffect(() => {
     if (!isAuthenticated || !selected) {
       setSectionMemories([])
-      setSectionStatus('')
       return
     }
     let cancelled = false
     setSectionLoading(true)
     setSectionMemories([])
-    setSectionStatus('')
     getCompetitorSectionMemories(selected)
       .then((result) => {
-        if (cancelled) return
-        setSectionMemories(result.memories)
-        setSectionStatus(result.status)
+        if (!cancelled) setSectionMemories(result.memories)
       })
       .catch(() => {
-        if (cancelled) return
-        setSectionStatus('unavailable')
+        if (!cancelled) setSectionMemories([])
       })
       .finally(() => {
         if (!cancelled) setSectionLoading(false)
@@ -197,38 +191,6 @@ export default function CompetitorAnalyst() {
     return lines.join('\n').slice(0, 6000)
   }
 
-  const sectionPanel = (
-    <aside className="chat-side-panel" style={{ minWidth: 240, maxWidth: 320 }}>
-      <Card size="small" title={`${selectedName} — section memory`}>
-        {sectionLoading ? (
-          <div style={{ display: 'grid', placeItems: 'center', padding: 16 }}>
-            <Spin size="small" />
-          </div>
-        ) : sectionMemories.length ? (
-          <Space direction="vertical" size={8} style={{ width: '100%' }}>
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              {sectionMemories.length} model{sectionMemories.length === 1 ? '' : 's'} loaded from GBrain
-            </Text>
-            {sectionMemories.map((memory) => (
-              <div key={memory.slug}>
-                <Text strong>{memory.model || memory.title}</Text>
-                <Paragraph type="secondary" style={{ fontSize: 12, margin: 0 }} ellipsis={{ rows: 3 }}>
-                  {memory.summary}
-                </Paragraph>
-              </div>
-            ))}
-          </Space>
-        ) : (
-          <Text type="secondary" style={{ fontSize: 13 }}>
-            {sectionStatus === 'disabled' || sectionStatus === 'unavailable'
-              ? 'GBrain memory is unavailable right now.'
-              : `No BWC models stored for ${selectedName} yet. Add one with “+ Add BWC model”.`}
-          </Text>
-        )}
-      </Card>
-    </aside>
-  )
-
   const sectionsGrid = (
     <Card
       className="section-card"
@@ -321,7 +283,6 @@ export default function CompetitorAnalyst() {
         backendLabel="Hermes + GBrain"
         renderBeforeChat={sectionsGrid}
         buildMessageContext={buildChatContext}
-        chatSidePanel={sectionPanel}
         draftKey={`competitor-analyst:${selected}`}
       />
 

@@ -242,6 +242,9 @@ export type BrainMemoryProposal = {
   section: string
   sensitivity: 'internal' | 'public'
   source?: string
+  // When set, update this existing memory in place (same GBrain page) instead of
+  // creating a new one. Must be a memory in the same section.
+  targetSlug?: string
 }
 
 export type BrainMemoryResult = {
@@ -255,6 +258,7 @@ export type BrainMemoryResult = {
   sensitivity: BrainMemoryProposal['sensitivity']
   source: string
   lifecycle: 'approved'
+  updated?: boolean
   verified: boolean
 }
 
@@ -1085,6 +1089,78 @@ export function sendAgentChat(agentId: string, messages: AgentChatMessage[]) {
   )
 }
 
+// Streaming chat over Server-Sent Events. Calls onDelta(text) as tokens arrive
+// and resolves with the final message once the stream ends. No client-side
+// timeout — the backend's heartbeat + stream keep the connection alive so long
+// tool-heavy (HubSpot) answers don't hit a fixed cap.
+export async function streamAgentChat(
+  agentId: string,
+  messages: AgentChatMessage[],
+  handlers: { onDelta: (text: string) => void; signal?: AbortSignal },
+): Promise<AgentChatResponse> {
+  const headers = new Headers({ 'Content-Type': 'application/json' })
+  if (accessTokenProvider) {
+    const token = await accessTokenProvider()
+    if (token) headers.set('Authorization', `Bearer ${token}`)
+  }
+
+  const response = await fetch(`${API_BASE_URL}/agents/${agentId}/chat/stream`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ messages }),
+    signal: handlers.signal,
+  })
+
+  if (!response.ok || !response.body) {
+    const body = await response.text().catch(() => '')
+    let messageText = body.trim() || `Streaming request failed (${response.status}).`
+    try {
+      const parsed = JSON.parse(body) as ApiErrorPayload
+      if (parsed.message) messageText = parsed.message
+    } catch {
+      // non-JSON error body — keep as-is
+    }
+    throw new Error(messageText)
+  }
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  let streamError: string | null = null
+  let final: AgentChatResponse | null = null
+
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    let boundary: number
+    // SSE events are separated by a blank line.
+    while ((boundary = buffer.indexOf('\n\n')) >= 0) {
+      const rawEvent = buffer.slice(0, boundary)
+      buffer = buffer.slice(boundary + 2)
+      for (const line of rawEvent.split('\n')) {
+        const trimmed = line.trim()
+        if (!trimmed.startsWith('data:')) continue // ':' comment lines are heartbeats
+        const payload = trimmed.slice(5).trim()
+        if (!payload) continue
+        let evt: { delta?: string; error?: string; done?: boolean; message?: AgentChatMessage; meta?: unknown }
+        try {
+          evt = JSON.parse(payload)
+        } catch {
+          continue
+        }
+        if (typeof evt.delta === 'string') handlers.onDelta(evt.delta)
+        else if (evt.error) streamError = evt.error
+        else if (evt.done && evt.message) final = { message: evt.message, meta: evt.meta as AgentChatResponse['meta'] }
+      }
+    }
+  }
+
+  if (streamError) throw new Error(streamError)
+  if (!final) throw new Error('The assistant stream ended unexpectedly. Your chat is saved — please try again.')
+  return final
+}
+
 export function getWordPressDraftPreview(postId: number) {
   return request<WordPressDraftPreview>(`/agents/wordpress-draft-editor/preview/${encodeURIComponent(postId)}`)
 }
@@ -1113,6 +1189,28 @@ export type CompetitorSectionMemories = {
 export function getCompetitorSectionMemories(competitor: string) {
   return request<CompetitorSectionMemories>(
     `/agents/competitor-analyst/sections/${encodeURIComponent(competitor)}/memories`,
+  )
+}
+
+export type BrainSectionMemory = {
+  slug: string
+  title: string
+  sensitivity: string
+  summary: string
+  content: string
+}
+
+export type BrainSectionMemories = {
+  section: string
+  status: 'ok' | 'disabled' | 'unavailable'
+  memories: BrainSectionMemory[]
+}
+
+// Loads a Brain "section": 'company' (memories readable by every agent) or an
+// agent id (memories scoped to just that agent's section).
+export function getBrainSectionMemories(section: string) {
+  return request<BrainSectionMemories>(
+    `/agents/trusted-tech-assistant/brain-sections/${encodeURIComponent(section)}/memories`,
   )
 }
 

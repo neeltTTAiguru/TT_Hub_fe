@@ -17,6 +17,7 @@ export default function TrustedTechHubSpotAssistant() {
       assistantLabel="Deal Pipeline Assistant"
       backendLabel="Hermes + HubSpot Deals"
       queryingLabel="Querying HubSpot…"
+      streaming
     />
   )
 }

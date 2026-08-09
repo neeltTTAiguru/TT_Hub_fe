@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useAuth0 } from '@auth0/auth0-react'
-import { Alert, Button, Card, Dropdown, List, Space, Spin, Tag, Typography, Input, message, Modal, Select } from 'antd'
+import { Alert, Button, Card, Dropdown, List, Radio, Space, Spin, Tag, Typography, Input, message, Modal, Select } from 'antd'
 import ChatMessageContent from './ChatMessageContent'
 import {
   createChatThread,
@@ -10,12 +10,14 @@ import {
   getAgents,
   getChatThreads,
   sendAgentChat,
+  streamAgentChat,
   saveBrainMemory,
   updateChatThread,
   type AgentChatMessage,
   type AgentDetail,
   type AgentChatResponse,
   type BrainMemoryProposal,
+  type BrainSectionMemory,
   type ChatThread,
 } from '../lib/api'
 
@@ -49,7 +51,18 @@ type AgentChatWorkspaceProps = {
   buildMessageContext?: () => string
   queryingLabel?: string
   suppressChatErrors?: boolean
+  // Stream the assistant reply token-by-token over SSE (keeps the connection warm
+  // for long tool-heavy answers instead of one blocking request that can time out).
+  streaming?: boolean
   enableBrainMemorySave?: boolean
+  // When set, "Save to Brain" saves into exactly this section (the one the user
+  // is talking to) and the in-modal section picker is hidden.
+  memorySection?: string
+  // The current section's existing memories — enables "update an existing memory"
+  // in the Save to Brain modal (replace in place instead of adding a duplicate).
+  sectionMemories?: BrainSectionMemory[]
+  // Called after a memory is saved/updated so the caller can refresh its section list.
+  onMemorySaved?: () => void
   chatSidePanel?: ReactNode
   onChatResponse?: (response: AgentChatResponse) => void
   // Storage key for autosaving the in-progress conversation to the browser so a
@@ -186,7 +199,11 @@ export default function AgentChatWorkspace({
   buildMessageContext,
   queryingLabel = 'Thinking through the request...',
   suppressChatErrors = false,
+  streaming = false,
   enableBrainMemorySave = false,
+  memorySection,
+  sectionMemories,
+  onMemorySaved,
   chatSidePanel,
   onChatResponse,
   draftKey,
@@ -217,6 +234,9 @@ export default function AgentChatWorkspace({
   const [chatInput, setChatInput] = useState('')
   const [chatError, setChatError] = useState('')
   const [isChatting, setIsChatting] = useState(false)
+  // True once the streamed reply has started arriving, so the separate "thinking"
+  // indicator is hidden while the answer itself is growing.
+  const [streamingActive, setStreamingActive] = useState(false)
   const [isSavingThread, setIsSavingThread] = useState(false)
   const [isThreadSidebarOpen, setIsThreadSidebarOpen] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
@@ -224,6 +244,8 @@ export default function AgentChatWorkspace({
   const [memoryReviewing, setMemoryReviewing] = useState(false)
   const [isSavingMemory, setIsSavingMemory] = useState(false)
   const [memoryProposal, setMemoryProposal] = useState<BrainMemoryProposal>(EMPTY_MEMORY_PROPOSAL)
+  // 'new' = write a fresh page; 'update' = overwrite an existing memory in place.
+  const [memoryMode, setMemoryMode] = useState<'new' | 'update'>('new')
   const [sectionOptions, setSectionOptions] = useState<Array<{ value: string; label: string }>>([
     { value: COMPANY_SECTION, label: COMPANY_SECTION_LABEL },
   ])
@@ -370,16 +392,38 @@ export default function AgentChatWorkspace({
     setChatInput('')
     setChatError('')
     setIsChatting(true)
+    setStreamingActive(false)
     setChatMessages(nextMessages)
 
     try {
-      const response = await sendAgentChat(agentId, messagesForBackend)
-      const finalMessages = [...nextMessages, response.message]
-      setChatMessages(finalMessages)
-      onChatResponse?.(response)
-      // Await so the session id is set before another message can be sent
-      // (prevents duplicate sessions).
-      await autoSaveThread(finalMessages)
+      let response: AgentChatResponse
+      if (streaming) {
+        let accumulated = ''
+        response = await streamAgentChat(agentId, messagesForBackend, {
+          onDelta: (text) => {
+            accumulated += text
+            setStreamingActive(true)
+            // Rebuild from the stable nextMessages so the growing reply replaces
+            // (not appends to) the previous partial on every token.
+            setChatMessages([...nextMessages, { role: 'assistant', content: accumulated }])
+          },
+        })
+        const finalMessages = [
+          ...nextMessages,
+          response.message ?? { role: 'assistant' as const, content: accumulated },
+        ]
+        setChatMessages(finalMessages)
+        onChatResponse?.(response)
+        await autoSaveThread(finalMessages)
+      } else {
+        response = await sendAgentChat(agentId, messagesForBackend)
+        const finalMessages = [...nextMessages, response.message]
+        setChatMessages(finalMessages)
+        onChatResponse?.(response)
+        // Await so the session id is set before another message can be sent
+        // (prevents duplicate sessions).
+        await autoSaveThread(finalMessages)
+      }
     } catch (submitError) {
       if (suppressChatErrors) {
         setChatMessages((current) => [...current, { role: 'assistant', content: queryingLabel }])
@@ -388,6 +432,7 @@ export default function AgentChatWorkspace({
       }
     } finally {
       setIsChatting(false)
+      setStreamingActive(false)
     }
   }
 
@@ -486,9 +531,37 @@ export default function AgentChatWorkspace({
 
   const openMemoryProposal = () => {
     const latestUserMessage = [...chatMessages].reverse().find((entry) => entry.role === 'user')?.content || ''
-    setMemoryProposal({ ...EMPTY_MEMORY_PROPOSAL, content: latestUserMessage })
+    setMemoryMode('new')
+    setMemoryProposal({
+      ...EMPTY_MEMORY_PROPOSAL,
+      section: memorySection ?? COMPANY_SECTION,
+      content: latestUserMessage,
+    })
     setMemoryReviewing(false)
     setMemoryModalOpen(true)
+  }
+
+  // Switch between saving a fresh memory and replacing an existing one. Leaving
+  // update mode clears the target so a save can't accidentally overwrite.
+  const changeMemoryMode = (mode: 'new' | 'update') => {
+    setMemoryMode(mode)
+    if (mode === 'new') {
+      setMemoryProposal((current) => ({ ...current, targetSlug: undefined }))
+    }
+  }
+
+  // Picking an existing memory to update: lock onto its slug and prefill the
+  // editor with its current title/content/sensitivity so you edit, not retype.
+  const selectUpdateTarget = (slug: string) => {
+    const target = (sectionMemories ?? []).find((memory) => memory.slug === slug)
+    if (!target) return
+    setMemoryProposal((current) => ({
+      ...current,
+      targetSlug: target.slug,
+      title: target.title,
+      content: target.content || current.content,
+      sensitivity: target.sensitivity === 'public' ? 'public' : 'internal',
+    }))
   }
 
   const closeMemoryProposal = () => {
@@ -498,6 +571,10 @@ export default function AgentChatWorkspace({
   }
 
   const reviewMemoryProposal = () => {
+    if (memoryMode === 'update' && !memoryProposal.targetSlug) {
+      message.error('Pick which existing memory to update.')
+      return
+    }
     if (memoryProposal.title.trim().length < 3) {
       message.error('Add a short, descriptive memory title.')
       return
@@ -520,14 +597,16 @@ export default function AgentChatWorkspace({
       })
       setMemoryModalOpen(false)
       setMemoryReviewing(false)
-      message.success(`Saved and verified in GBrain: ${saved.title}`)
+      const verb = saved.updated ? 'Updated' : 'Saved'
+      message.success(`${verb} and verified in GBrain: ${saved.title}`)
       setChatMessages((current) => [
         ...current,
         {
           role: 'assistant',
-          content: `Saved to GBrain and verified.\n\n- Memory: ${saved.title}\n- ID: \`${saved.slug}\`\n- Section: ${sectionOptions.find((option) => option.value === saved.section)?.label ?? saved.section}\n- Sensitivity: ${saved.sensitivity}`,
+          content: `${saved.updated ? 'Updated the existing memory in' : 'Saved to'} GBrain and verified.\n\n- Memory: ${saved.title}\n- ID: \`${saved.slug}\`\n- Section: ${sectionOptions.find((option) => option.value === saved.section)?.label ?? saved.section}\n- Sensitivity: ${saved.sensitivity}`,
         },
       ])
+      onMemorySaved?.()
     } catch (saveError) {
       message.error(saveError instanceof Error ? saveError.message : 'GBrain could not save this memory.')
     } finally {
@@ -733,7 +812,7 @@ export default function AgentChatWorkspace({
                         </div>
                       ))}
 
-                      {isChatting ? (
+                      {isChatting && !streamingActive ? (
                         <div className="chat-message chat-message-assistant">
                           <div className="chat-message-label">{assistantLabel}</div>
                           <div className="chat-message-body">
@@ -802,6 +881,9 @@ export default function AgentChatWorkspace({
                   <div><Text type="secondary">Title</Text><Paragraph strong>{memoryProposal.title}</Paragraph></div>
                   <div><Text type="secondary">Memory</Text><Paragraph>{memoryProposal.content}</Paragraph></div>
                   <Space wrap>
+                    <Tag color={memoryMode === 'update' ? 'orange' : 'green'}>
+                      {memoryMode === 'update' ? 'Updating existing memory' : 'New memory'}
+                    </Tag>
                     <Tag color="gold">{sectionOptions.find((option) => option.value === memoryProposal.section)?.label ?? memoryProposal.section}</Tag>
                     <Tag color={memoryProposal.sensitivity === 'public' ? 'green' : 'blue'}>{memoryProposal.sensitivity}</Tag>
                   </Space>
@@ -815,12 +897,52 @@ export default function AgentChatWorkspace({
                     message="Nothing is saved until you review and confirm."
                     description="Do not include passwords, API keys, tokens, or unnecessary personal information."
                   />
+                  {sectionMemories ? (
+                    <div style={{ width: '100%' }}>
+                      <Text strong>New memory, or update an existing one in this section?</Text>
+                      <div style={{ marginTop: 6 }}>
+                        <Radio.Group
+                          value={memoryMode}
+                          onChange={(event) => changeMemoryMode(event.target.value)}
+                          optionType="button"
+                          buttonStyle="solid"
+                        >
+                          <Radio.Button value="new">Save as new</Radio.Button>
+                          <Radio.Button value="update" disabled={!sectionMemories.length}>
+                            Update existing
+                          </Radio.Button>
+                        </Radio.Group>
+                      </div>
+                      {!sectionMemories.length ? (
+                        <Text type="secondary" style={{ fontSize: 12 }}>
+                          No memories saved in this section yet — save one, then you can update it here.
+                        </Text>
+                      ) : null}
+                      {memoryMode === 'update' && sectionMemories.length ? (
+                        <div style={{ marginTop: 8 }}>
+                          <Select
+                            style={{ width: '100%' }}
+                            placeholder="Choose the memory to replace"
+                            value={memoryProposal.targetSlug}
+                            options={sectionMemories.map((memory) => ({ value: memory.slug, label: memory.title }))}
+                            onChange={selectUpdateTarget}
+                            showSearch
+                            optionFilterProp="label"
+                          />
+                          <Text type="secondary" style={{ fontSize: 12 }}>
+                            This overwrites the selected memory in place — no duplicate is created.
+                          </Text>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
                   <div style={{ width: '100%' }}>
                     <Text strong>Title</Text>
                     <Input
                       value={memoryProposal.title}
                       maxLength={160}
                       placeholder="Example: Preferred content audience"
+                      disabled={memoryMode === 'update'}
                       onChange={(event) => setMemoryProposal((current) => ({ ...current, title: event.target.value }))}
                     />
                   </div>
@@ -834,16 +956,22 @@ export default function AgentChatWorkspace({
                     />
                   </div>
                   <Space direction="vertical" size={4} style={{ width: '100%' }}>
-                    <Text strong>Save to which part of the brain?</Text>
+                    <Text strong>{memorySection ? 'Saving to this section' : 'Save to which part of the brain?'}</Text>
                     <Space wrap>
-                      <Select
-                        value={memoryProposal.section}
-                        style={{ width: 260 }}
-                        // "Trusted Tech Company" = readable by every agent. Any other choice
-                        // scopes the memory to just that agent (the section that will use it).
-                        options={sectionOptions}
-                        onChange={(section) => setMemoryProposal((current) => ({ ...current, section }))}
-                      />
+                      {memorySection ? (
+                        <Tag color="gold" style={{ padding: '4px 10px' }}>
+                          {sectionOptions.find((option) => option.value === memoryProposal.section)?.label ?? memoryProposal.section}
+                        </Tag>
+                      ) : (
+                        <Select
+                          value={memoryProposal.section}
+                          style={{ width: 260 }}
+                          // "Trusted Tech Company" = readable by every agent. Any other choice
+                          // scopes the memory to just that agent (the section that will use it).
+                          options={sectionOptions}
+                          onChange={(section) => setMemoryProposal((current) => ({ ...current, section }))}
+                        />
+                      )}
                       <Select
                         value={memoryProposal.sensitivity}
                         style={{ width: 170 }}
