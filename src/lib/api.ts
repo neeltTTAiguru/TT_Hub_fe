@@ -738,6 +738,7 @@ export type ContentOperationsRun = {
   requestType: string
   userInstructions: string
   workflowMode: 'manual' | 'balanced' | 'draft_automation'
+  keywordListId?: string
   currentStage: string
   status: 'ready' | 'running' | 'waiting_for_approval' | 'completed' | 'error' | 'stopped'
   researchOnly: boolean
@@ -806,6 +807,7 @@ export function createContentOperationsRun(payload: {
   userInstructions: string
   workflowMode: ContentOperationsRun['workflowMode']
   researchOnly: boolean
+  keywordListId?: string
 }) {
   return request<ContentOperationsRun>('/content-operations/runs', {
     method: 'POST',

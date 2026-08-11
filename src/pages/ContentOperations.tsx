@@ -68,6 +68,7 @@ function stateColor(state: string) {
 
 export default function ContentOperations() {
   const [request, setRequest] = useState('')
+  const [keywordListId, setKeywordListId] = useState('')
   const [run, setRun] = useState<ContentOperationsRun | null>(null)
   const [runs, setRuns] = useState<ContentOperationsRun[]>([])
   const [integrations, setIntegrations] = useState<ContentIntegrationMap>({})
@@ -154,6 +155,7 @@ export default function ContentOperations() {
         userInstructions: request.trim(),
         workflowMode: 'draft_automation',
         researchOnly: false,
+        keywordListId: keywordListId.trim() || undefined,
       })
       setRun(created)
       setRuns((current) => [created, ...current.filter((item) => item.runId !== created.runId)])
@@ -258,6 +260,12 @@ export default function ContentOperations() {
               placeholder="Example: Create an article explaining how the T500 can support repossession operations."
               autoSize={{ minRows: 8, maxRows: 16 }}
               onPressEnter={(event) => { if (!event.shiftKey) { event.preventDefault(); void generate() } }}
+            />
+            <Input
+              value={keywordListId}
+              onChange={(event) => setKeywordListId(event.target.value)}
+              placeholder="Ahrefs keyword list ID or URL (optional — defaults to the Trusted list)"
+              allowClear
             />
             <Button type="primary" block size="large" loading={busy} disabled={!request.trim() || !ahrefsReady || !wordpressReady} onClick={() => void generate()}>
               Generate WordPress draft
