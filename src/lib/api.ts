@@ -739,6 +739,16 @@ export type ContentOperationsRun = {
   userInstructions: string
   workflowMode: 'manual' | 'balanced' | 'draft_automation'
   keywordListId?: string
+  surferOptimization?: {
+    editorId: number | null
+    editorUrl: string
+    seoScoreBefore: number | null
+    seoScoreAfter: number | null
+    aiSearchScore: number | null
+    passes: number
+    notes: string
+    optimizedAt: string
+  } | null
   currentStage: string
   status: 'ready' | 'running' | 'waiting_for_approval' | 'completed' | 'error' | 'stopped'
   researchOnly: boolean

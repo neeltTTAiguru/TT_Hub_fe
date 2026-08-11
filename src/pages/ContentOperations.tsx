@@ -22,6 +22,7 @@ const pipelineStages = [
   ['opportunity_scoring', 'Opportunity selection', 'The strongest relevant opportunity is selected from the evidence.'],
   ['seo_brief', 'SEO brief', 'Hermes turns the selected opportunity into a structured article plan.'],
   ['article_writing', 'Article writing', 'Hermes writes the complete Trusted Tech article from the approved context.'],
+  ['content_optimization', 'Surfer SEO optimization', 'Hermes scores the draft in SurferSEO and revises it toward the SEO guidelines.'],
   ['human_review', 'Draft safety review', 'The article passes a draft-only factual and brand gate.'],
   ['image_generation', 'Article images', 'The article topic drives a featured image and relevant section imagery using the approved T500 camera reference.'],
   ['wordpress_draft', 'WordPress draft', 'The final article is created as an unpublished WordPress draft.'],
