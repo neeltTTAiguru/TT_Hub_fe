@@ -1,0 +1,32 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Trusted Tech Agent">
+  <defs>
+    <linearGradient id="tta-shield" x1="32" y1="4" x2="32" y2="60" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#8f8a70"/>
+      <stop offset="1" stop-color="#6f6b52"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Shield = trust -->
+  <path d="M32 4 L55 11 L55 30 C55 44.5 45.4 53.6 32 60 C18.6 53.6 9 44.5 9 30 L9 11 Z"
+        fill="url(#tta-shield)"/>
+  <path d="M32 4 L55 11 L55 30 C55 44.5 45.4 53.6 32 60 C18.6 53.6 9 44.5 9 30 L9 11 Z"
+        fill="none" stroke="#5b5842" stroke-width="1.5" stroke-linejoin="round"/>
+
+  <!-- Antenna -->
+  <line x1="32" y1="20.5" x2="32" y2="15.5" stroke="#f6f6f2" stroke-width="2.2" stroke-linecap="round"/>
+  <circle cx="32" cy="14" r="2.4" fill="#f6f6f2"/>
+
+  <!-- Agent / bot head -->
+  <rect x="21" y="21" width="22" height="17.5" rx="5.5" fill="#f6f6f2"/>
+
+  <!-- Eyes -->
+  <circle cx="27.2" cy="29.5" r="2.5" fill="#6f6b52"/>
+  <circle cx="36.8" cy="29.5" r="2.5" fill="#6f6b52"/>
+
+  <!-- Mouth -->
+  <rect x="27.5" y="34" width="9" height="2.2" rx="1.1" fill="#8f8a70"/>
+
+  <!-- Side ears / connectors -->
+  <rect x="18" y="27" width="3" height="6" rx="1.5" fill="#f6f6f2"/>
+  <rect x="43" y="27" width="3" height="6" rx="1.5" fill="#f6f6f2"/>
+</svg>

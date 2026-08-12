@@ -18,13 +18,40 @@ import TrustedTechAssistant from './pages/TrustedTechAssistant'
 import CompetitorAnalyst from './pages/CompetitorAnalyst'
 import TrustedTechHubSpotAssistant from './pages/TrustedTechHubSpotAssistant'
 import TrustedTechYouTrackAssistant from './pages/TrustedTechYouTrackAssistant'
+import TrustedTechBrevoAssistant from './pages/TrustedTechBrevoAssistant'
+import EmailCampaignBuilder from './pages/EmailCampaignBuilder'
 import TrustedTechAhrefsAssistant from './pages/TrustedTechAhrefsAssistant'
 import ContentOperations from './pages/ContentOperations'
 import Settings from './pages/Settings'
 import NotFound from './pages/NotFound'
 import { setAccessTokenProvider } from './lib/api'
 import trustedTechnologyPrimaryLogo from './assets/trusted-technology-primary-logo.png'
+import trustedTechAgentLogo from './assets/agent-logos/trusted-tech-agent.svg'
+import brainLogo from './assets/agent-logos/brain.svg'
+import hubspotLogo from './assets/agent-logos/hubspot.svg'
+import youtrackLogo from './assets/agent-logos/youtrack.svg'
+import brevoLogo from './assets/agent-logos/brevo.svg'
 import './styles/app.css'
+
+const agentIcon = (
+  <img src={trustedTechAgentLogo} alt="" aria-hidden="true" className="agent-icon" />
+)
+
+const brainIcon = (
+  <img src={brainLogo} alt="" aria-hidden="true" className="agent-icon" />
+)
+
+const hubspotIcon = (
+  <img src={hubspotLogo} alt="" aria-hidden="true" className="agent-icon" />
+)
+
+const youtrackIcon = (
+  <img src={youtrackLogo} alt="" aria-hidden="true" className="agent-icon" />
+)
+
+const brevoIcon = (
+  <img src={brevoLogo} alt="" aria-hidden="true" className="agent-icon" />
+)
 
 const { Header, Sider, Content } = Layout
 const { Text, Title } = Typography
@@ -40,22 +67,32 @@ function getAuthAuthorizationParams(extra?: Record<string, string>) {
 const baseNavItems = [
   {
     key: '/trusted-tech-assistant',
+    icon: brainIcon,
     label: <Link to="/trusted-tech-assistant">Brain</Link>,
   },
   {
     key: '/competitor-analyst',
+    icon: agentIcon,
     label: <Link to="/competitor-analyst">Competitor Analyst</Link>,
   },
   {
     key: '/hubspot-assistant',
+    icon: hubspotIcon,
     label: <Link to="/hubspot-assistant">Hubspot</Link>,
   },
   {
     key: '/youtrack-assistant',
+    icon: youtrackIcon,
     label: <Link to="/youtrack-assistant">YouTrack</Link>,
   },
   {
+    key: '/email-builder',
+    icon: brevoIcon,
+    label: <Link to="/email-builder">Brevo</Link>,
+  },
+  {
     key: 'content-generator-menu',
+    icon: agentIcon,
     label: 'Content Generator',
     children: [
       {
@@ -133,6 +170,8 @@ function AppShell({ isDark, onToggle }: { isDark: boolean; onToggle: () => void 
             <Route path="/competitor-analyst" element={<CompetitorAnalyst />} />
             <Route path="/hubspot-assistant" element={<TrustedTechHubSpotAssistant />} />
             <Route path="/youtrack-assistant" element={<TrustedTechYouTrackAssistant />} />
+            <Route path="/brevo-assistant" element={<TrustedTechBrevoAssistant />} />
+            <Route path="/email-builder" element={<EmailCampaignBuilder />} />
             <Route path="/ahrefs-assistant" element={<TrustedTechAhrefsAssistant />} />
             <Route path="/assistants/content-operations" element={<ContentOperations />} />
             <Route path="/assistants/content-operations/blog/*" element={<Navigate to="/assistants/content-operations" replace />} />

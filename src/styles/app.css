@@ -930,6 +930,19 @@
   color: var(--app-primary-strong);
 }
 
+.agent-icon {
+  width: 18px;
+  height: 18px;
+  display: block;
+  object-fit: contain;
+}
+
+.app-sider .ant-menu-item .ant-menu-item-icon,
+.app-sider .ant-menu-submenu-title .ant-menu-item-icon {
+  display: inline-flex;
+  align-items: center;
+}
+
 .theme-toggle {
   display: flex;
   align-items: center;
@@ -1242,6 +1255,109 @@
   display: grid;
   gap: 10px;
   line-height: 1.6;
+}
+
+.email-builder {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.email-builder-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.email-builder-canvas {
+  border: 1px solid var(--app-border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.email-builder-help .email-builder-steps {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+}
+
+/* Make GrapesJS blocks read as friendly, labelled tiles. */
+.email-builder-canvas .gjs-block {
+  min-height: 72px;
+  padding: 10px 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.email-builder-canvas .gjs-block-label {
+  font-size: 11px;
+  line-height: 1.2;
+  font-weight: 500;
+}
+
+.email-builder-canvas .gjs-block svg {
+  width: 26px;
+  height: 26px;
+}
+
+.email-builder-canvas .gjs-block-category .gjs-title {
+  font-weight: 600;
+}
+
+.agent-querying {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--app-text-muted);
+}
+
+.agent-querying-logo {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  object-fit: contain;
+  animation: agent-querying-pulse 1.4s ease-in-out infinite;
+}
+
+.agent-querying-text {
+  font-weight: 600;
+  animation: agent-querying-fade 1.6s ease-in-out infinite;
+}
+
+@keyframes agent-querying-pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.85;
+  }
+  50% {
+    transform: scale(1.12);
+    opacity: 1;
+  }
+}
+
+@keyframes agent-querying-fade {
+  0% {
+    opacity: 0.35;
+  }
+  30%, 70% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-querying-logo,
+  .agent-querying-text {
+    animation: none;
+  }
 }
 
 .chat-rich-content {

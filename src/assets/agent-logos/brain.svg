@@ -1,0 +1,10 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Brain">
+  <path d="M32 11 C25 7 17 9 15 16 C10 17 8 24 12 28 C9 33 12 40 18 41 C20 48 28 51 32 47 C36 51 44 48 46 41 C52 40 55 33 52 28 C56 24 54 17 49 16 C47 9 39 7 32 11 Z"
+        fill="#6f6b52" stroke="#5b5842" stroke-width="1.5" stroke-linejoin="round"/>
+  <path d="M32 12 C30 18 34 22 32 27 C30 32 34 38 32 46"
+        fill="none" stroke="#f6f6f2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M22 18 C18 20 18 24 22 25" fill="none" stroke="#f6f6f2" stroke-width="1.8" stroke-linecap="round"/>
+  <path d="M20 30 C17 32 18 36 23 36" fill="none" stroke="#f6f6f2" stroke-width="1.8" stroke-linecap="round"/>
+  <path d="M42 18 C46 20 46 24 42 25" fill="none" stroke="#f6f6f2" stroke-width="1.8" stroke-linecap="round"/>
+  <path d="M44 30 C47 32 46 36 41 36" fill="none" stroke="#f6f6f2" stroke-width="1.8" stroke-linecap="round"/>
+</svg>

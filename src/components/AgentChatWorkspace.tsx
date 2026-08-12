@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { useAuth0 } from '@auth0/auth0-react'
 import { Alert, Button, Card, Dropdown, List, Radio, Space, Spin, Tag, Typography, Input, message, Modal, Select } from 'antd'
 import ChatMessageContent from './ChatMessageContent'
+import trustedTechAgentLogo from '../assets/agent-logos/trusted-tech-agent.svg'
 import {
   createChatThread,
   deleteChatThread,
@@ -25,6 +26,28 @@ const { Paragraph, Text } = Typography
 const { TextArea } = Input
 
 const RAW_PROVIDER_ERROR = /api call failed|rate\s*limit|tokens per min|\bTPM\b|platform\.openai\.com\/account\/rate-limits/i
+
+function QueryingIndicator({ label }: { label: string }) {
+  const phases = [label, 'Thinking…', 'Working…', 'Writing…']
+  const [phaseIndex, setPhaseIndex] = useState(0)
+  useEffect(() => {
+    const id = setInterval(() => {
+      setPhaseIndex((prev) => (prev + 1) % phases.length)
+    }, 1600)
+    return () => clearInterval(id)
+  }, [phases.length])
+  return (
+    <span className="agent-querying">
+      <img
+        src={trustedTechAgentLogo}
+        alt=""
+        aria-hidden="true"
+        className="agent-querying-logo"
+      />
+      <span className="agent-querying-text">{phases[phaseIndex]}</span>
+    </span>
+  )
+}
 
 type AgentChatWorkspaceProps = {
   agentId: string
@@ -816,7 +839,7 @@ export default function AgentChatWorkspace({
                         <div className="chat-message chat-message-assistant">
                           <div className="chat-message-label">{assistantLabel}</div>
                           <div className="chat-message-body">
-                            <p>{queryingLabel}</p>
+                            <QueryingIndicator label={queryingLabel} />
                           </div>
                         </div>
                       ) : null}
