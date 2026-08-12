@@ -745,6 +745,8 @@ export type ContentOperationsRun = {
     seoScoreBefore: number | null
     seoScoreAfter: number | null
     aiSearchScore: number | null
+    targetScore?: number
+    targetMet?: boolean
     passes: number
     notes: string
     optimizedAt: string
