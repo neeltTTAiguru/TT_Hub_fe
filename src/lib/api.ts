@@ -1230,14 +1230,21 @@ export function getBrainSectionMemories(section: string) {
 
 export type ResearchedBwcModel = {
   name: string
+  category: string
   batteryLife: string
   resolution: string
   storage: string
-  weight: string
+  fieldOfView: string
+  preRecord: string
   durability: string
+  weight: string
+  lowLight: string
   connectivity: string
   activation: string
+  evidenceManagement: string
+  price: string
   notes: string
+  source: string
 }
 
 export type CompetitorWebsiteResearch = {

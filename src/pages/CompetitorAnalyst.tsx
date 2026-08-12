@@ -5,8 +5,11 @@ import AgentChatWorkspace from '../components/AgentChatWorkspace'
 import { PUBLIC_SAFETY_COMPETITORS } from '../data/publicSafetyCompetitors'
 import {
   getCompetitorSectionMemories,
+  researchCompetitorWebsite,
   saveCompetitorMemory,
   type CompetitorSectionMemory,
+  type CompetitorWebsiteResearch,
+  type ResearchedBwcModel,
 } from '../lib/api'
 
 const { Paragraph, Text } = Typography
@@ -40,6 +43,36 @@ function competitorName(slug: string) {
 
 function competitorWebsite(slug: string) {
   return PUBLIC_SAFETY_COMPETITORS.find((entry) => entry.slug === slug)?.website ?? ''
+}
+
+// Map a backend-researched model onto the manual form's spec keys so a researched
+// model can flow through the same buildSpecSheet / saveCompetitorMemory path.
+const RESEARCH_SPEC_MAP: Array<[keyof ResearchedBwcModel, string]> = [
+  ['batteryLife', 'battery'],
+  ['resolution', 'resolution'],
+  ['storage', 'storage'],
+  ['fieldOfView', 'fov'],
+  ['preRecord', 'prerecord'],
+  ['durability', 'durability'],
+  ['weight', 'weight'],
+  ['lowLight', 'lowlight'],
+  ['connectivity', 'connectivity'],
+  ['activation', 'activation'],
+  ['evidenceManagement', 'management'],
+  ['price', 'price'],
+]
+
+function researchedSpecs(model: ResearchedBwcModel): SpecValues {
+  const specs: SpecValues = {}
+  for (const [from, to] of RESEARCH_SPEC_MAP) {
+    const value = String(model[from] ?? '').trim()
+    if (value) specs[to] = value
+  }
+  return specs
+}
+
+function researchedSpecCount(model: ResearchedBwcModel) {
+  return Object.keys(researchedSpecs(model)).length
 }
 
 function buildSpecSheet(name: string, model: string, specs: SpecValues, notes: string) {
@@ -77,6 +110,13 @@ export default function CompetitorAnalyst() {
   const [sectionMemories, setSectionMemories] = useState<CompetitorSectionMemory[]>([])
   const [sectionLoading, setSectionLoading] = useState(false)
 
+  // Live web research for the selected competitor (web_search-driven extraction).
+  const [researching, setResearching] = useState(false)
+  const [research, setResearch] = useState<CompetitorWebsiteResearch | null>(null)
+  const [researchError, setResearchError] = useState<string | null>(null)
+  const [savingModel, setSavingModel] = useState<string | null>(null)
+  const [savedModels, setSavedModels] = useState<Set<string>>(new Set())
+
   const competitorOptions = useMemo(
     () => PUBLIC_SAFETY_COMPETITORS.map((entry) => ({ value: entry.slug, label: entry.name })),
     [],
@@ -89,6 +129,10 @@ export default function CompetitorAnalyst() {
       setSectionMemories([])
       return
     }
+    // Research results are competitor-specific — clear them when the section changes.
+    setResearch(null)
+    setResearchError(null)
+    setSavedModels(new Set())
     let cancelled = false
     setSectionLoading(true)
     setSectionMemories([])
@@ -170,6 +214,50 @@ export default function CompetitorAnalyst() {
     }
   }
 
+  const runResearch = async () => {
+    if (!selected) return
+    setResearching(true)
+    setResearchError(null)
+    setResearch(null)
+    try {
+      const result = await researchCompetitorWebsite(selected)
+      setResearch(result)
+      if (!result.models.length) {
+        message.info(`No BWC models could be sourced for ${competitorName(selected)} right now.`)
+      } else {
+        message.success(`Found ${result.models.length} model${result.models.length === 1 ? '' : 's'} for ${competitorName(selected)}.`)
+      }
+    } catch (error) {
+      const text = error instanceof Error ? error.message : 'Research failed.'
+      setResearchError(text)
+      message.error(text)
+    } finally {
+      setResearching(false)
+    }
+  }
+
+  const saveResearchedModel = async (found: ResearchedBwcModel) => {
+    if (!research) return
+    setSavingModel(found.name)
+    try {
+      const specs = researchedSpecs(found)
+      const saved = await saveCompetitorMemory({
+        competitor: research.competitor,
+        model: found.name,
+        title: `${research.competitorName} — ${found.name}`,
+        content: buildSpecSheet(research.competitorName, found.name, specs, found.notes || ''),
+        sensitivity: 'internal',
+        source: found.source || research.pagesRead[0] || undefined,
+      })
+      setSavedModels((current) => new Set(current).add(found.name))
+      message.success(`Saved ${found.name} to ${research.competitorName}: ${saved.title}`)
+    } catch (saveError) {
+      message.error(saveError instanceof Error ? saveError.message : 'GBrain could not save this model.')
+    } finally {
+      setSavingModel(null)
+    }
+  }
+
   const selectedName = competitorName(selected)
 
   // Scopes every chat message to the selected competitor and injects the loaded
@@ -245,19 +333,119 @@ export default function CompetitorAnalyst() {
             </Card>
           ))}
         </div>
-        <div>
-          <Button type="primary" disabled={!isAuthenticated} onClick={() => openForSection(selected)}>
-            Add a BWC model to {competitorName(selected)}
+        <Space wrap>
+          <Button
+            type="primary"
+            disabled={!isAuthenticated || researching}
+            loading={researching}
+            onClick={() => void runResearch()}
+          >
+            {researching ? `Researching ${competitorName(selected)}…` : `Research ${competitorName(selected)} now`}
+          </Button>
+          <Button disabled={!isAuthenticated} onClick={() => openForSection(selected)}>
+            Add a BWC model manually
           </Button>
           {!isAuthenticated ? (
-            <Text type="secondary" style={{ marginLeft: 12 }}>
-              Sign in to save competitor memory.
+            <Text type="secondary">Sign in to research and save competitor memory.</Text>
+          ) : (
+            <Text type="secondary">
+              Research uses live web search to read {competitorName(selected)}'s own product pages.
             </Text>
-          ) : null}
-        </div>
+          )}
+        </Space>
       </Space>
     </Card>
   )
+
+  const researchPanel =
+    researchError || research ? (
+      <Card className="section-card" title={`Research results — ${selectedName}`} style={{ marginTop: 16 }}>
+        {researchError ? (
+          <Alert type="error" showIcon message="Research failed" description={researchError} />
+        ) : research && research.models.length === 0 ? (
+          <Alert
+            type="warning"
+            showIcon
+            message={`No BWC models sourced for ${research.competitorName}.`}
+            description="Their site may not expose product specs to automated reads. Try again, or add a model manually."
+          />
+        ) : research ? (
+          <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+            {research.overview ? <Paragraph style={{ marginBottom: 0 }}>{research.overview}</Paragraph> : null}
+            {research.pagesRead.length ? (
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                Read {research.pagesRead.length} page{research.pagesRead.length === 1 ? '' : 's'}:{' '}
+                {research.pagesRead.map((url, index) => (
+                  <span key={url}>
+                    {index > 0 ? ', ' : ''}
+                    <a href={url} target="_blank" rel="noreferrer">
+                      {url.replace(/^https?:\/\/(www\.)?/, '').slice(0, 48)}
+                    </a>
+                  </span>
+                ))}
+              </Text>
+            ) : null}
+            <div
+              style={{
+                display: 'grid',
+                gap: 12,
+                gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
+              }}
+            >
+              {research.models.map((found) => {
+                const specs = researchedSpecs(found)
+                const specEntries = SPEC_FIELDS.filter((field) => specs[field.key])
+                const isSaved = savedModels.has(found.name)
+                return (
+                  <Card key={found.name} size="small" title={found.name}>
+                    <Space direction="vertical" size={6} style={{ width: '100%' }}>
+                      <Space wrap size={4}>
+                        {found.category ? <Tag color="geekblue">{found.category}</Tag> : null}
+                        <Tag>{researchedSpecCount(found)} specs</Tag>
+                      </Space>
+                      {specEntries.length ? (
+                        <div style={{ fontSize: 12 }}>
+                          {specEntries.map((field) => (
+                            <div key={field.key}>
+                              <Text type="secondary">{field.label}: </Text>
+                              <Text>{specs[field.key]}</Text>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <Text type="secondary" style={{ fontSize: 12 }}>
+                          No specs sourced for this model.
+                        </Text>
+                      )}
+                      {found.notes ? (
+                        <Text type="secondary" style={{ fontSize: 12 }}>
+                          {found.notes}
+                        </Text>
+                      ) : null}
+                      {found.source ? (
+                        <a href={found.source} target="_blank" rel="noreferrer" style={{ fontSize: 12 }}>
+                          Source
+                        </a>
+                      ) : null}
+                      <Button
+                        size="small"
+                        type="primary"
+                        block
+                        disabled={isSaved}
+                        loading={savingModel === found.name}
+                        onClick={() => void saveResearchedModel(found)}
+                      >
+                        {isSaved ? 'Saved to GBrain ✓' : 'Save to GBrain'}
+                      </Button>
+                    </Space>
+                  </Card>
+                )
+              })}
+            </div>
+          </Space>
+        ) : null}
+      </Card>
+    ) : null
 
   return (
     <>
@@ -281,7 +469,12 @@ export default function CompetitorAnalyst() {
         chatTitle={`Talk to ${selectedName}`}
         assistantLabel={selectedName}
         backendLabel="Hermes + GBrain"
-        renderBeforeChat={sectionsGrid}
+        renderBeforeChat={
+          <>
+            {sectionsGrid}
+            {researchPanel}
+          </>
+        }
         buildMessageContext={buildChatContext}
         draftKey={`competitor-analyst:${selected}`}
       />
