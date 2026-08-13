@@ -276,6 +276,30 @@ export default function CompetitorAnalyst() {
     } else {
       lines.push(`No memory is stored for ${selectedName} yet.`)
     }
+
+    // Live web-research results shown on this page but NOT yet saved to GBrain.
+    // Inject them so the user can ask about the researched models, specs, and
+    // pricing before deciding which to save. Distinct from approved memory: it
+    // is unverified until saved, so the chat should treat it as provisional.
+    if (research && research.competitor === selected && research.models.length) {
+      lines.push(
+        '',
+        `Unsaved live web research for ${selectedName} (shown on screen, NOT yet saved to GBrain — treat as provisional, unverified evidence you may reference now; remind the user it is unsaved when relevant):`,
+      )
+      if (research.overview) lines.push(`Overview: ${research.overview}`)
+      for (const found of research.models.slice(0, 12)) {
+        const specs = researchedSpecs(found)
+        const specText = SPEC_FIELDS.filter((field) => specs[field.key])
+          .map((field) => `${field.label}: ${specs[field.key]}`)
+          .join('; ')
+        const parts = [found.name]
+        if (found.category) parts.push(`(${found.category})`)
+        if (specText) parts.push(`— ${specText}`)
+        if (found.notes) parts.push(`— Notes: ${found.notes}`)
+        if (found.source) parts.push(`[source: ${found.source}]`)
+        lines.push(`- ${parts.join(' ')}`)
+      }
+    }
     return lines.join('\n').slice(0, 6000)
   }
 
