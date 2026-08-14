@@ -273,6 +273,8 @@ export default function AgentChatWorkspace({
   const [chatInput, setChatInput] = useState('')
   const [attachments, setAttachments] = useState<(ChatAttachment & { id: string })[]>([])
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  // DOM node of each rendered message body, so we can export one to PDF/Word.
+  const messageRefs = useRef(new Map<number, HTMLDivElement>())
   const [chatError, setChatError] = useState('')
   const [isChatting, setIsChatting] = useState(false)
   // True once the streamed reply has started arriving, so the separate "thinking"
@@ -484,6 +486,44 @@ export default function AgentChatWorkspace({
 
   const removeAttachment = (id: string) =>
     setAttachments((current) => current.filter((entry) => entry.id !== id))
+
+  // Export a single assistant message to a real PDF or Word file the browser
+  // downloads directly — so you get a working download instead of a dead link.
+  const downloadMessage = async (index: number, format: 'pdf' | 'word') => {
+    const node = messageRefs.current.get(index)
+    if (!node) return
+    const stamp = new Date().toISOString().slice(0, 10)
+    const base = `${(title || assistantLabel || 'chat').replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-${stamp}`
+    if (format === 'pdf') {
+      try {
+        // Lazy-load the heavy PDF lib only when a PDF is actually requested.
+        const html2pdf = (await import('html2pdf.js')).default
+        await html2pdf()
+          .set({
+            margin: 12,
+            filename: `${base}.pdf`,
+            image: { type: 'jpeg', quality: 0.98 },
+            html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+            pagebreak: { mode: ['avoid-all', 'css', 'legacy'] },
+          })
+          .from(node)
+          .save()
+      } catch {
+        message.error('Could not generate the PDF.')
+      }
+    } else {
+      // Word opens an HTML-based .doc fine; no extra library needed.
+      const html = `<!DOCTYPE html><html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><title>${base}</title></head><body>${node.innerHTML}</body></html>`
+      const blob = new Blob(['﻿', html], { type: 'application/msword' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `${base}.doc`
+      link.click()
+      URL.revokeObjectURL(url)
+    }
+  }
 
   const handlePasteChat = (event: ClipboardEvent<HTMLTextAreaElement>) => {
     const files = Array.from(event.clipboardData?.files ?? [])
@@ -960,8 +1000,34 @@ export default function AgentChatWorkspace({
                           key={`${entry.role}-${index}`}
                           className={`chat-message ${entry.role === 'user' ? 'chat-message-user' : 'chat-message-assistant'}`}
                         >
-                          <div className="chat-message-label">{entry.role === 'user' ? 'You' : assistantLabel}</div>
-                          <div className="chat-message-body">
+                          <div
+                            className="chat-message-label"
+                            style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}
+                          >
+                            <span>{entry.role === 'user' ? 'You' : assistantLabel}</span>
+                            {entry.role === 'assistant' && entry.content.trim().length > 20 ? (
+                              <Dropdown
+                                trigger={['click']}
+                                menu={{
+                                  items: [
+                                    { key: 'pdf', label: 'Download as PDF', onClick: () => void downloadMessage(index, 'pdf') },
+                                    { key: 'word', label: 'Download as Word', onClick: () => void downloadMessage(index, 'word') },
+                                  ],
+                                }}
+                              >
+                                <Button type="text" size="small" style={{ fontSize: 12 }}>
+                                  ⬇ Download
+                                </Button>
+                              </Dropdown>
+                            ) : null}
+                          </div>
+                          <div
+                            className="chat-message-body"
+                            ref={(el) => {
+                              if (el) messageRefs.current.set(index, el)
+                              else messageRefs.current.delete(index)
+                            }}
+                          >
                             <ChatMessageContent
                               content={
                                 suppressChatErrors && entry.role === 'assistant' && RAW_PROVIDER_ERROR.test(entry.content)
