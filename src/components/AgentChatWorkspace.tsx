@@ -195,13 +195,17 @@ const inflightChats = new Map<string, Promise<ChatRunResult>>()
 
 // Wraps a message's HTML in a clean, branded document layout for PDF/Word export
 // so downloads read like a real document, not a screenshot of the chat bubble.
-function buildDocumentHtml(bodyHtml: string, title: string) {
+function buildDocumentHtml(bodyHtml: string, title: string, logo?: string) {
   const date = new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })
+  const brand = logo
+    ? `<img class="tt-doc-logo" src="${logo}" alt="Trusted Technology" />`
+    : `<div class="tt-doc-brand">Trusted Technology</div>`
   return `
   <style>
     .tt-doc { font-family: 'Helvetica Neue', Arial, sans-serif; color:#1f2933; background:#ffffff; line-height:1.55; font-size:12.5px; }
     .tt-doc * { box-sizing:border-box; }
     .tt-doc .tt-doc-header { border-bottom:3px solid #6b6a4b; padding-bottom:10px; margin-bottom:20px; }
+    .tt-doc .tt-doc-logo { height:44px; width:auto; display:block; margin-bottom:8px; }
     .tt-doc .tt-doc-brand { font-size:15px; font-weight:700; letter-spacing:.05em; color:#4a4a35; text-transform:uppercase; }
     .tt-doc .tt-doc-meta { font-size:11px; color:#7b8794; margin-top:3px; }
     .tt-doc h1 { font-size:21px; margin:18px 0 8px; color:#1f2933; page-break-after:avoid; }
@@ -223,7 +227,7 @@ function buildDocumentHtml(bodyHtml: string, title: string) {
   </style>
   <div class="tt-doc">
     <div class="tt-doc-header">
-      <div class="tt-doc-brand">Trusted Technology</div>
+      ${brand}
       <div class="tt-doc-meta">${title} — ${date}</div>
     </div>
     <div class="tt-doc-body">${bodyHtml}</div>
@@ -534,7 +538,15 @@ export default function AgentChatWorkspace({
     const clone = node.cloneNode(true) as HTMLElement
     clone.querySelectorAll('[class]').forEach((el) => el.removeAttribute('class'))
     const docTitle = title || assistantLabel || 'Trusted Tech'
-    const documentHtml = buildDocumentHtml(clone.innerHTML, docTitle)
+    // Lazy-load the logo as a base64 data URI so it embeds in both PDF and Word
+    // (offline) without bloating every page load.
+    let logo: string | undefined
+    try {
+      logo = (await import('../assets/trusted-technology-primary-logo.png?inline')).default
+    } catch {
+      logo = undefined
+    }
+    const documentHtml = buildDocumentHtml(clone.innerHTML, docTitle, logo)
     const stamp = new Date().toISOString().slice(0, 10)
     const base = `${docTitle.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-${stamp}`
 
