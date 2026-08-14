@@ -185,6 +185,14 @@ function clearDraftThreadId(key: string) {
   }
 }
 
+// In-flight chat requests, keyed by draft/section key, kept at MODULE scope so a
+// request survives navigating away from (and back to) the chat. If you leave a
+// section mid-query the component unmounts, but the request keeps running here,
+// persists its answer to the browser draft the moment it lands, and any chat that
+// mounts for the same key re-attaches to it (see the reconnect effect below).
+type ChatRunResult = { finalMessages: AgentChatMessage[]; response: AgentChatResponse }
+const inflightChats = new Map<string, Promise<ChatRunResult>>()
+
 const COMPANY_SECTION = 'company'
 const COMPANY_SECTION_LABEL = 'Trusted Tech Company'
 
@@ -345,6 +353,46 @@ export default function AgentChatWorkspace({
     }
   }, [activeThreadId, draftStorageKey])
 
+  // Re-attach to an in-flight request for this section if one is still running
+  // (e.g. you left HubSpot mid-query and came back): resume the "Querying…" state
+  // and land the answer here when it completes, instead of losing it with the old
+  // view. If it already finished while away, the answer is in the restored draft.
+  useEffect(() => {
+    const run = inflightChats.get(draftStorageKey)
+    if (!run) return
+    let cancelled = false
+    setIsChatting(true)
+    run.then(
+      (settled) => {
+        if (cancelled) return
+        // Restore the VIEW only — the sending instance (even if unmounted) already
+        // persisted the thread and fired onChatResponse, so we don't repeat those.
+        setChatMessages(settled.finalMessages)
+        setHasLastChat(true)
+        setIsChatting(false)
+        // Pick up the thread id the sending view saved so the next message here
+        // continues the same session instead of forking a duplicate.
+        const threadId = loadDraftThreadId(draftStorageKey)
+        if (threadId) {
+          activeThreadIdRef.current = threadId
+          setActiveThreadId(threadId)
+        }
+      },
+      (error) => {
+        if (cancelled) return
+        setIsChatting(false)
+        if (!suppressChatErrors) {
+          setChatError(error instanceof Error ? error.message : `${assistantLabel} could not respond right now.`)
+        }
+      },
+    )
+    return () => {
+      cancelled = true
+    }
+    // Only re-attach on mount / when the section key changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftStorageKey])
+
   const handleDeleteThread = async (threadId: string) => {
     try {
       await deleteChatThread(threadId)
@@ -479,6 +527,9 @@ export default function AgentChatWorkspace({
     setIsChatting(true)
     setStreamingActive(false)
     setChatMessages(nextMessages)
+    // Persist the question right away so it's there even if we navigate off before
+    // the answer arrives.
+    saveChatDraft(draftStorageKey, nextMessages)
 
     try {
       let response: AgentChatResponse
@@ -507,13 +558,30 @@ export default function AgentChatWorkspace({
         onChatResponse?.(response)
         await autoSaveThread(finalMessages)
       } else {
-        response = await sendAgentChat(agentId, messagesForBackend, competitor, attachmentsToSend)
-        const finalMessages = [...nextMessages, response.message]
-        setChatMessages(finalMessages)
-        onChatResponse?.(response)
+        const runKey = draftStorageKey
+        // Run the request at module scope so leaving/returning to this section
+        // can't lose the answer. It persists to the draft the moment it lands, so
+        // even if this view has unmounted, the answer is captured.
+        const run = (async (): Promise<ChatRunResult> => {
+          const res = await sendAgentChat(agentId, messagesForBackend, competitor, attachmentsToSend)
+          const finalMessages = [...nextMessages, res.message]
+          saveChatDraft(runKey, finalMessages)
+          saveLastChat(runKey, finalMessages)
+          return { finalMessages, response: res }
+        })()
+        inflightChats.set(runKey, run)
+        void run.catch(() => {}).finally(() => {
+          if (inflightChats.get(runKey) === run) inflightChats.delete(runKey)
+        })
+
+        const settled = await run
+        response = settled.response
+        setChatMessages(settled.finalMessages)
+        setHasLastChat(true)
+        onChatResponse?.(settled.response)
         // Await so the session id is set before another message can be sent
         // (prevents duplicate sessions).
-        await autoSaveThread(finalMessages)
+        await autoSaveThread(settled.finalMessages)
       }
     } catch (submitError) {
       if (suppressChatErrors) {
