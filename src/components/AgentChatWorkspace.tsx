@@ -193,6 +193,43 @@ function clearDraftThreadId(key: string) {
 type ChatRunResult = { finalMessages: AgentChatMessage[]; response: AgentChatResponse }
 const inflightChats = new Map<string, Promise<ChatRunResult>>()
 
+// Wraps a message's HTML in a clean, branded document layout for PDF/Word export
+// so downloads read like a real document, not a screenshot of the chat bubble.
+function buildDocumentHtml(bodyHtml: string, title: string) {
+  const date = new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })
+  return `
+  <style>
+    .tt-doc { font-family: 'Helvetica Neue', Arial, sans-serif; color:#1f2933; background:#ffffff; line-height:1.55; font-size:12.5px; }
+    .tt-doc * { box-sizing:border-box; }
+    .tt-doc .tt-doc-header { border-bottom:3px solid #6b6a4b; padding-bottom:10px; margin-bottom:20px; }
+    .tt-doc .tt-doc-brand { font-size:15px; font-weight:700; letter-spacing:.05em; color:#4a4a35; text-transform:uppercase; }
+    .tt-doc .tt-doc-meta { font-size:11px; color:#7b8794; margin-top:3px; }
+    .tt-doc h1 { font-size:21px; margin:18px 0 8px; color:#1f2933; page-break-after:avoid; }
+    .tt-doc h2 { font-size:16px; margin:18px 0 6px; color:#243b53; border-bottom:1px solid #e4e7eb; padding-bottom:4px; page-break-after:avoid; }
+    .tt-doc h3 { font-size:13.5px; margin:14px 0 4px; color:#334e68; page-break-after:avoid; }
+    .tt-doc p { margin:0 0 10px; }
+    .tt-doc ul, .tt-doc ol { margin:0 0 10px; padding-left:22px; }
+    .tt-doc li { margin:3px 0; page-break-inside:avoid; }
+    .tt-doc a { color:#3b6bb8; text-decoration:none; }
+    .tt-doc code { font-family:'SFMono-Regular',Consolas,monospace; background:#f3f4f6; padding:1px 4px; border-radius:3px; font-size:11.5px; }
+    .tt-doc pre { background:#f3f4f6; padding:10px 12px; border-radius:6px; overflow:auto; font-size:11px; page-break-inside:avoid; }
+    .tt-doc table { width:100%; border-collapse:collapse; margin:10px 0 16px; font-size:11.5px; }
+    .tt-doc th, .tt-doc td { border:1px solid #cbd2d9; padding:6px 9px; text-align:left; vertical-align:top; }
+    .tt-doc th { background:#f0f1e8; font-weight:700; color:#3e3e2d; }
+    .tt-doc tr { page-break-inside:avoid; }
+    .tt-doc tr:nth-child(even) td { background:#fafbf7; }
+    .tt-doc strong { color:#1f2933; }
+    .tt-doc blockquote { margin:10px 0; padding:6px 14px; border-left:3px solid #cbd2d9; color:#52606d; }
+  </style>
+  <div class="tt-doc">
+    <div class="tt-doc-header">
+      <div class="tt-doc-brand">Trusted Technology</div>
+      <div class="tt-doc-meta">${title} — ${date}</div>
+    </div>
+    <div class="tt-doc-body">${bodyHtml}</div>
+  </div>`
+}
+
 const COMPANY_SECTION = 'company'
 const COMPANY_SECTION_LABEL = 'Trusted Tech Company'
 
@@ -492,30 +529,43 @@ export default function AgentChatWorkspace({
   const downloadMessage = async (index: number, format: 'pdf' | 'word') => {
     const node = messageRefs.current.get(index)
     if (!node) return
+    // Clone the rendered message and drop chat-specific classes so only the
+    // document styles apply (no cramped/bubble/theme styling bleeds in).
+    const clone = node.cloneNode(true) as HTMLElement
+    clone.querySelectorAll('[class]').forEach((el) => el.removeAttribute('class'))
+    const docTitle = title || assistantLabel || 'Trusted Tech'
+    const documentHtml = buildDocumentHtml(clone.innerHTML, docTitle)
     const stamp = new Date().toISOString().slice(0, 10)
-    const base = `${(title || assistantLabel || 'chat').replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-${stamp}`
+    const base = `${docTitle.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-${stamp}`
+
     if (format === 'pdf') {
+      // Render the styled document off-screen, then rasterize THAT (not the bubble).
+      const container = document.createElement('div')
+      container.style.cssText = 'position:fixed; left:-10000px; top:0; width:760px; background:#ffffff; padding:0;'
+      container.innerHTML = documentHtml
+      document.body.appendChild(container)
       try {
-        // Lazy-load the heavy PDF lib only when a PDF is actually requested.
         const html2pdf = (await import('html2pdf.js')).default
         await html2pdf()
           .set({
-            margin: 12,
+            margin: [14, 14, 16, 14],
             filename: `${base}.pdf`,
             image: { type: 'jpeg', quality: 0.98 },
             html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
             jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-            pagebreak: { mode: ['avoid-all', 'css', 'legacy'] },
+            pagebreak: { mode: ['css', 'legacy'] },
           })
-          .from(node)
+          .from(container)
           .save()
       } catch {
         message.error('Could not generate the PDF.')
+      } finally {
+        document.body.removeChild(container)
       }
     } else {
-      // Word opens an HTML-based .doc fine; no extra library needed.
-      const html = `<!DOCTYPE html><html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><title>${base}</title></head><body>${node.innerHTML}</body></html>`
-      const blob = new Blob(['﻿', html], { type: 'application/msword' })
+      // Word opens an HTML-based .doc fine; embed the same document styling.
+      const full = `<!DOCTYPE html><html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><title>${base}</title></head><body>${documentHtml}</body></html>`
+      const blob = new Blob(['﻿', full], { type: 'application/msword' })
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
