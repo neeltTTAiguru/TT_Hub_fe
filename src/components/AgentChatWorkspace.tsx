@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { ReactNode } from 'react'
+import type { ClipboardEvent, ReactNode } from 'react'
 import { useAuth0 } from '@auth0/auth0-react'
 import { Alert, Button, Card, Dropdown, List, Radio, Space, Spin, Tag, Typography, Input, message, Modal, Select } from 'antd'
 import ChatMessageContent from './ChatMessageContent'
@@ -9,6 +9,7 @@ import {
   deleteChatThread,
   getAgent,
   getAgents,
+  getChatThread,
   getChatThreads,
   sendAgentChat,
   streamAgentChat,
@@ -19,7 +20,8 @@ import {
   type AgentChatResponse,
   type BrainMemoryProposal,
   type BrainSectionMemory,
-  type ChatThread,
+  type ChatAttachment,
+  type ChatThreadSummary,
 } from '../lib/api'
 
 const { Paragraph, Text } = Typography
@@ -92,6 +94,11 @@ type AgentChatWorkspaceProps = {
   // refresh/freeze doesn't lose it. Defaults to the agentId; pass a more specific
   // key (e.g. per competitor) to keep separate drafts.
   draftKey?: string
+  // Optional sub-scope within an agent's saved chats. The Competitor Analyst
+  // reuses one agentId across every competitor, so it passes the competitor slug
+  // here to keep each section's server-persisted threads isolated (otherwise
+  // every competitor's chats share one bucket and surface under the default).
+  competitor?: string
 }
 
 const DRAFT_PREFIX = 'tt-chat-draft:'
@@ -230,6 +237,7 @@ export default function AgentChatWorkspace({
   chatSidePanel,
   onChatResponse,
   draftKey,
+  competitor,
 }: AgentChatWorkspaceProps) {
   const { isAuthenticated } = useAuth0()
   const draftStorageKey = draftKey ?? agentId
@@ -243,7 +251,7 @@ export default function AgentChatWorkspace({
     return showInitialAssistantMessage ? [{ role: 'assistant', content: intro }] : []
   })
   const [hasLastChat, setHasLastChat] = useState(() => Boolean(loadLastChat(draftStorageKey)))
-  const [savedThreads, setSavedThreads] = useState<ChatThread[]>([])
+  const [savedThreads, setSavedThreads] = useState<ChatThreadSummary[]>([])
   const [activeThreadId, setActiveThreadId] = useState<string | null>(() => {
     // Reconnect a restored draft to its saved session so continuing it updates
     // that session rather than creating a duplicate.
@@ -255,6 +263,8 @@ export default function AgentChatWorkspace({
   // Prevents a second create while the first is still in flight (dup guard).
   const creatingThreadRef = useRef(false)
   const [chatInput, setChatInput] = useState('')
+  const [attachments, setAttachments] = useState<(ChatAttachment & { id: string })[]>([])
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [chatError, setChatError] = useState('')
   const [isChatting, setIsChatting] = useState(false)
   // True once the streamed reply has started arriving, so the separate "thinking"
@@ -282,7 +292,7 @@ export default function AgentChatWorkspace({
       try {
         const [agentResponse, threadsResponse, agentsResponse] = await Promise.all([
           getAgent(agentId),
-          isAuthenticated ? getChatThreads(agentId) : Promise.resolve([]),
+          isAuthenticated ? getChatThreads(agentId, competitor) : Promise.resolve([]),
           enableBrainMemorySave ? getAgents() : Promise.resolve([]),
         ])
 
@@ -306,7 +316,7 @@ export default function AgentChatWorkspace({
     }
 
     void load()
-  }, [agentId, isAuthenticated, enableBrainMemorySave])
+  }, [agentId, competitor, isAuthenticated, enableBrainMemorySave])
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -374,6 +384,7 @@ export default function AgentChatWorkspace({
     try {
       const payload = {
         agentId,
+        competitor,
         title: threadTitleFrom(messages),
         messages,
         thread: { messages },
@@ -389,30 +400,81 @@ export default function AgentChatWorkspace({
     }
   }
 
+  // ---- Attachments (paste / attach files → images + docs for the model) ----
+  const readFileAsDataUrl = (file: File) =>
+    new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(String(reader.result || ''))
+      reader.onerror = () => reject(reader.error)
+      reader.readAsDataURL(file)
+    })
+
+  const addFiles = async (files: File[]) => {
+    const MAX_BYTES = 15 * 1024 * 1024
+    const MAX_COUNT = 8
+    const room = Math.max(0, MAX_COUNT - attachments.length)
+    const added: (ChatAttachment & { id: string })[] = []
+    for (const file of files.slice(0, room)) {
+      if (file.size > MAX_BYTES) {
+        message.error(`${file.name || 'File'} is too large (max 15MB).`)
+        continue
+      }
+      try {
+        const dataUrl = await readFileAsDataUrl(file)
+        added.push({
+          id: `${file.name}-${file.size}-${Math.random().toString(36).slice(2)}`,
+          name: file.name || 'attachment',
+          mimeType: file.type || 'application/octet-stream',
+          dataBase64: dataUrl,
+        })
+      } catch {
+        message.error(`Could not read ${file.name || 'file'}.`)
+      }
+    }
+    if (added.length) setAttachments((current) => [...current, ...added])
+  }
+
+  const removeAttachment = (id: string) =>
+    setAttachments((current) => current.filter((entry) => entry.id !== id))
+
+  const handlePasteChat = (event: ClipboardEvent<HTMLTextAreaElement>) => {
+    const files = Array.from(event.clipboardData?.files ?? [])
+    if (files.length) {
+      event.preventDefault()
+      void addFiles(files)
+    }
+  }
+
   const handleSendChat = async () => {
     const trimmedInput = chatInput.trim()
 
-    if (!trimmedInput || isChatting) {
+    if ((!trimmedInput && attachments.length === 0) || isChatting) {
       return
     }
+    const attachmentsToSend: ChatAttachment[] = attachments.map(({ name, mimeType, dataBase64 }) => ({
+      name,
+      mimeType,
+      dataBase64,
+    }))
+
+    // What the user sees: their text plus a 📎 line per attachment (so an
+    // image-only send still shows something). What the backend gets: clean text —
+    // the attachments themselves ride in `attachmentsToSend`.
+    const attachmentLabels = attachmentsToSend.map((entry) => `📎 ${entry.name}`)
+    const displayContent = [trimmedInput, ...attachmentLabels].filter(Boolean).join('\n')
+    const baseText = trimmedInput || 'Please analyze the attached file(s).'
 
     const nextUserMessage: AgentChatMessage = {
       role: 'user',
-      content: trimmedInput,
+      content: displayContent,
     }
     const nextMessages = [...chatMessages, nextUserMessage]
     const context = buildMessageContext?.().trim() || ''
-    const messagesForBackend = context
-      ? [
-          ...chatMessages,
-          {
-            role: 'user' as const,
-            content: `${context}\n\nUser request:\n${trimmedInput}`,
-          },
-        ]
-      : nextMessages
+    const backendText = context ? `${context}\n\nUser request:\n${baseText}` : baseText
+    const messagesForBackend = [...chatMessages, { role: 'user' as const, content: backendText }]
 
     setChatInput('')
+    setAttachments([])
     setChatError('')
     setIsChatting(true)
     setStreamingActive(false)
@@ -422,15 +484,21 @@ export default function AgentChatWorkspace({
       let response: AgentChatResponse
       if (streaming) {
         let accumulated = ''
-        response = await streamAgentChat(agentId, messagesForBackend, {
-          onDelta: (text) => {
-            accumulated += text
-            setStreamingActive(true)
-            // Rebuild from the stable nextMessages so the growing reply replaces
-            // (not appends to) the previous partial on every token.
-            setChatMessages([...nextMessages, { role: 'assistant', content: accumulated }])
+        response = await streamAgentChat(
+          agentId,
+          messagesForBackend,
+          {
+            onDelta: (text) => {
+              accumulated += text
+              setStreamingActive(true)
+              // Rebuild from the stable nextMessages so the growing reply replaces
+              // (not appends to) the previous partial on every token.
+              setChatMessages([...nextMessages, { role: 'assistant', content: accumulated }])
+            },
           },
-        })
+          competitor,
+          attachmentsToSend,
+        )
         const finalMessages = [
           ...nextMessages,
           response.message ?? { role: 'assistant' as const, content: accumulated },
@@ -439,7 +507,7 @@ export default function AgentChatWorkspace({
         onChatResponse?.(response)
         await autoSaveThread(finalMessages)
       } else {
-        response = await sendAgentChat(agentId, messagesForBackend)
+        response = await sendAgentChat(agentId, messagesForBackend, competitor, attachmentsToSend)
         const finalMessages = [...nextMessages, response.message]
         setChatMessages(finalMessages)
         onChatResponse?.(response)
@@ -467,7 +535,7 @@ export default function AgentChatWorkspace({
     try {
       const [agentResponse, threadsResponse] = await Promise.all([
         getAgent(agentId),
-        isAuthenticated ? getChatThreads(agentId) : Promise.resolve([]),
+        isAuthenticated ? getChatThreads(agentId, competitor) : Promise.resolve([]),
       ])
       setAgent(agentResponse)
       setSavedThreads(threadsResponse)
@@ -495,22 +563,23 @@ export default function AgentChatWorkspace({
     setIsThreadSidebarOpen(false)
   }
 
-  const handleImportThread = (threadId: string) => {
-    const selectedThread = savedThreads.find((thread) => thread._id === threadId)
+  const handleImportThread = async (threadId: string) => {
+    // The list is metadata-only; fetch the full thread (with messages) on open.
+    try {
+      const full = await getChatThread(threadId)
+      const importedMessages =
+        Array.isArray(full.thread?.messages) && full.thread.messages.length
+          ? full.thread.messages
+          : full.messages
 
-    if (!selectedThread) {
-      return
+      setChatMessages(importedMessages)
+      setActiveThreadId(full._id)
+      activeThreadIdRef.current = full._id
+      setChatError('')
+      setIsThreadSidebarOpen(false)
+    } catch {
+      message.error('Could not open that chat.')
     }
-
-    const importedMessages =
-      Array.isArray(selectedThread.thread?.messages) && selectedThread.thread.messages.length
-        ? selectedThread.thread.messages
-        : selectedThread.messages
-
-    setChatMessages(importedMessages)
-    setActiveThreadId(selectedThread._id)
-    setChatError('')
-    setIsThreadSidebarOpen(false)
   }
 
   const buildThreadTitle = () => {
@@ -529,6 +598,7 @@ export default function AgentChatWorkspace({
     try {
       const payload = {
         agentId,
+        competitor,
         title: buildThreadTitle(),
         messages: chatMessages,
         thread: {
@@ -729,7 +799,7 @@ export default function AgentChatWorkspace({
                                   </Button>
                                 </span>
                               ),
-                              onClick: () => handleImportThread(thread._id),
+                              onClick: () => void handleImportThread(thread._id),
                             }))
                           : [{ key: '__empty', label: 'No saved chats yet — start chatting', disabled: true }],
                       }}
@@ -784,7 +854,7 @@ export default function AgentChatWorkspace({
                               key={thread._id}
                               type="button"
                               className={`chat-thread-item ${activeThreadId === thread._id ? 'chat-thread-item-active' : ''}`}
-                              onClick={() => handleImportThread(thread._id)}
+                              onClick={() => void handleImportThread(thread._id)}
                               disabled={isChatting}
                             >
                               <strong>{thread.title}</strong>
@@ -848,9 +918,67 @@ export default function AgentChatWorkspace({
                     </div>
 
                     <div className="chat-composer">
+                      {attachments.length ? (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
+                          {attachments.map((att) => {
+                            const isImage = /^image\//i.test(att.mimeType)
+                            return (
+                              <span
+                                key={att.id}
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: 6,
+                                  border: '1px solid var(--app-border, rgba(0,0,0,0.15))',
+                                  borderRadius: 8,
+                                  padding: '4px 8px',
+                                  maxWidth: 240,
+                                }}
+                              >
+                                {isImage ? (
+                                  <img
+                                    src={att.dataBase64}
+                                    alt={att.name}
+                                    style={{ width: 28, height: 28, objectFit: 'cover', borderRadius: 4 }}
+                                  />
+                                ) : (
+                                  <span aria-hidden>📄</span>
+                                )}
+                                <span
+                                  style={{ fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                                >
+                                  {att.name}
+                                </span>
+                                <Button
+                                  type="text"
+                                  size="small"
+                                  aria-label={`Remove ${att.name}`}
+                                  onClick={() => removeAttachment(att.id)}
+                                  style={{ padding: 0, height: 'auto', lineHeight: 1 }}
+                                >
+                                  ✕
+                                </Button>
+                              </span>
+                            )
+                          })}
+                        </div>
+                      ) : null}
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        multiple
+                        accept="image/*,.pdf,.doc,.docx,.txt,.md,.csv,.json"
+                        style={{ display: 'none' }}
+                        onChange={(event) => {
+                          const files = Array.from(event.target.files ?? [])
+                          if (files.length) void addFiles(files)
+                          event.target.value = ''
+                        }}
+                      />
                       <TextArea
                         value={chatInput}
                         onChange={(event) => setChatInput(event.target.value)}
+                        onPaste={handlePasteChat}
                         placeholder={emptyPrompt}
                         autoSize={{ minRows: 3, maxRows: 7 }}
                         onPressEnter={(event) => {
@@ -861,6 +989,13 @@ export default function AgentChatWorkspace({
                         }}
                       />
                       <div className="chat-composer-actions">
+                        <Button
+                          onClick={() => fileInputRef.current?.click()}
+                          disabled={isChatting}
+                          title="Attach images or documents (or paste an image)"
+                        >
+                          📎 Attach
+                        </Button>
                         <Button type="primary" onClick={() => void handleSendChat()} loading={isChatting}>
                           Send
                         </Button>

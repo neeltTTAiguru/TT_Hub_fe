@@ -501,6 +501,7 @@ export default function CompetitorAnalyst() {
         }
         buildMessageContext={buildChatContext}
         draftKey={`competitor-analyst:${selected}`}
+        competitor={selected}
       />
 
       <Modal

@@ -7,12 +7,13 @@ import {
   createResearchRun,
   captureBrowserResearchPage,
   getAgent,
+  getChatThread,
   getChatThreads,
   sendAgentChat,
   updateChatThread,
   type AgentChatMessage,
   type AgentDetail,
-  type ChatThread,
+  type ChatThreadSummary,
 } from '../lib/api'
 
 const { Text } = Typography
@@ -33,7 +34,7 @@ export default function Dashboard() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [chatMessages, setChatMessages] = useState<AgentChatMessage[]>([initialChatMessage])
-  const [savedThreads, setSavedThreads] = useState<ChatThread[]>([])
+  const [savedThreads, setSavedThreads] = useState<ChatThreadSummary[]>([])
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null)
   const [chatInput, setChatInput] = useState('')
   const [chatError, setChatError] = useState('')
@@ -172,22 +173,22 @@ export default function Dashboard() {
     }
   }
 
-  const handleImportThread = (threadId: string) => {
-    const selectedThread = savedThreads.find((thread) => thread._id === threadId)
+  const handleImportThread = async (threadId: string) => {
+    // The list is metadata-only; fetch the full thread (with messages) on open.
+    try {
+      const full = await getChatThread(threadId)
+      const importedMessages =
+        Array.isArray(full.thread?.messages) && full.thread.messages.length
+          ? full.thread.messages
+          : full.messages
 
-    if (!selectedThread) {
-      return
+      setChatMessages(importedMessages)
+      setActiveThreadId(full._id)
+      setChatError('')
+      setIsThreadSidebarOpen(false)
+    } catch {
+      setChatError('Could not open that saved thread.')
     }
-
-    const importedMessages =
-      Array.isArray(selectedThread.thread?.messages) && selectedThread.thread.messages.length
-        ? selectedThread.thread.messages
-        : selectedThread.messages
-
-    setChatMessages(importedMessages)
-    setActiveThreadId(selectedThread._id)
-    setChatError('')
-    setIsThreadSidebarOpen(false)
   }
 
   const handleNewThread = () => {
@@ -318,7 +319,7 @@ export default function Dashboard() {
                           key={thread._id}
                           type="button"
                           className={`chat-thread-item ${activeThreadId === thread._id ? 'chat-thread-item-active' : ''}`}
-                          onClick={() => handleImportThread(thread._id)}
+                          onClick={() => void handleImportThread(thread._id)}
                           disabled={isChatting}
                         >
                           <strong>{thread.title}</strong>

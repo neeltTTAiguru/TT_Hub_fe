@@ -196,6 +196,7 @@ export type ChatThread = {
   _id: string
   userId: string
   agentId: string
+  competitor?: string
   title: string
   messages: AgentChatMessage[]
   thread: {
@@ -204,6 +205,17 @@ export type ChatThread = {
   }
   updatedAt: string
   createdAt: string
+}
+
+// Metadata-only shape returned by the Saved-chats list (no message bodies, so the
+// list stays cheap). Fetch the full ChatThread by id when the user opens one.
+export type ChatThreadSummary = {
+  _id: string
+  agentId: string
+  competitor?: string
+  title: string
+  updatedAt: string
+  createdAt?: string
 }
 
 export type AgentChatResponse = {
@@ -1090,16 +1102,39 @@ export function createResearchRun(payload: {
   })
 }
 
-export function sendAgentChat(agentId: string, messages: AgentChatMessage[]) {
+// A file/image the user attached to a chat message. `dataBase64` may be a bare
+// base64 string or a full `data:<mime>;base64,…` URI.
+export type ChatAttachment = {
+  name: string
+  mimeType: string
+  dataBase64: string
+}
+
+export function sendAgentChat(
+  agentId: string,
+  messages: AgentChatMessage[],
+  competitor?: string,
+  attachments?: ChatAttachment[],
+) {
+  const body: {
+    messages: AgentChatMessage[]
+    competitor?: string
+    attachments?: ChatAttachment[]
+  } = { messages }
+  // `competitor` scopes GBrain memory retrieval to one competitor section.
+  if (competitor) body.competitor = competitor
+  // Attachments (PDF/Word/text extracted to text; images sent for vision).
+  if (attachments?.length) body.attachments = attachments
+
   return request<AgentChatResponse>(
     `/agents/${agentId}/chat`,
     {
       method: 'POST',
-      body: JSON.stringify({ messages }),
+      body: JSON.stringify(body),
     },
-    // HubSpot (Hermes → HubSpot) can be slow; bound it so the UI fails cleanly
-    // instead of hanging, while the conversation stays saved for retry.
-    { timeoutMs: 120000 },
+    // HubSpot (Hermes → HubSpot) and vision/extraction can be slow; bound it so
+    // the UI fails cleanly instead of hanging, while the conversation stays saved.
+    { timeoutMs: 180000 },
   )
 }
 
@@ -1111,6 +1146,8 @@ export async function streamAgentChat(
   agentId: string,
   messages: AgentChatMessage[],
   handlers: { onDelta: (text: string) => void; signal?: AbortSignal },
+  competitor?: string,
+  attachments?: ChatAttachment[],
 ): Promise<AgentChatResponse> {
   const headers = new Headers({ 'Content-Type': 'application/json' })
   if (accessTokenProvider) {
@@ -1118,10 +1155,14 @@ export async function streamAgentChat(
     if (token) headers.set('Authorization', `Bearer ${token}`)
   }
 
+  const streamBody: { messages: AgentChatMessage[]; competitor?: string; attachments?: ChatAttachment[] } = { messages }
+  if (competitor) streamBody.competitor = competitor
+  if (attachments?.length) streamBody.attachments = attachments
+
   const response = await fetch(`${API_BASE_URL}/agents/${agentId}/chat/stream`, {
     method: 'POST',
     headers,
-    body: JSON.stringify({ messages }),
+    body: JSON.stringify(streamBody),
     signal: handlers.signal,
   })
 
@@ -1276,22 +1317,34 @@ export function saveCompetitorMemory(proposal: CompetitorMemoryProposal) {
   })
 }
 
-export function getChatThreads(agentId?: string) {
+export function getChatThreads(agentId?: string, competitor?: string) {
   const search = new URLSearchParams()
 
   if (agentId) {
     search.set('agentId', agentId)
   }
 
+  // Sub-scope within an agent (e.g. one competitor section of the Competitor
+  // Analyst). Omitted for agents whose threads aren't subdivided.
+  if (competitor) {
+    search.set('competitor', competitor)
+  }
+
   const query = search.toString()
 
-  return request<ChatThread[]>(`/chat-threads${query ? `?${query}` : ''}`, {
+  return request<ChatThreadSummary[]>(`/chat-threads${query ? `?${query}` : ''}`, {
   })
+}
+
+// Full thread (with messages) — fetched lazily when the user opens a saved chat.
+export function getChatThread(threadId: string) {
+  return request<ChatThread>(`/chat-threads/${threadId}`)
 }
 
 export function createChatThread(
   payload: {
     agentId: string
+    competitor?: string
     title: string
     messages: AgentChatMessage[]
     thread: {
@@ -1310,6 +1363,7 @@ export function updateChatThread(
   threadId: string,
   payload: {
     agentId: string
+    competitor?: string
     title: string
     messages: AgentChatMessage[]
     thread: {
