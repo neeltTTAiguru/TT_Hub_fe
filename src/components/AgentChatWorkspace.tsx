@@ -539,23 +539,31 @@ export default function AgentChatWorkspace({
     const base = `${docTitle.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-${stamp}`
 
     if (format === 'pdf') {
-      // Render the styled document off-screen, then rasterize THAT (not the bubble).
+      // Render the styled document off-screen with ABSOLUTE positioning (html2canvas
+      // renders `fixed` off-screen elements blank), then rasterize THAT — not the bubble.
       const container = document.createElement('div')
-      container.style.cssText = 'position:fixed; left:-10000px; top:0; width:760px; background:#ffffff; padding:0;'
+      container.style.cssText = 'position:absolute; left:-9999px; top:0; width:760px; background:#ffffff; padding:0;'
       container.innerHTML = documentHtml
       document.body.appendChild(container)
+      // Hand html2pdf the IN-FLOW .tt-doc element (with real height), not the
+      // absolutely-positioned wrapper — a positioned clone collapses to height 0
+      // and produces a blank page. The wrapper stays in the DOM so its <style>
+      // rules apply globally to the clone.
+      const target = (container.querySelector('.tt-doc') as HTMLElement | null) ?? container
       try {
+        // Let layout/fonts settle before capture, or the canvas can come out empty.
+        await new Promise((resolve) => setTimeout(resolve, 80))
         const html2pdf = (await import('html2pdf.js')).default
         await html2pdf()
           .set({
             margin: [14, 14, 16, 14],
             filename: `${base}.pdf`,
             image: { type: 'jpeg', quality: 0.98 },
-            html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+            html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff', scrollX: 0, scrollY: 0 },
             jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
             pagebreak: { mode: ['css', 'legacy'] },
           })
-          .from(container)
+          .from(target)
           .save()
       } catch {
         message.error('Could not generate the PDF.')
