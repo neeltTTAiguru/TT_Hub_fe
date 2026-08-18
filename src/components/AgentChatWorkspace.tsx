@@ -29,7 +29,7 @@ const { TextArea } = Input
 
 const RAW_PROVIDER_ERROR = /api call failed|rate\s*limit|tokens per min|\bTPM\b|platform\.openai\.com\/account\/rate-limits/i
 
-function QueryingIndicator({ label }: { label: string }) {
+function QueryingIndicator({ label, logo }: { label: string; logo: string }) {
   const phases = [label, 'Thinking…', 'Working…', 'Writing…']
   const [phaseIndex, setPhaseIndex] = useState(0)
   useEffect(() => {
@@ -41,7 +41,7 @@ function QueryingIndicator({ label }: { label: string }) {
   return (
     <span className="agent-querying">
       <img
-        src={trustedTechAgentLogo}
+        src={logo}
         alt=""
         aria-hidden="true"
         className="agent-querying-logo"
@@ -65,6 +65,9 @@ type AgentChatWorkspaceProps = {
   showChatWorkspace?: boolean
   chatTitle?: string
   assistantLabel?: string
+  // Logo shown on the assistant's messages and in the thinking indicator.
+  // Defaults to the generic Trusted Tech agent mark.
+  agentLogo?: string
   backendLabel?: string
   showRefreshButton?: boolean
   renderBeforeChat?: ReactNode
@@ -270,6 +273,7 @@ export default function AgentChatWorkspace({
   showChatWorkspace = true,
   chatTitle = 'Hermes Chat',
   assistantLabel = 'Hermes',
+  agentLogo = trustedTechAgentLogo,
   backendLabel = 'OpenAI via backend',
   showRefreshButton = false,
   renderBeforeChat,
@@ -1070,25 +1074,31 @@ export default function AgentChatWorkspace({
                           key={`${entry.role}-${index}`}
                           className={`chat-message ${entry.role === 'user' ? 'chat-message-user' : 'chat-message-assistant'}`}
                         >
-                          <div
-                            className="chat-message-label"
-                            style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}
-                          >
-                            <span>{entry.role === 'user' ? 'You' : assistantLabel}</span>
+                          <div className="chat-message-label">
+                            <span className="chat-message-who">
+                              {entry.role === 'user' ? (
+                                <span className="chat-message-avatar-you" aria-hidden="true">You</span>
+                              ) : (
+                                <img className="chat-message-avatar" src={agentLogo} alt="" aria-hidden="true" />
+                              )}
+                              <span>{entry.role === 'user' ? 'You' : assistantLabel}</span>
+                            </span>
                             {entry.role === 'assistant' && entry.content.trim().length > 20 ? (
-                              <Dropdown
-                                trigger={['click']}
-                                menu={{
-                                  items: [
-                                    { key: 'pdf', label: 'Download as PDF', onClick: () => void downloadMessage(index, 'pdf') },
-                                    { key: 'word', label: 'Download as Word', onClick: () => void downloadMessage(index, 'word') },
-                                  ],
-                                }}
-                              >
-                                <Button type="text" size="small" style={{ fontSize: 12 }}>
-                                  ⬇ Download
-                                </Button>
-                              </Dropdown>
+                              <span className="chat-message-actions">
+                                <Dropdown
+                                  trigger={['click']}
+                                  menu={{
+                                    items: [
+                                      { key: 'pdf', label: 'Download as PDF', onClick: () => void downloadMessage(index, 'pdf') },
+                                      { key: 'word', label: 'Download as Word', onClick: () => void downloadMessage(index, 'word') },
+                                    ],
+                                  }}
+                                >
+                                  <Button type="text" size="small" style={{ fontSize: 12 }}>
+                                    ⬇ Download
+                                  </Button>
+                                </Dropdown>
+                              </span>
                             ) : null}
                           </div>
                           <div
@@ -1111,9 +1121,14 @@ export default function AgentChatWorkspace({
 
                       {isChatting && !streamingActive ? (
                         <div className="chat-message chat-message-assistant">
-                          <div className="chat-message-label">{assistantLabel}</div>
+                          <div className="chat-message-label">
+                            <span className="chat-message-who">
+                              <img className="chat-message-avatar" src={agentLogo} alt="" aria-hidden="true" />
+                              <span>{assistantLabel}</span>
+                            </span>
+                          </div>
                           <div className="chat-message-body">
-                            <QueryingIndicator label={queryingLabel} />
+                            <QueryingIndicator label={queryingLabel} logo={agentLogo} />
                           </div>
                         </div>
                       ) : null}

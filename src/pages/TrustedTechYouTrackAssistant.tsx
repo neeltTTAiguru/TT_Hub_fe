@@ -1,4 +1,5 @@
 import AgentChatWorkspace from '../components/AgentChatWorkspace'
+import youtrackLogo from '../assets/agent-logos/youtrack.svg'
 
 export default function TrustedTechYouTrackAssistant() {
   return (
@@ -15,6 +16,7 @@ export default function TrustedTechYouTrackAssistant() {
       showBackendTag
       chatTitle="Talk to YouTrack through Hermes"
       assistantLabel="YouTrack Assistant"
+      agentLogo={youtrackLogo}
       backendLabel="Hermes + YouTrack"
       queryingLabel="Querying YouTrack…"
     />

@@ -1,4 +1,5 @@
 import AgentChatWorkspace from '../components/AgentChatWorkspace'
+import brevoLogo from '../assets/agent-logos/brevo.svg'
 
 export default function TrustedTechBrevoAssistant() {
   return (
@@ -15,6 +16,7 @@ export default function TrustedTechBrevoAssistant() {
       showBackendTag
       chatTitle="Talk to Brevo through the hub"
       assistantLabel="Brevo Assistant"
+      agentLogo={brevoLogo}
       backendLabel="Brevo"
       queryingLabel="Querying Brevo…"
     />

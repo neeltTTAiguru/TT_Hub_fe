@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useAuth0 } from '@auth0/auth0-react'
 import { Alert, Button, Card, Input, Modal, Select, Space, Tag, Typography, message } from 'antd'
 import AgentChatWorkspace from '../components/AgentChatWorkspace'
+import competitorAnalystLogo from '../assets/agent-logos/competitor-analyst.svg'
 import { PUBLIC_SAFETY_COMPETITORS } from '../data/publicSafetyCompetitors'
 import {
   getCompetitorSectionMemories,
@@ -492,6 +493,7 @@ export default function CompetitorAnalyst() {
         showBackendTag
         chatTitle={`Talk to ${selectedName}`}
         assistantLabel={selectedName}
+        agentLogo={competitorAnalystLogo}
         backendLabel="Hermes + GBrain"
         renderBeforeChat={
           <>

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Alert, Button, Empty, Input, Space, Spin, Typography } from 'antd'
 import AgentChatWorkspace from '../components/AgentChatWorkspace'
+import surferLogo from '../assets/agent-logos/surfer.svg'
 import { getWordPressDraftPreview, type AgentChatResponse, type WordPressDraftPreview } from '../lib/api'
 
 const { Text } = Typography
@@ -84,6 +85,7 @@ export default function WordPressDraftEditor() {
       showBackendTag
       chatTitle="WordPress content workspace"
       assistantLabel="Hermes WordPress Assistant"
+      agentLogo={surferLogo}
       backendLabel="Hermes + WordPress REST API"
       showRefreshButton
       chatSidePanel={previewPanel}

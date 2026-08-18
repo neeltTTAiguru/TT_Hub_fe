@@ -1,4 +1,5 @@
 import AgentChatWorkspace from '../components/AgentChatWorkspace'
+import hubspotLogo from '../assets/agent-logos/hubspot.svg'
 
 export default function TrustedTechHubSpotAssistant() {
   return (
@@ -15,6 +16,7 @@ export default function TrustedTechHubSpotAssistant() {
       showBackendTag
       chatTitle="Talk to the deal pipeline through Hermes"
       assistantLabel="Deal Pipeline Assistant"
+      agentLogo={hubspotLogo}
       backendLabel="Hermes + HubSpot Deals"
       queryingLabel="Querying HubSpot…"
       streaming

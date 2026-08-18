@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAuth0 } from '@auth0/auth0-react'
 import { Card, Space, Tag, Typography } from 'antd'
 import AgentChatWorkspace from '../components/AgentChatWorkspace'
+import brainLogo from '../assets/agent-logos/brain.svg'
 import { getAgents, getBrainSectionMemories, type AgentSummary, type BrainSectionMemory } from '../lib/api'
 
 const { Text } = Typography
@@ -148,6 +149,7 @@ export default function TrustedTechAssistant() {
       showBackendTag
       chatTitle={isCompany ? 'Talk to Brain (Company)' : `Talk to ${selectedSection.name} section`}
       assistantLabel="Brain"
+      agentLogo={brainLogo}
       backendLabel="Hermes + GBrain"
       enableBrainMemorySave
       memorySection={selected}

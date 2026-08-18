@@ -26,16 +26,13 @@ import Settings from './pages/Settings'
 import NotFound from './pages/NotFound'
 import { setAccessTokenProvider } from './lib/api'
 import trustedTechnologyPrimaryLogo from './assets/trusted-technology-primary-logo.png'
-import trustedTechAgentLogo from './assets/agent-logos/trusted-tech-agent.svg'
 import brainLogo from './assets/agent-logos/brain.svg'
 import hubspotLogo from './assets/agent-logos/hubspot.svg'
 import youtrackLogo from './assets/agent-logos/youtrack.svg'
 import brevoLogo from './assets/agent-logos/brevo.svg'
+import competitorAnalystLogo from './assets/agent-logos/competitor-analyst.svg'
+import surferLogo from './assets/agent-logos/surfer.svg'
 import './styles/app.css'
-
-const agentIcon = (
-  <img src={trustedTechAgentLogo} alt="" aria-hidden="true" className="agent-icon" />
-)
 
 const brainIcon = (
   <img src={brainLogo} alt="" aria-hidden="true" className="agent-icon" />
@@ -51,6 +48,14 @@ const youtrackIcon = (
 
 const brevoIcon = (
   <img src={brevoLogo} alt="" aria-hidden="true" className="agent-icon" />
+)
+
+const competitorAnalystIcon = (
+  <img src={competitorAnalystLogo} alt="" aria-hidden="true" className="agent-icon" />
+)
+
+const contentGeneratorIcon = (
+  <img src={surferLogo} alt="" aria-hidden="true" className="agent-icon" />
 )
 
 const { Header, Sider, Content } = Layout
@@ -72,7 +77,7 @@ const baseNavItems = [
   },
   {
     key: '/competitor-analyst',
-    icon: agentIcon,
+    icon: competitorAnalystIcon,
     label: <Link to="/competitor-analyst">Competitor Analyst</Link>,
   },
   {
@@ -92,7 +97,7 @@ const baseNavItems = [
   },
   {
     key: 'content-generator-menu',
-    icon: agentIcon,
+    icon: contentGeneratorIcon,
     label: 'Content Generator',
     children: [
       {

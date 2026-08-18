@@ -1,0 +1,8 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Surfer SEO">
+  <g stroke="#E2604B" stroke-width="6.5" stroke-linecap="round" fill="none">
+    <path d="M9.5 39 L9.5 40.5 Q9.5 54.5 23.5 54.5 L40.5 54.5 Q54.5 54.5 54.5 40.5 L54.5 30"/>
+    <path d="M54.5 24 L54.5 23.5 Q54.5 9.5 40.5 9.5 L23.5 9.5 Q9.5 9.5 9.5 23.5 L9.5 33"/>
+  </g>
+  <rect x="22.5" y="24.5" width="7.5" height="19" rx="3.75" fill="#E2604B"/>
+  <rect x="34" y="20.5" width="7.5" height="19" rx="3.75" fill="#E2604B"/>
+</svg>
