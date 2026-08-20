@@ -1011,6 +1011,38 @@
   display: grid;
   gap: 12px;
   min-width: 0;
+  /* Anchors the drag-and-drop overlay. */
+  position: relative;
+}
+
+/* Drag a file anywhere over the chat and the whole panel becomes the drop target. */
+.chat-main-dragging {
+  outline: 2px dashed var(--app-primary);
+  outline-offset: 6px;
+  border-radius: 12px;
+}
+
+.chat-dropzone-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border-radius: 12px;
+  /* Translucent so the conversation stays visible underneath while dragging. */
+  background: color-mix(in srgb, var(--app-surface) 82%, transparent);
+  color: var(--app-primary-strong);
+  font-weight: 600;
+  /* Never swallow the drop event meant for .chat-main. */
+  pointer-events: none;
+}
+
+.chat-dropzone-overlay small {
+  font-weight: 400;
+  opacity: 0.75;
 }
 
 .chat-workspace-grid {
@@ -1306,7 +1338,8 @@
   border-radius: 7px;
   background: color-mix(in srgb, var(--app-primary) 26%, var(--app-surface));
   color: var(--app-primary-strong);
-  font-size: 11px;
+  font-size: 10px;
+  font-weight: 600;
   letter-spacing: 0;
 }
 

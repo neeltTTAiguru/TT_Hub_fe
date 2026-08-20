@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { ClipboardEvent, ReactNode } from 'react'
+import type { ClipboardEvent, DragEvent, ReactNode } from 'react'
 import { useAuth0 } from '@auth0/auth0-react'
 import { Alert, Button, Card, Dropdown, List, Radio, Space, Spin, Tag, Typography, Input, message, Modal, Select } from 'antd'
 import ChatMessageContent from './ChatMessageContent'
@@ -26,6 +26,94 @@ import {
 
 const { Paragraph, Text } = Typography
 const { TextArea } = Input
+
+// A file dragged in from Finder or another app often arrives with an empty or
+// generic MIME type. The backend routes images to vision by MIME, so a photo
+// that lands as `application/octet-stream` is silently treated as an unreadable
+// document — recover the type from the extension instead.
+const EXTENSION_MIME_TYPES: Record<string, string> = {
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  bmp: 'image/bmp',
+  tif: 'image/tiff',
+  tiff: 'image/tiff',
+  heic: 'image/heic',
+  heif: 'image/heif',
+  pdf: 'application/pdf',
+  doc: 'application/msword',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  txt: 'text/plain',
+  md: 'text/markdown',
+  markdown: 'text/markdown',
+  csv: 'text/csv',
+  json: 'application/json',
+}
+
+function resolveMimeType(file: File) {
+  const declared = String(file.type || '')
+  if (declared && declared !== 'application/octet-stream') return declared
+  const extension = (file.name.split('.').pop() || '').toLowerCase()
+  return EXTENSION_MIME_TYPES[extension] || declared || 'application/octet-stream'
+}
+
+// Camera photos run 5-25MB, which trips the size guard here and bloats the
+// request past the API body limit on the way out. A vision model reads a
+// 1600px JPEG just as well, so shrink the big ones and leave small ones alone.
+const IMAGE_MAX_EDGE = 1600
+const IMAGE_COMPRESS_OVER_BYTES = 1.5 * 1024 * 1024
+
+async function downscaleImage(file: File, mimeType: string): Promise<string | null> {
+  if (!/^image\//i.test(mimeType)) return null
+  // GIFs would lose their animation and SVGs are already tiny text.
+  if (/^image\/(gif|svg)/i.test(mimeType)) return null
+  // HEIC always goes through re-encoding: no vision model accepts it, so a
+  // browser that can decode it (Safari) is our only chance to send it as JPEG.
+  const isHeic = /^image\/(heic|heif)/i.test(mimeType)
+  if (!isHeic && file.size <= IMAGE_COMPRESS_OVER_BYTES) return null
+  try {
+    const bitmap = await createImageBitmap(file)
+    const scale = Math.min(1, IMAGE_MAX_EDGE / Math.max(bitmap.width, bitmap.height))
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale))
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale))
+    const context = canvas.getContext('2d')
+    if (!context) return null
+    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+    bitmap.close?.()
+    return canvas.toDataURL('image/jpeg', 0.85)
+  } catch {
+    // Formats this browser cannot decode (often HEIC) — send the original and
+    // let the backend report it rather than dropping it here.
+    return null
+  }
+}
+
+// The user bubble used to read "You You" (avatar chip + label). Use the signed-in
+// person's name, falling back to a readable form of their email.
+function displayNameForUser(user?: { given_name?: string; name?: string; nickname?: string; email?: string }) {
+  const named = [user?.given_name, user?.name, user?.nickname].find(
+    (value) => typeof value === 'string' && value.trim() && !value.includes('@'),
+  )
+  if (named) return named.trim()
+  const email = String(user?.email || (user?.name?.includes('@') ? user.name : '') || '')
+  const local = email.split('@')[0]
+  if (!local) return 'You'
+  return local
+    .split(/[._-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+}
+
+function initialsForName(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean)
+  if (!parts.length) return 'YOU'
+  const letters = parts.length > 1 ? `${parts[0][0]}${parts[parts.length - 1][0]}` : parts[0].slice(0, 2)
+  return letters.toUpperCase()
+}
 
 const RAW_PROVIDER_ERROR = /api call failed|rate\s*limit|tokens per min|\bTPM\b|platform\.openai\.com\/account\/rate-limits/i
 
@@ -292,7 +380,9 @@ export default function AgentChatWorkspace({
   draftKey,
   competitor,
 }: AgentChatWorkspaceProps) {
-  const { isAuthenticated } = useAuth0()
+  const { isAuthenticated, user: authUser } = useAuth0()
+  const userDisplayName = displayNameForUser(authUser)
+  const userInitials = initialsForName(userDisplayName)
   const draftStorageKey = draftKey ?? agentId
   const [agent, setAgent] = useState<AgentDetail | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -317,6 +407,10 @@ export default function AgentChatWorkspace({
   const creatingThreadRef = useRef(false)
   const [chatInput, setChatInput] = useState('')
   const [attachments, setAttachments] = useState<(ChatAttachment & { id: string })[]>([])
+  const [isDragActive, setIsDragActive] = useState(false)
+  // Drag events fire per child element, so a bare boolean flickers as the
+  // pointer crosses the thread. Count enters/leaves and clear at zero.
+  const dragDepthRef = useRef(0)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   // DOM node of each rendered message body, so we can export one to PDF/Word.
   const messageRefs = useRef(new Map<number, HTMLDivElement>())
@@ -508,18 +602,29 @@ export default function AgentChatWorkspace({
     const MAX_BYTES = 15 * 1024 * 1024
     const MAX_COUNT = 8
     const room = Math.max(0, MAX_COUNT - attachments.length)
+    if (files.length > room) {
+      message.warning(`Only ${MAX_COUNT} attachments per message — the rest were skipped.`)
+    }
     const added: (ChatAttachment & { id: string })[] = []
     for (const file of files.slice(0, room)) {
-      if (file.size > MAX_BYTES) {
-        message.error(`${file.name || 'File'} is too large (max 15MB).`)
-        continue
-      }
+      const mimeType = resolveMimeType(file)
       try {
-        const dataUrl = await readFileAsDataUrl(file)
+        const downscaled = await downscaleImage(file, mimeType)
+        if (!downscaled && file.size > MAX_BYTES) {
+          message.error(`${file.name || 'File'} is too large (max 15MB).`)
+          continue
+        }
+        if (!downscaled && /^image\/(heic|heif)/i.test(mimeType)) {
+          // This browser could not decode it, so it will go up as-is and the
+          // backend will report it. Say so now rather than after a slow round trip.
+          message.warning(`${file.name || 'This photo'} is HEIC — export it as JPEG or PNG so it can be read.`)
+        }
+        const dataUrl = downscaled ?? (await readFileAsDataUrl(file))
         added.push({
           id: `${file.name}-${file.size}-${Math.random().toString(36).slice(2)}`,
           name: file.name || 'attachment',
-          mimeType: file.type || 'application/octet-stream',
+          // A downscaled image is re-encoded, so its type is no longer the original's.
+          mimeType: downscaled ? 'image/jpeg' : mimeType,
           dataBase64: dataUrl,
         })
       } catch {
@@ -527,6 +632,39 @@ export default function AgentChatWorkspace({
       }
     }
     if (added.length) setAttachments((current) => [...current, ...added])
+  }
+
+  // ---- Drag and drop: drop a file anywhere over the chat to attach it ----
+  const dragHasFiles = (event: DragEvent<HTMLDivElement>) =>
+    Array.from(event.dataTransfer?.types ?? []).includes('Files')
+
+  const handleDragEnter = (event: DragEvent<HTMLDivElement>) => {
+    if (!dragHasFiles(event)) return
+    event.preventDefault()
+    dragDepthRef.current += 1
+    setIsDragActive(true)
+  }
+
+  const handleDragOver = (event: DragEvent<HTMLDivElement>) => {
+    if (!dragHasFiles(event)) return
+    // Without this the browser navigates away and opens the dropped file.
+    event.preventDefault()
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy'
+  }
+
+  const handleDragLeave = (event: DragEvent<HTMLDivElement>) => {
+    if (!dragHasFiles(event)) return
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1)
+    if (!dragDepthRef.current) setIsDragActive(false)
+  }
+
+  const handleDrop = (event: DragEvent<HTMLDivElement>) => {
+    if (!dragHasFiles(event)) return
+    event.preventDefault()
+    dragDepthRef.current = 0
+    setIsDragActive(false)
+    const files = Array.from(event.dataTransfer?.files ?? [])
+    if (files.length) void addFiles(files)
   }
 
   const removeAttachment = (id: string) =>
@@ -1051,7 +1189,19 @@ export default function AgentChatWorkspace({
                   ) : null}
 
                   <div className={chatSidePanel ? 'chat-workspace-grid' : undefined}>
-                    <div className="chat-main">
+                    <div
+                      className={`chat-main${isDragActive ? ' chat-main-dragging' : ''}`}
+                      onDragEnter={handleDragEnter}
+                      onDragOver={handleDragOver}
+                      onDragLeave={handleDragLeave}
+                      onDrop={handleDrop}
+                    >
+                    {isDragActive ? (
+                      <div className="chat-dropzone-overlay" aria-hidden="true">
+                        <span>📎 Drop to attach</span>
+                        <small>Images and documents</small>
+                      </div>
+                    ) : null}
                     {showThreadControls ? (
                       <div className="chat-toolbar">
                         <Button onClick={() => setIsThreadSidebarOpen((current) => !current)}>
@@ -1077,11 +1227,11 @@ export default function AgentChatWorkspace({
                           <div className="chat-message-label">
                             <span className="chat-message-who">
                               {entry.role === 'user' ? (
-                                <span className="chat-message-avatar-you" aria-hidden="true">You</span>
+                                <span className="chat-message-avatar-you" aria-hidden="true">{userInitials}</span>
                               ) : (
                                 <img className="chat-message-avatar" src={agentLogo} alt="" aria-hidden="true" />
                               )}
-                              <span>{entry.role === 'user' ? 'You' : assistantLabel}</span>
+                              <span>{entry.role === 'user' ? userDisplayName : assistantLabel}</span>
                             </span>
                             {entry.role === 'assistant' && entry.content.trim().length > 20 ? (
                               <span className="chat-message-actions">
@@ -1140,7 +1290,9 @@ export default function AgentChatWorkspace({
                       {attachments.length ? (
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
                           {attachments.map((att) => {
-                            const isImage = /^image\//i.test(att.mimeType)
+                            // HEIC would render as a broken image icon, so only
+                            // preview what a browser can actually paint.
+                            const isImage = /^image\/(jpeg|png|gif|webp|bmp|svg\+xml)$/i.test(att.mimeType)
                             return (
                               <span
                                 key={att.id}
@@ -1211,7 +1363,7 @@ export default function AgentChatWorkspace({
                         <Button
                           onClick={() => fileInputRef.current?.click()}
                           disabled={isChatting}
-                          title="Attach images or documents (or paste an image)"
+                          title="Attach images or documents (or drag them onto the chat, or paste an image)"
                         >
                           📎 Attach
                         </Button>
