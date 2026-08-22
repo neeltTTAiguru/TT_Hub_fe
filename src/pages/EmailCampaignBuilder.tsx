@@ -82,32 +82,100 @@ const STARTER_TEMPLATE = `
   </td></tr>
 </table>`
 
-// Three friendly block icons (inherit color via currentColor).
+
+const SECTION_HEADING = `
+<table style="width:100%" cellpadding="0" cellspacing="0"><tr><td style="background-color:#ffffff;padding:28px 28px 8px;text-align:center;font-family:Arial,Helvetica,sans-serif">
+  <div style="font-size:28px;font-weight:bold;color:#2f3136;line-height:1.25">Your headline goes here</div>
+</td></tr></table>`
+
+const SECTION_TEXT = `
+<table style="width:100%" cellpadding="0" cellspacing="0"><tr><td style="background-color:#ffffff;padding:12px 28px 24px;font-family:Arial,Helvetica,sans-serif">
+  <div style="font-size:16px;color:#2f3136;line-height:1.7">Double-click to edit this paragraph. Keep it short — a couple of sentences reads better in an inbox than a wall of text.</div>
+</td></tr></table>`
+
+const SECTION_BUTTON = `
+<table style="width:100%" cellpadding="0" cellspacing="0"><tr><td style="background-color:#ffffff;padding:8px 28px 32px;text-align:center">
+  <table cellpadding="0" cellspacing="0" style="margin:0 auto"><tr><td style="background-color:#1f2a3a;border-radius:6px">
+    <a href="https://trustedtechnology.ai" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:bold;color:#ffffff;text-decoration:none">Learn more</a>
+  </td></tr></table>
+</td></tr></table>`
+
+const SECTION_IMAGE = `
+<table style="width:100%" cellpadding="0" cellspacing="0"><tr><td style="background-color:#ffffff;padding:20px 28px">
+  <img src="${PLACEHOLDER_IMAGE}" alt="" style="width:100%;max-width:544px;height:auto;border-radius:6px"/>
+</td></tr></table>`
+
+const SECTION_TWO_COLUMN = `
+<table style="width:100%" cellpadding="0" cellspacing="0"><tr><td style="background-color:#ffffff;padding:20px 28px;font-family:Arial,Helvetica,sans-serif">
+  <table style="width:100%" cellpadding="0" cellspacing="0"><tr>
+    <td style="width:50%;padding-right:10px;vertical-align:top">
+      <img src="${PLACEHOLDER_IMAGE}" alt="" style="width:100%;height:auto;border-radius:6px;margin-bottom:10px"/>
+      <div style="font-size:15px;color:#2f3136;line-height:1.6">Left column text.</div>
+    </td>
+    <td style="width:50%;padding-left:10px;vertical-align:top">
+      <img src="${PLACEHOLDER_IMAGE}" alt="" style="width:100%;height:auto;border-radius:6px;margin-bottom:10px"/>
+      <div style="font-size:15px;color:#2f3136;line-height:1.6">Right column text.</div>
+    </td>
+  </tr></table>
+</td></tr></table>`
+
+const SECTION_DIVIDER = `
+<table style="width:100%" cellpadding="0" cellspacing="0"><tr><td style="background-color:#ffffff;padding:8px 28px">
+  <div style="border-top:1px solid #d4d6ce;font-size:0;line-height:0">&nbsp;</div>
+</td></tr></table>`
+
+const SECTION_SPACER = `
+<table style="width:100%" cellpadding="0" cellspacing="0"><tr><td style="background-color:#ffffff;height:32px;font-size:0;line-height:0">&nbsp;</td></tr></table>`
+
+// Block icons (inherit color via currentColor).
 const IC = {
   logo: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8"/><path d="M8.5 9.5h7M12 9.5V16" stroke-linecap="round"/></svg>`,
   content: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="11" rx="2"/><circle cx="8" cy="8.5" r="1.4"/><path d="M4 13l4-3 3 2 3-3 6 4" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 19h16" stroke-linecap="round"/></svg>`,
   bottom: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 15h10M9 18h6" stroke-linecap="round"/></svg>`,
+  heading: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 6v12M13 6v12M5 12h8" stroke-linecap="round"/><path d="M17 10h3M18.5 10v8" stroke-linecap="round"/></svg>`,
+  text: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 10h16M4 14h12M4 18h8" stroke-linecap="round"/></svg>`,
+  button: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="8" width="18" height="8" rx="4"/><path d="M9 12h6" stroke-linecap="round"/></svg>`,
+  image: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.5"/><path d="M4 17l5-4 3 2 3-3 5 5" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  columns: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="7.5" height="14" rx="1.5"/><rect x="13.5" y="5" width="7.5" height="14" rx="1.5"/></svg>`,
+  divider: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12h18" stroke-linecap="round"/><path d="M6 7h12M6 17h12" stroke-linecap="round" opacity="0.35"/></svg>`,
+  spacer: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 4v16" stroke-linecap="round"/><path d="M8 7l4-3 4 3M8 17l4 3 4-3" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
 }
 
-const THREE_BLOCKS: Array<{ id: string; label: string; media: string; content: string }> = [
-  { id: 'tt-logo', label: 'Logo', media: IC.logo, content: SECTION_LOGO },
-  { id: 'tt-content', label: 'Image / Content', media: IC.content, content: SECTION_CONTENT },
-  { id: 'tt-bottom', label: 'Bottom Text', media: IC.bottom, content: SECTION_BOTTOM },
+type SectionBlock = { id: string; label: string; media: string; content: string; group: string }
+
+// Grouped so the palette reads as "what part of an email am I adding?"
+const SECTION_BLOCKS: SectionBlock[] = [
+  { id: 'tt-logo', label: 'Logo', media: IC.logo, content: SECTION_LOGO, group: 'header' },
+  { id: 'tt-heading', label: 'Heading', media: IC.heading, content: SECTION_HEADING, group: 'content' },
+  { id: 'tt-text', label: 'Paragraph', media: IC.text, content: SECTION_TEXT, group: 'content' },
+  { id: 'tt-image', label: 'Image', media: IC.image, content: SECTION_IMAGE, group: 'content' },
+  { id: 'tt-content', label: 'Image + Text', media: IC.content, content: SECTION_CONTENT, group: 'content' },
+  { id: 'tt-columns', label: 'Two columns', media: IC.columns, content: SECTION_TWO_COLUMN, group: 'content' },
+  { id: 'tt-button', label: 'Button', media: IC.button, content: SECTION_BUTTON, group: 'content' },
+  { id: 'tt-divider', label: 'Divider', media: IC.divider, content: SECTION_DIVIDER, group: 'layout' },
+  { id: 'tt-spacer', label: 'Spacer', media: IC.spacer, content: SECTION_SPACER, group: 'layout' },
+  { id: 'tt-bottom', label: 'Footer', media: IC.bottom, content: SECTION_BOTTOM, group: 'footer' },
 ]
 
-// Reduce the editor to just three drag-in blocks and hide developer controls.
+const BLOCK_GROUPS: Record<string, { id: string; label: string; open: boolean }> = {
+  header: { id: 'header', label: 'Header', open: true },
+  content: { id: 'content', label: 'Content', open: true },
+  layout: { id: 'layout', label: 'Spacing', open: true },
+  footer: { id: 'footer', label: 'Footer', open: true },
+}
+
+// Reduce the editor to labelled, drag-in email sections and hide dev controls.
 function simplifyEditor(editor: Editor) {
   const blocks = editor.BlockManager
 
   // Clear every default/preset block, then add only our three.
   blocks.getAll().reset()
-  const category = { id: 'sections', label: 'Add to your email', open: true }
-  THREE_BLOCKS.forEach((block) => {
+  SECTION_BLOCKS.forEach((block) => {
     blocks.add(block.id, {
       label: block.label,
       media: block.media,
       content: block.content,
-      category,
+      category: BLOCK_GROUPS[block.group],
     })
   })
 

@@ -2789,3 +2789,72 @@
     flex: none;
   }
 }
+
+/* GrapesJS ships a dark developer theme. Repaint it to read as part of the
+   hub: light canvas surround, light panels, legible labels. */
+.email-builder-canvas .gjs-one-bg { background-color: #fff; }
+.email-builder-canvas .gjs-two-color { color: #2f3136; }
+.email-builder-canvas .gjs-three-bg { background-color: var(--app-accent, #6b705c); color: #fff; }
+.email-builder-canvas .gjs-four-color,
+.email-builder-canvas .gjs-four-color-h:hover { color: var(--app-accent, #6b705c); }
+
+.email-builder-canvas .gjs-editor,
+.email-builder-canvas .gjs-cv-canvas,
+.email-builder-canvas .gjs-cv-canvas__frames {
+  background-color: #ecece6;
+}
+
+.email-builder-canvas .gjs-pn-panel {
+  background-color: #fff;
+  border-color: var(--app-border);
+}
+
+.email-builder-canvas .gjs-pn-views,
+.email-builder-canvas .gjs-pn-views-container {
+  background-color: #fff;
+  border-left: 1px solid var(--app-border);
+}
+
+.email-builder-canvas .gjs-pn-btn { color: #6b6f76; }
+.email-builder-canvas .gjs-pn-btn.gjs-pn-active { color: var(--app-accent, #6b705c); background-color: #f2f2ec; }
+
+/* The email sits on a light stage, with a soft edge so it reads as a sheet. */
+.email-builder-canvas .gjs-frame-wrapper { padding: 20px 0; }
+.email-builder-canvas .gjs-frame {
+  box-shadow: 0 2px 14px rgb(31 42 58 / 12%);
+  border-radius: 6px;
+  background: #fff;
+}
+
+/* Block palette: labelled tiles that look draggable. */
+.email-builder-canvas .gjs-blocks-c { gap: 8px; padding: 10px; display: grid; grid-template-columns: 1fr 1fr; }
+.email-builder-canvas .gjs-block {
+  width: auto;
+  min-height: 76px;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  background: #fff;
+  color: #2f3136;
+  box-shadow: none;
+  transition: border-color 120ms ease, transform 120ms ease;
+}
+.email-builder-canvas .gjs-block:hover {
+  border-color: var(--app-accent, #6b705c);
+  transform: translateY(-1px);
+  cursor: grab;
+}
+.email-builder-canvas .gjs-block svg { width: 22px; height: 22px; }
+.email-builder-canvas .gjs-block-category .gjs-title {
+  background: #f6f6f2;
+  color: #6b6f76;
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--app-border);
+}
+
+/* Drop target feedback — makes it obvious where a section will land. */
+.email-builder-canvas .gjs-placeholder.horizontal {
+  border-color: transparent var(--app-accent, #6b705c);
+  border-width: 3px;
+}
