@@ -195,6 +195,40 @@ function constrainCanvas(editor: Editor) {
   editor.on('canvas:frame:load', apply)
 }
 
+// The logo and any bundled art are served from this app's origin, which means
+// nothing to a mail client. Convert those to data URIs so the backend can store
+// them and rewrite the markup to absolute, publicly fetchable URLs.
+async function inlineLocalImages(html: string): Promise<string> {
+  const doc = new DOMParser().parseFromString(html, 'text/html')
+  const images = Array.from(doc.querySelectorAll('img'))
+
+  await Promise.all(
+    images.map(async (img) => {
+      const src = img.getAttribute('src') || ''
+      if (!src || src.startsWith('data:')) return
+      const isForeign = /^https?:\/\//i.test(src) && !src.startsWith(window.location.origin)
+      if (isForeign) return
+
+      try {
+        const response = await fetch(src)
+        if (!response.ok) return
+        const blob = await response.blob()
+        const dataUri = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader()
+          reader.onload = () => resolve(String(reader.result))
+          reader.onerror = () => reject(new Error('read failed'))
+          reader.readAsDataURL(blob)
+        })
+        img.setAttribute('src', dataUri)
+      } catch {
+        // Leave the original src; the send will still go out, just without it.
+      }
+    }),
+  )
+
+  return doc.body.innerHTML
+}
+
 export default function EmailCampaignBuilder() {
   const containerRef = useRef<HTMLDivElement>(null)
   const editorRef = useRef<Editor | null>(null)
@@ -302,6 +336,11 @@ export default function EmailCampaignBuilder() {
     }
   }, [])
 
+  async function getSendableHtml(): Promise<string> {
+    const html = getInlinedHtml()
+    return html ? inlineLocalImages(html) : ''
+  }
+
   function getInlinedHtml(): string {
     const editor = editorRef.current
     if (!editor) return ''
@@ -360,7 +399,7 @@ export default function EmailCampaignBuilder() {
   // Every send path creates a fresh draft campaign first, so what goes out is
   // exactly the HTML on screen right now.
   async function createDraft(): Promise<number | null> {
-    const html = getInlinedHtml()
+    const html = await getSendableHtml()
     const sender = senders.find((candidate) => candidate.email === senderEmail)
     if (!html) {
       message.error('The email is empty')
@@ -384,7 +423,7 @@ export default function EmailCampaignBuilder() {
       message.warning('Enter a valid address to send the test to')
       return
     }
-    const html = getInlinedHtml()
+    const html = await getSendableHtml()
     if (!html) {
       message.error('The email is empty')
       return
@@ -429,7 +468,7 @@ export default function EmailCampaignBuilder() {
       onOk: async () => {
         setBusy('send')
         try {
-          const html = getInlinedHtml()
+          const html = await getSendableHtml()
           const sender = senders.find((candidate) => candidate.email === senderEmail)
 
           if (listIds.length) {
