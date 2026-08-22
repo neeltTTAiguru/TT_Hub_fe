@@ -223,7 +223,7 @@ export default function EmailCampaignBuilder() {
 
       editor = grapesjs.init({
         container: containerRef.current,
-        height: 'calc(100vh - 240px)',
+        height: 'calc(100vh - 430px)',
         fromElement: false,
         storageManager: {
           type: 'local',
@@ -407,7 +407,7 @@ export default function EmailCampaignBuilder() {
         />
       ) : null}
 
-      <div className="email-compose-fields">
+      <div className="email-compose">
         <div className="email-compose-row">
           <label htmlFor="brevo-to">To</label>
           <Select
@@ -452,6 +452,14 @@ export default function EmailCampaignBuilder() {
           />
         </div>
 
+
+        <div className="email-compose-body">
+          {initError ? (
+            <Alert type="error" showIcon message="The email builder failed to load" description={initError} />
+          ) : null}
+          <div className="email-builder-canvas" ref={containerRef} />
+        </div>
+
         <div className="email-compose-actions">
           <Space wrap>
             <Input
@@ -474,27 +482,6 @@ export default function EmailCampaignBuilder() {
           </Space>
         </div>
       </div>
-
-      {initError ? (
-        <Alert type="error" showIcon message="The email builder failed to load" description={initError} />
-      ) : (
-        <Alert
-          type="info"
-          showIcon
-          closable
-          className="email-builder-help"
-          message="How to build your email"
-          description={
-            <ol className="email-builder-steps">
-              <li><b>Drag</b> a block — Logo, Image / Content, or Bottom Text — onto your email.</li>
-              <li><b>Double-click</b> any text to edit it, and <b>click an image</b> to swap it.</li>
-              <li>Set <b>To</b>, <b>From</b>, and <b>Subject</b> above, send yourself a test, then <b>Send campaign</b>.</li>
-            </ol>
-          }
-        />
-      )}
-
-      <div className="email-builder-canvas" ref={containerRef} />
     </div>
   )
 }

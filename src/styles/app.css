@@ -2731,21 +2731,33 @@
   }
 }
 
-/* Compose header — the "writing an email" surface above the design canvas. */
-.email-compose-fields {
-  border: 1px solid var(--tt-border, #d4d6ce);
-  border-radius: 10px;
-  padding: 16px 18px;
-  margin-bottom: 16px;
-  background: var(--tt-surface, #fff);
+/* One compose surface: headers, the design body, and the send bar share a card. */
+.email-compose {
+  border: 1px solid var(--app-border);
+  border-radius: 12px;
+  background: var(--app-surface, #fff);
+  overflow: hidden;
 }
 
 .email-compose-row {
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--tt-border-subtle, #ececec);
+  padding: 10px 18px;
+  border-bottom: 1px solid var(--app-border);
+}
+
+/* The design canvas is the message body — it sits flush inside the same card
+   rather than reading as a separate widget. */
+.email-compose-body {
+  padding: 0;
+}
+
+.email-compose-body .email-builder-canvas {
+  border: 0;
+  border-radius: 0;
+  border-bottom: 1px solid var(--app-border);
+  min-height: 480px;
 }
 
 .email-compose-row label {
@@ -2763,7 +2775,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding-top: 14px;
+  padding: 14px 18px;
 }
 
 @media (max-width: 720px) {
