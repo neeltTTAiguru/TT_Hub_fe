@@ -1,0 +1,27 @@
+{
+  "aspect": 0.64272,
+  "widths": [
+    1000,
+    500
+  ],
+  "views": [
+    {
+      "label": "hero",
+      "file": "hero.webp",
+      "scrubbedPx": 0,
+      "source": "_41A1333.jpg"
+    },
+    {
+      "label": "top",
+      "file": "top.webp",
+      "scrubbedPx": 0,
+      "source": "_41A1309.jpg"
+    },
+    {
+      "label": "bottom",
+      "file": "bottom.webp",
+      "scrubbedPx": 0,
+      "source": "_41A1328.jpg"
+    }
+  ]
+}

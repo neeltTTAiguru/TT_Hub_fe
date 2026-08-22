@@ -22,6 +22,7 @@ import TrustedTechBrevoAssistant from './pages/TrustedTechBrevoAssistant'
 import EmailCampaignBuilder from './pages/EmailCampaignBuilder'
 import TrustedTechAhrefsAssistant from './pages/TrustedTechAhrefsAssistant'
 import ContentOperations from './pages/ContentOperations'
+import Product360 from './pages/Product360'
 import Settings from './pages/Settings'
 import NotFound from './pages/NotFound'
 import { setAccessTokenProvider } from './lib/api'
@@ -91,9 +92,19 @@ const baseNavItems = [
     label: <Link to="/youtrack-assistant">YouTrack</Link>,
   },
   {
-    key: '/email-builder',
+    key: 'brevo-menu',
     icon: brevoIcon,
-    label: <Link to="/email-builder">Brevo</Link>,
+    label: 'Brevo',
+    children: [
+      {
+        key: '/brevo-assistant',
+        label: <Link to="/brevo-assistant">Brevo Assistant</Link>,
+      },
+      {
+        key: '/email-builder',
+        label: <Link to="/email-builder">Email Builder</Link>,
+      },
+    ],
   },
   {
     key: 'content-generator-menu',
@@ -104,23 +115,37 @@ const baseNavItems = [
         key: '/assistants/content-operations',
         label: <Link to="/assistants/content-operations">Generate Article</Link>,
       },
+      {
+        key: '/assistants/product-360',
+        label: <Link to="/assistants/product-360">3D Viewer</Link>,
+      },
     ],
   },
 ]
 
 const contentGeneratorPaths = [
   '/assistants/content-operations',
+  '/assistants/product-360',
+]
+
+const brevoPaths = [
+  '/brevo-assistant',
+  '/email-builder',
 ]
 
 function AppShell({ isDark, onToggle }: { isDark: boolean; onToggle: () => void }) {
   const location = useLocation()
   const { user, logout } = useAuth0()
-  const selectedNavKey = contentGeneratorPaths.find((path) =>
+  const submenuPaths = [...contentGeneratorPaths, ...brevoPaths]
+  const selectedNavKey = submenuPaths.find((path) =>
     location.pathname === path || location.pathname.startsWith(`${path}/`),
   ) || baseNavItems.find((item) =>
     !item.children && (location.pathname === item.key || location.pathname.startsWith(`${item.key}/`)),
   )?.key
   const contentGeneratorOpen = contentGeneratorPaths.some((path) =>
+    location.pathname === path || location.pathname.startsWith(`${path}/`),
+  )
+  const brevoOpen = brevoPaths.some((path) =>
     location.pathname === path || location.pathname.startsWith(`${path}/`),
   )
 
@@ -141,7 +166,10 @@ function AppShell({ isDark, onToggle }: { isDark: boolean; onToggle: () => void 
           mode="inline"
           items={baseNavItems}
           selectedKeys={selectedNavKey ? [selectedNavKey] : []}
-          defaultOpenKeys={contentGeneratorOpen ? ['content-generator-menu'] : []}
+          defaultOpenKeys={[
+            ...(contentGeneratorOpen ? ['content-generator-menu'] : []),
+            ...(brevoOpen ? ['brevo-menu'] : []),
+          ]}
         />
       </Sider>
 
@@ -179,6 +207,7 @@ function AppShell({ isDark, onToggle }: { isDark: boolean; onToggle: () => void 
             <Route path="/email-builder" element={<EmailCampaignBuilder />} />
             <Route path="/ahrefs-assistant" element={<TrustedTechAhrefsAssistant />} />
             <Route path="/assistants/content-operations" element={<ContentOperations />} />
+            <Route path="/assistants/product-360" element={<Product360 />} />
             <Route path="/assistants/content-operations/blog/*" element={<Navigate to="/assistants/content-operations" replace />} />
             <Route path="/assistants/wordpress-draft-test" element={<Navigate to="/assistants/content-operations" replace />} />
             <Route path="/assistants/wordpress-draft-editor" element={<Navigate to="/assistants/content-operations" replace />} />

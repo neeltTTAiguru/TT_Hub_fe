@@ -1,0 +1,23 @@
+{
+  "name": "bwc-dock",
+  "count": 48,
+  "pad": 3,
+  "ext": "webp",
+  "jpegFallback": false,
+  "transparent": false,
+  "aspect": 2.336904,
+  "variants": [
+    {
+      "width": 1000,
+      "height": 428,
+      "dir": "1000"
+    },
+    {
+      "width": 500,
+      "height": 214,
+      "dir": "500"
+    }
+  ],
+  "poster": "poster.jpg",
+  "hotspots": []
+}
