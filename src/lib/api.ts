@@ -1648,3 +1648,16 @@ export function sendBrevoCampaign(campaignId: number) {
     method: 'POST',
   })
 }
+
+export function sendBrevoDirect(payload: {
+  subject: string
+  senderName: string
+  senderEmail: string
+  htmlContent: string
+  to: string[]
+}) {
+  return request<{ sent: boolean }>('/brevo/send-direct', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}

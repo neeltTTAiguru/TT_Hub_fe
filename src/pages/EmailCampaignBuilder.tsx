@@ -8,8 +8,8 @@ import {
   fetchBrevoLists,
   fetchBrevoSenders,
   createBrevoCampaign,
-  sendBrevoTest,
   sendBrevoCampaign,
+  sendBrevoDirect,
   type BrevoList,
   type BrevoSender,
 } from '../lib/api'
@@ -134,6 +134,7 @@ function simplifyEditor(editor: Editor) {
 // so cap oversized images to the container and fix their aspect ratio, while
 // leaving small images (like the 230px logo) untouched.
 const EMAIL_WIDTH = 600
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 function makeImagesFluid(editor: Editor) {
   const enforce = (component: unknown) => {
@@ -175,6 +176,25 @@ function makeImagesFluid(editor: Editor) {
   })
 }
 
+// Inline styles on pasted/uploaded images win over the component-level fixes,
+// so enforce fluid images inside the canvas document itself.
+function constrainCanvas(editor: Editor) {
+  const apply = () => {
+    const doc = editor.Canvas.getDocument()
+    if (!doc || doc.getElementById('tt-canvas-fit')) return
+    const style = doc.createElement('style')
+    style.id = 'tt-canvas-fit'
+    style.textContent = `
+      body { margin: 0; background: #f6f6f2; }
+      img { max-width: 100% !important; height: auto !important; }
+      table { max-width: 100% !important; }
+    `
+    doc.head?.appendChild(style)
+  }
+  editor.on('load', apply)
+  editor.on('canvas:frame:load', apply)
+}
+
 export default function EmailCampaignBuilder() {
   const containerRef = useRef<HTMLDivElement>(null)
   const editorRef = useRef<Editor | null>(null)
@@ -184,7 +204,7 @@ export default function EmailCampaignBuilder() {
   const [lists, setLists] = useState<BrevoList[]>([])
   const [senders, setSenders] = useState<BrevoSender[]>([])
   const [brevoError, setBrevoError] = useState<string | null>(null)
-  const [listIds, setListIds] = useState<number[]>([])
+  const [recipients, setRecipients] = useState<string[]>([])
   const [senderEmail, setSenderEmail] = useState<string>('')
   const [subject, setSubject] = useState('')
   const [testEmail, setTestEmail] = useState('')
@@ -209,10 +229,15 @@ export default function EmailCampaignBuilder() {
     }
   }, [])
 
-  const recipientCount = listIds.reduce(
-    (total, id) => total + (lists.find((list) => list.id === id)?.contactCount ?? 0),
-    0,
-  )
+  // "To" mixes Brevo lists (stored as `list:<id>`) with free-typed addresses.
+  const listIds = recipients
+    .filter((value) => value.startsWith('list:'))
+    .map((value) => Number(value.slice(5)))
+  const directEmails = recipients.filter((value) => !value.startsWith('list:'))
+
+  const recipientCount =
+    listIds.reduce((total, id) => total + (lists.find((list) => list.id === id)?.contactCount ?? 0), 0) +
+    directEmails.length
 
   useEffect(() => {
     if (!containerRef.current || editorRef.current) return
@@ -225,6 +250,15 @@ export default function EmailCampaignBuilder() {
         container: containerRef.current,
         height: 'calc(100vh - 430px)',
         fromElement: false,
+        // An email is 600px wide. Without pinning the device widths the canvas
+        // renders at desktop width and the design reads as zoomed in and clipped.
+        deviceManager: {
+          devices: [
+            { id: 'desktop', name: 'Desktop', width: `${EMAIL_WIDTH}px`, widthMedia: '' },
+            { id: 'tablet', name: 'Tablet', width: '480px', widthMedia: '480px' },
+            { id: 'mobile', name: 'Mobile', width: '320px', widthMedia: '320px' },
+          ],
+        },
         storageManager: {
           type: 'local',
           autosave: true,
@@ -236,6 +270,7 @@ export default function EmailCampaignBuilder() {
 
       simplifyEditor(editor)
       makeImagesFluid(editor)
+      constrainCanvas(editor)
 
       // Seed the Trusted-branded starter only on a truly empty canvas.
       const hasSaved = Boolean(
@@ -305,6 +340,23 @@ export default function EmailCampaignBuilder() {
     message.success('Loaded the Trusted starter template')
   }
 
+  function handleRecipientsChange(next: string[]) {
+    const kept: string[] = []
+    for (const value of next) {
+      if (value.startsWith('list:')) {
+        kept.push(value)
+        continue
+      }
+      const email = value.trim().toLowerCase()
+      if (!EMAIL_PATTERN.test(email)) {
+        message.warning(`"${value}" is not a valid email address`)
+        continue
+      }
+      if (!kept.includes(email)) kept.push(email)
+    }
+    setRecipients(kept)
+  }
+
   // Every send path creates a fresh draft campaign first, so what goes out is
   // exactly the HTML on screen right now.
   async function createDraft(): Promise<number | null> {
@@ -324,18 +376,30 @@ export default function EmailCampaignBuilder() {
     return id
   }
 
+  // Sent transactionally rather than as a campaign test, so a test works before
+  // any list is chosen — and never creates a stray draft in Brevo.
   async function handleSendTest() {
-    if (!testEmail.trim()) {
-      message.warning('Enter an address to send the test to')
+    const address = testEmail.trim().toLowerCase()
+    if (!EMAIL_PATTERN.test(address)) {
+      message.warning('Enter a valid address to send the test to')
+      return
+    }
+    const html = getInlinedHtml()
+    if (!html) {
+      message.error('The email is empty')
       return
     }
     setBusy('test')
     try {
-      const id = await createDraft()
-      if (id) {
-        await sendBrevoTest(id, [testEmail.trim()])
-        message.success(`Test sent to ${testEmail.trim()}`)
-      }
+      const sender = senders.find((candidate) => candidate.email === senderEmail)
+      await sendBrevoDirect({
+        subject: subject.trim() || 'Test email',
+        senderName: sender?.name || senderEmail,
+        senderEmail,
+        htmlContent: html,
+        to: [address],
+      })
+      message.success(`Test sent to ${address}`)
     } catch (error) {
       message.error(error instanceof Error ? error.message : 'Test send failed')
     } finally {
@@ -344,10 +408,10 @@ export default function EmailCampaignBuilder() {
   }
 
   function handleSend() {
-    const names = listIds
-      .map((id) => lists.find((list) => list.id === id)?.name)
-      .filter(Boolean)
-      .join(', ')
+    const names = [
+      ...listIds.map((id) => lists.find((list) => list.id === id)?.name).filter(Boolean),
+      ...directEmails,
+    ].join(', ')
 
     Modal.confirm({
       title: 'Send this campaign now?',
@@ -365,11 +429,25 @@ export default function EmailCampaignBuilder() {
       onOk: async () => {
         setBusy('send')
         try {
-          const id = await createDraft()
-          if (id) {
-            await sendBrevoCampaign(id)
-            message.success('Campaign sent')
+          const html = getInlinedHtml()
+          const sender = senders.find((candidate) => candidate.email === senderEmail)
+
+          if (listIds.length) {
+            const id = await createDraft()
+            if (id) await sendBrevoCampaign(id)
           }
+
+          if (directEmails.length) {
+            await sendBrevoDirect({
+              subject: subject.trim(),
+              senderName: sender?.name || senderEmail,
+              senderEmail,
+              htmlContent: html,
+              to: directEmails,
+            })
+          }
+
+          message.success('Email sent')
         } catch (error) {
           message.error(error instanceof Error ? error.message : 'Send failed')
           throw error
@@ -381,7 +459,7 @@ export default function EmailCampaignBuilder() {
   }
 
   const canSend =
-    ready && Boolean(subject.trim()) && Boolean(senderEmail) && listIds.length > 0 && !busy
+    ready && Boolean(subject.trim()) && Boolean(senderEmail) && recipients.length > 0 && !busy
 
   return (
     <div className="email-builder">
@@ -412,14 +490,15 @@ export default function EmailCampaignBuilder() {
           <label htmlFor="brevo-to">To</label>
           <Select
             id="brevo-to"
-            mode="multiple"
+            mode="tags"
             allowClear
             style={{ width: '100%' }}
-            placeholder="Choose one or more Brevo lists"
-            value={listIds}
-            onChange={setListIds}
+            placeholder="Choose Brevo lists, or type any email address"
+            value={recipients}
+            onChange={handleRecipientsChange}
+            tokenSeparators={[',', ' ', ';']}
             options={lists.map((list) => ({
-              value: list.id,
+              value: `list:${list.id}`,
               label: `${list.name} — ${list.contactCount.toLocaleString()} contacts`,
             }))}
           />
@@ -473,7 +552,7 @@ export default function EmailCampaignBuilder() {
             </Button>
           </Space>
           <Space wrap align="center">
-            {listIds.length ? (
+            {recipients.length ? (
               <Text type="secondary">{recipientCount.toLocaleString()} recipients</Text>
             ) : null}
             <Button type="primary" onClick={handleSend} loading={busy === 'send'} disabled={!canSend}>
