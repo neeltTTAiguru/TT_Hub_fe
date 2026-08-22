@@ -1223,6 +1223,43 @@
   font-size: 12px;
 }
 
+/* Post-generation article editor: full-width row under the three pipeline columns. */
+.content-generator-editor {
+  grid-column: 1 / -1;
+  display: grid;
+}
+
+.content-generator-editor .ant-card-body {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 14px;
+}
+
+.content-editor-thread {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  min-height: 180px;
+  max-height: 420px;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.content-editor-composer {
+  display: grid;
+  gap: 10px;
+  padding-top: 14px;
+  border-top: 1px solid var(--app-border);
+}
+
+.content-editor-options {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
 .chat-toolbar {
   display: flex;
   align-items: center;
@@ -2643,6 +2680,14 @@
   .content-generator-progress,
   .content-generator-preview {
     min-height: auto;
+  }
+
+  .content-editor-options {
+    align-items: stretch;
+  }
+
+  .content-editor-options .ant-btn {
+    width: 100%;
   }
 
   .chat-sidebar {

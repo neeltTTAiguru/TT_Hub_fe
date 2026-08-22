@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Alert, Button, Card, Checkbox, Empty, Input, Modal, Space, Spin, Tag, Typography, message } from 'antd'
+import { Alert, Button, Card, Checkbox, Empty, Input, Modal, Space, Spin, Switch, Tag, Tooltip, Typography, message } from 'antd'
 import {
+  applyContentOperationsRevision,
   createContentOperationsRun,
   deleteContentOperationsRun,
   downloadContentOperationsPdf,
@@ -8,6 +9,8 @@ import {
   getContentOperationsRuns,
   getWordPressDraftPreview,
   publishContentOperationsWordPress,
+  revertContentOperationsRevision,
+  reviseContentOperationsArticle,
   stopContentOperationsRun,
   type ContentIntegrationMap,
   type ContentOperationsRun,
@@ -26,6 +29,18 @@ const pipelineStages = [
   ['human_review', 'Draft safety review', 'The article passes a draft-only factual and brand gate.'],
   ['image_generation', 'Article images', 'The article topic drives a featured image and relevant section imagery using the approved T500 camera reference.'],
   ['wordpress_draft', 'WordPress draft', 'The final article is created as an unpublished WordPress draft.'],
+] as const
+
+// A revision re-runs the pipeline, but only the stages a rewrite actually touches. The
+// ids match the original pipeline so both passes drive the same progress panel.
+const revisionStages = [
+  ['opportunity_research', 'Ahrefs re-research', 'Ahrefs is checked again for keywords that support your new angle, keeping the article’s primary keyword.'],
+  ['seo_brief', 'Brief re-angled', 'The outline, intent and reader are updated. Title, slug and approved artwork are preserved.'],
+  ['article_writing', 'Rewrite', 'Hermes rewrites the article to your direction, replaying every instruction given so far.'],
+  ['content_optimization', 'SurferSEO score floor', 'The rewrite is re-scored and revised until it recovers the score it had before the edit.'],
+  ['human_review', 'Score gate', 'A rewrite that would lower the SEO score is held back instead of applied.'],
+  ['image_generation', 'Artwork', 'Existing images are reused unless you asked for them to be regenerated for the new angle.'],
+  ['wordpress_draft', 'WordPress sync', 'Title, slug, meta description and body are written back to WordPress together.'],
 ] as const
 
 function displayStatus(value: string) {
@@ -47,16 +62,30 @@ function wordpressEditorUrl(preview: WordPressDraftPreview) {
   return `${preview.siteUrl.replace(/\/$/, '')}/wp-admin/post.php?post=${encodeURIComponent(preview.id)}&action=edit`
 }
 
-function stageState(run: ContentOperationsRun | null, stageId: string, index: number) {
+// Stages recorded before the current pass are ignored, so a revision shows its own
+// progress instead of inheriting every tick from the original generation.
+function stagesForCycle(run: ContentOperationsRun | null) {
+  if (!run) return []
+  const cycle = run.currentCycle || 0
+  return run.stages.filter((stage) => (stage.cycle || 0) === cycle)
+}
+
+function stageState(
+  run: ContentOperationsRun | null,
+  stages: ContentOperationsRun['stages'],
+  list: ReadonlyArray<readonly [string, string, string]>,
+  stageId: string,
+  index: number,
+) {
   if (!run) return index === 0 ? 'ready' : 'pending'
-  if (run.stages.some((stage) => stage.stage === stageId)) return 'complete'
+  if (stages.some((stage) => stage.stage === stageId)) return 'complete'
   if (run.status === 'error' && run.currentStage === stageId) return 'error'
   if (run.status === 'stopped') return 'stopped'
-  const currentIndex = pipelineStages.findIndex(([id]) => id === run.currentStage)
+  const currentIndex = list.findIndex(([id]) => id === run.currentStage)
   const automaticStillRunning = run.workflowMode === 'draft_automation'
-    && !run.stages.some((stage) => stage.stage === 'wordpress_draft')
+    && !stages.some((stage) => stage.stage === 'wordpress_draft')
     && !['error', 'stopped'].includes(run.status)
-  if (currentIndex === index || ((run.status === 'running' || automaticStillRunning) && currentIndex < 0 && index === run.stages.length)) return 'running'
+  if (currentIndex === index || ((run.status === 'running' || automaticStillRunning) && currentIndex < 0 && index === stages.length)) return 'running'
   return 'pending'
 }
 
@@ -82,6 +111,14 @@ export default function ContentOperations() {
   const [selectedRunIds, setSelectedRunIds] = useState<string[]>([])
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [editorOpen, setEditorOpen] = useState(false)
+  const [instruction, setInstruction] = useState('')
+  const [revising, setRevising] = useState(false)
+  const [reoptimize, setReoptimize] = useState(true)
+  const [research, setResearch] = useState(true)
+  const [regenerateImages, setRegenerateImages] = useState(false)
+  const [enforceScoreFloor, setEnforceScoreFloor] = useState(true)
+  const [applyToLive, setApplyToLive] = useState(false)
 
   const loadPreview = useCallback(async (postId: number) => {
     setPreviewLoading(true)
@@ -114,11 +151,17 @@ export default function ContentOperations() {
 
   const activeRunId = run?.runId
   const activeRunStatus = run?.status
-  const activeRunFinished = Boolean(run?.stages.some((stage) => stage.stage === 'wordpress_draft'))
+  // Scoped to the current pass: during a revision the original run's wordpress_draft
+  // stage is still on the record, and polling has to follow the new pass regardless.
+  const activeRunFinished = Boolean(stagesForCycle(run ?? null).some((stage) => stage.stage === 'wordpress_draft'))
+  const activeRunIsRevision = (run?.currentCycle || 0) > 0
   const shouldPollActiveRun = Boolean(activeRunId)
     && activeRunStatus !== 'error'
     && activeRunStatus !== 'stopped'
-    && !activeRunFinished
+    // A revision always ends by setting the run back to completed, including when the
+    // score gate holds the rewrite back and no wordpress_draft stage is ever written —
+    // so follow the status, not the stage list, or the poller never stops.
+    && (activeRunIsRevision ? activeRunStatus === 'running' : !activeRunFinished)
   useEffect(() => {
     if (!activeRunId || !shouldPollActiveRun) return
     const timer = window.setInterval(async () => {
@@ -130,7 +173,15 @@ export default function ContentOperations() {
         setRun(refreshed)
         if (refreshed.status !== 'running') {
           setBusy(false)
-          if (refreshed.wordpressPublication?.postId) {
+          setRevising(false)
+          if ((refreshed.currentCycle || 0) > 0) {
+            // A revision pass just finished — refresh the preview so the panel shows the
+            // rewrite, and let the thread carry the detail (including a held-back rewrite).
+            if (refreshed.wordpressPublication?.postId && preview) await loadPreview(refreshed.wordpressPublication.postId)
+            const held = (refreshed.revisions || []).some((entry) => entry.status === 'rejected' && !entry.revertedAt)
+            if (held) message.warning('Rewrite held back — it would have lowered the SurferSEO score')
+            else message.success('Article updated')
+          } else if (refreshed.wordpressPublication?.postId) {
             message.success('WordPress article is ready — select Show final WordPress article to review it')
           } else if (refreshed.status === 'error') {
             setError(refreshed.errors.at(-1) || 'The content pipeline failed.')
@@ -142,7 +193,7 @@ export default function ContentOperations() {
       }
     }, 750)
     return () => window.clearInterval(timer)
-  }, [activeRunId, shouldPollActiveRun])
+  }, [activeRunId, shouldPollActiveRun, preview, loadPreview])
 
   const generate = async () => {
     if (!request.trim() || busy) return
@@ -203,6 +254,101 @@ export default function ContentOperations() {
     })
   }
 
+  // Post-generation editing. Two shapes: starting a revision kicks off a background
+  // pipeline pass and lets the poller drive the UI, while reverting and promoting a
+  // held-back rewrite are immediate and return the finished run.
+  const refreshRun = async () => {
+    try {
+      const runData = await getContentOperationsRuns()
+      setRuns(runData)
+      const refreshed = runData.find((item) => item.runId === run?.runId)
+      if (refreshed) setRun(refreshed)
+    } catch { /* the banner already explains the failure */ }
+  }
+
+  const applyImmediate = async (work: () => Promise<ContentOperationsRun>) => {
+    setRevising(true)
+    setError('')
+    try {
+      const updated = await work()
+      setRun(updated)
+      setRuns((current) => current.map((item) => (item.runId === updated.runId ? updated : item)))
+      if (updated.wordpressPublication?.postId) await loadPreview(updated.wordpressPublication.postId)
+      message.success('Article updated')
+    } catch (revisionError) {
+      const messageText = revisionError instanceof Error ? revisionError.message : 'The edit could not be applied.'
+      setError(messageText)
+      message.error(messageText)
+      await refreshRun()
+    } finally {
+      setRevising(false)
+    }
+  }
+
+  const sendInstruction = async () => {
+    const text = instruction.trim()
+    if (!run || !text || revising) return
+    const send = async () => {
+      setRevising(true)
+      setError('')
+      try {
+        // 202 — the pipeline runs in the background. The poller takes it from here and
+        // clears `revising` when the pass lands.
+        const started = await reviseContentOperationsArticle(run.runId, {
+          instruction: text,
+          research,
+          regenerateImages,
+          reoptimize,
+          enforceScoreFloor,
+          applyToLive: isLive && applyToLive,
+        })
+        setRun(started)
+        setRuns((current) => current.map((item) => (item.runId === started.runId ? started : item)))
+        setInstruction('')
+      } catch (revisionError) {
+        setRevising(false)
+        const messageText = revisionError instanceof Error ? revisionError.message : 'The edit could not be started.'
+        setError(messageText)
+        message.error(messageText)
+        await refreshRun()
+      }
+    }
+    if (isLive && applyToLive) {
+      Modal.confirm({
+        title: 'Rewrite the live post?',
+        content: `"${run.wordpressPublication?.title || 'This article'}" is already published. The rewritten version will replace what readers see on trustedtechnology.ai as soon as it is ready.`,
+        okText: 'Rewrite and update live',
+        cancelText: 'Cancel',
+        onOk: send,
+      })
+      return
+    }
+    await send()
+  }
+
+  const revertTo = (revisionId: string) => {
+    if (!run || revising) return
+    void applyImmediate(() => revertContentOperationsRevision(run.runId, {
+      revisionId,
+      applyToLive: isLive && applyToLive,
+    }))
+  }
+
+  const applyHeldBack = (revisionId: string, drop: string) => {
+    if (!run || revising) return
+    Modal.confirm({
+      title: 'Apply the rewrite anyway?',
+      content: `This rewrite lowers the SurferSEO score (${drop}). Applying it accepts that drop${isLive && applyToLive ? ' and updates the live post' : ''}.`,
+      okText: 'Apply anyway',
+      okButtonProps: { danger: true },
+      cancelText: 'Keep the current article',
+      onOk: () => applyImmediate(() => applyContentOperationsRevision(run.runId, {
+        revisionId,
+        applyToLive: isLive && applyToLive,
+      })),
+    })
+  }
+
   const deleteSelectedDrafts = async () => {
     const targets = runs.filter((item) => selectedRunIds.includes(item.runId))
     if (!targets.length) return
@@ -236,6 +382,15 @@ export default function ContentOperations() {
   const srcDoc = useMemo(() => preview ? previewDocument(preview) : '', [preview])
   const wordpressReady = integrations.wordpress?.status === 'connected'
   const ahrefsReady = integrations.ahrefs?.status === 'connected'
+  const isLive = run?.wordpressPublication?.status === 'publish'
+  const editorChat = run?.editorChat || []
+  const revisions = run?.revisions || []
+  const canEdit = Boolean(run?.article) && run?.status !== 'running'
+  const inRevision = (run?.currentCycle || 0) > 0
+  const activeStageList = inRevision ? revisionStages : pipelineStages
+  const cycleStages = stagesForCycle(run ?? null)
+  const latestRevisionId = revisions.filter((entry) => !entry.revertedAt && entry.status !== 'rejected').at(-1)?.id
+  const heldBackRevisionId = revisions.filter((entry) => entry.status === 'rejected' && !entry.revertedAt).at(-1)?.id
 
   return (
     <div className="page content-generator-workspace">
@@ -312,12 +467,15 @@ export default function ContentOperations() {
           </Space>
         </Card>
 
-        <Card className="section-card content-generator-progress" title="Workflow progress">
+        <Card
+          className="section-card content-generator-progress"
+          title={<Space wrap><span>Workflow progress</span>{inRevision ? <Tag color="purple">Revision {run?.currentCycle}</Tag> : null}</Space>}
+        >
           <div className="content-stage-list">
-            {pipelineStages.map(([id, label, description], index) => {
-              const state = stageState(run, id, index)
-              const completed = run?.stages.find((stage) => stage.stage === id)
-              const legacyImageStage = id === 'image_generation' && !completed && run?.stages.some((stage) => stage.stage === 'wordpress_draft')
+            {activeStageList.map(([id, label, description], index) => {
+              const state = stageState(run, cycleStages, activeStageList, id, index)
+              const completed = cycleStages.find((stage) => stage.stage === id)
+              const legacyImageStage = id === 'image_generation' && !completed && cycleStages.some((stage) => stage.stage === 'wordpress_draft')
               return (
                 <div className={`content-stage content-stage-${legacyImageStage ? 'complete' : state}`} key={id}>
                   <div className="content-stage-index">{state === 'complete' || legacyImageStage ? '✓' : index + 1}</div>
@@ -326,7 +484,7 @@ export default function ContentOperations() {
               )
             })}
           </div>
-          {busy ? <div className="content-generator-running"><Spin /><Text>Hermes is running the next step…</Text></div> : null}
+          {busy || revising ? <div className="content-generator-running"><Spin /><Text>Hermes is running the next step…</Text></div> : null}
         </Card>
 
         <Card
@@ -334,6 +492,13 @@ export default function ContentOperations() {
           title="Final WordPress article"
           extra={preview ? (
             <Space>
+              <Button
+                type={editorOpen ? 'default' : 'dashed'}
+                disabled={!canEdit}
+                onClick={() => setEditorOpen((current) => !current)}
+              >
+                {editorOpen ? 'Hide editor' : 'Edit with Hermes'}
+              </Button>
               <Button onClick={() => void loadPreview(preview.id)} loading={previewLoading}>Reload preview</Button>
               <Button loading={pdfLoading} onClick={async () => {
                 if (!run) return
@@ -368,6 +533,101 @@ export default function ContentOperations() {
           {!previewLoading && !preview && !(run?.status === 'completed' && run.wordpressPublication?.postId && run.wordpressPublication.status !== 'trash') ? <div className="wordpress-preview-empty"><Empty description={run?.status === 'running' ? 'The final article will unlock when every step is complete.' : 'Generate an article to see the final WordPress version.'} /></div> : null}
           {preview ? <iframe title={`WordPress draft ${preview.id} preview`} className="wordpress-preview-frame" sandbox="" srcDoc={srcDoc} /> : null}
         </Card>
+
+        {editorOpen && run ? (
+          <Card
+            className="section-card content-generator-editor"
+            title={<Space wrap><span>Edit this article</span>{isLive ? <Tag color="red">Live post</Tag> : <Tag color="gold">Draft</Tag>}{run.surferOptimization?.seoScoreAfter != null ? <Tag color="blue">Surfer SEO {run.surferOptimization.seoScoreAfter}</Tag> : null}</Space>}
+            extra={<Button size="small" onClick={() => setEditorOpen(false)}>Close</Button>}
+          >
+            <div className="content-editor-thread">
+              {editorChat.length ? editorChat.map((entry) => (
+                <div className={`chat-message chat-message-${entry.role}`} key={entry.id}>
+                  <Text type="secondary" style={{ fontSize: 12 }}>{entry.role === 'user' ? 'Your direction' : 'Hermes'}</Text>
+                  <Paragraph style={{ margin: '4px 0 0', whiteSpace: 'pre-wrap' }}>{entry.content}</Paragraph>
+                  {entry.revisionId && entry.revisionId === heldBackRevisionId ? (
+                    <Space wrap style={{ marginTop: 8 }}>
+                      <Button
+                        size="small"
+                        danger
+                        disabled={revising}
+                        onClick={() => {
+                          const held = revisions.find((item) => item.id === entry.revisionId)
+                          applyHeldBack(entry.revisionId!, `${held?.seoScoreBefore ?? '—'} → ${held?.seoScoreAfter ?? '—'}`)
+                        }}
+                      >
+                        Apply anyway
+                      </Button>
+                      <Text type="secondary" style={{ fontSize: 12 }}>or re-word your direction and send it again</Text>
+                    </Space>
+                  ) : null}
+                  {entry.revisionId && entry.revisionId === latestRevisionId ? (
+                    <Button size="small" type="link" style={{ paddingLeft: 0 }} disabled={revising} onClick={() => revertTo(entry.revisionId!)}>
+                      Undo this edit
+                    </Button>
+                  ) : null}
+                </div>
+              )) : (
+                <Empty
+                  image={null}
+                  description="Tell Hermes what to change — for example: “The angle leans too hard on law enforcement for a commercial retail audience. Tone that down and focus on employee safety, then rewrite with the Ahrefs keyword intact.”"
+                />
+              )}
+              {revising ? (
+                <div className="content-generator-running">
+                  <Spin />
+                  <Text>Running the pipeline again — watch Workflow progress for the current step.</Text>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="content-editor-composer">
+              <TextArea
+                value={instruction}
+                onChange={(event) => setInstruction(event.target.value)}
+                placeholder="Describe the change: angle, tone, emphasis, what to cut, what to add…"
+                autoSize={{ minRows: 3, maxRows: 8 }}
+                disabled={revising || !canEdit}
+                onPressEnter={(event) => { if (!event.shiftKey) { event.preventDefault(); void sendInstruction() } }}
+              />
+              <div className="content-editor-options">
+                <Space size="large" wrap>
+                  <Tooltip title="Check Ahrefs again for curated keywords that support the new angle. The article's primary keyword is kept either way, so the SEO score stays comparable.">
+                    <Space size="small"><Switch size="small" checked={research} disabled={revising} onChange={setResearch} /><Text>Re-run Ahrefs</Text></Space>
+                  </Tooltip>
+                  <Tooltip title="Re-plan and re-render the article's images for the new angle. Off by default because generating images costs money and time — turn it on when the re-angle changes who the article is for.">
+                    <Space size="small"><Switch size="small" checked={regenerateImages} disabled={revising} onChange={setRegenerateImages} /><Text>Regenerate images</Text></Space>
+                  </Tooltip>
+                  <Tooltip title="Push the rewrite back through SurferSEO and keep revising until the score stops improving. Your direction always outranks the SEO target.">
+                    <Space size="small"><Switch size="small" checked={reoptimize} disabled={revising} onChange={setReoptimize} /><Text>Re-run SurferSEO</Text></Space>
+                  </Tooltip>
+                  <Tooltip title="Treat the current SurferSEO score as a floor. If the rewrite scores lower and recovery passes cannot close the gap, it is held back instead of applied — you can still apply it deliberately.">
+                    <Space size="small"><Switch size="small" checked={enforceScoreFloor} disabled={revising || !reoptimize} onChange={setEnforceScoreFloor} /><Text>Never lower the SEO score</Text></Space>
+                  </Tooltip>
+                  {isLive ? (
+                    <Tooltip title="This article is already published. Without this, edits are saved to the run only and the live post is left untouched.">
+                      <Space size="small"><Switch size="small" checked={applyToLive} disabled={revising} onChange={setApplyToLive} /><Text type={applyToLive ? 'danger' : undefined}>Apply to the live post</Text></Space>
+                    </Tooltip>
+                  ) : null}
+                </Space>
+                <Button type="primary" loading={revising} disabled={!instruction.trim() || !canEdit} onClick={() => void sendInstruction()}>
+                  Rewrite article
+                </Button>
+              </div>
+              <Text type="secondary">
+                {'The title, slug and meta description are rewritten with the article. '}
+                {reoptimize && enforceScoreFloor && run.surferOptimization?.seoScoreAfter != null
+                  ? `A rewrite that scores below ${run.surferOptimization.seoScoreAfter} will be held back rather than applied. `
+                  : ''}
+                {isLive && !applyToLive
+                  ? 'Edits are applied to the stored article only — the published post stays as readers see it now.'
+                  : isLive
+                    ? 'Edits will replace the published post on trustedtechnology.ai. You will be asked to confirm.'
+                    : 'Edits are written straight back to the WordPress draft. Nothing is published.'}
+              </Text>
+            </div>
+          </Card>
+        ) : null}
       </div>
       <Modal
         title="Delete selected generated articles?"

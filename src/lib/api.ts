@@ -759,6 +759,8 @@ export type ContentOperationsRun = {
     aiSearchScore: number | null
     targetScore?: number
     targetMet?: boolean
+    scoreFloor?: number | null
+    floorMet?: boolean
     passes: number
     notes: string
     optimizedAt: string
@@ -799,6 +801,33 @@ export type ContentOperationsRun = {
     explanation: string
     output: unknown
     completedAt: string
+    cycle?: number
+  }>
+  currentCycle?: number
+  editorChat?: Array<{
+    id: string
+    role: 'user' | 'assistant'
+    content: string
+    revisionId?: string
+    revert?: boolean
+    failed?: boolean
+    scoreRejected?: boolean
+    createdAt: string
+  }>
+  revisions?: Array<{
+    id: string
+    instruction: string
+    status?: 'applied' | 'rejected'
+    appliedDespiteScoreDrop?: boolean
+    scoreFloor?: number | null
+    wordCountBefore: number
+    wordCountAfter: number
+    seoScoreBefore: number | null
+    seoScoreAfter: number | null
+    wordpressSynced: boolean
+    appliedToLive: boolean
+    revertedAt: string | null
+    createdAt: string
   }>
   toolCallsUsed: string[]
   approval: {
@@ -863,6 +892,43 @@ export function approveContentOperationsGate(
     method: 'POST',
     body: JSON.stringify(payload),
   })
+}
+
+export function reviseContentOperationsArticle(
+  runId: string,
+  payload: {
+    instruction: string
+    research: boolean
+    regenerateImages: boolean
+    reoptimize: boolean
+    enforceScoreFloor: boolean
+    applyToLive: boolean
+  },
+) {
+  return request<ContentOperationsRun>(
+    `/content-operations/runs/${encodeURIComponent(runId)}/revise`,
+    { method: 'POST', body: JSON.stringify(payload) },
+  )
+}
+
+export function applyContentOperationsRevision(
+  runId: string,
+  payload: { revisionId: string; applyToLive: boolean },
+) {
+  return request<ContentOperationsRun>(
+    `/content-operations/runs/${encodeURIComponent(runId)}/apply-revision`,
+    { method: 'POST', body: JSON.stringify(payload) },
+  )
+}
+
+export function revertContentOperationsRevision(
+  runId: string,
+  payload: { revisionId: string; applyToLive: boolean },
+) {
+  return request<ContentOperationsRun>(
+    `/content-operations/runs/${encodeURIComponent(runId)}/revert`,
+    { method: 'POST', body: JSON.stringify(payload) },
+  )
 }
 
 export function publishContentOperationsTestPost(runId: string) {
