@@ -38,7 +38,7 @@ const revisionStages = [
   ['seo_brief', 'Brief re-angled', 'The outline, intent and reader are updated. Title, slug and approved artwork are preserved.'],
   ['article_writing', 'Rewrite', 'Hermes rewrites the article to your direction, replaying every instruction given so far.'],
   ['content_optimization', 'SurferSEO score floor', 'The rewrite is re-scored and revised until it recovers the score it had before the edit.'],
-  ['human_review', 'Score gate', 'A rewrite that would lower the SEO score is held back instead of applied.'],
+  ['human_review', 'Score gate', 'The rewrite is revised until it recovers the score it had before the edit; a drop is reported, not a reason to abandon the edit.'],
   ['image_generation', 'Artwork', 'Existing images are reused unless you asked for them to be regenerated for the new angle.'],
   ['wordpress_draft', 'WordPress sync', 'Title, slug, meta description and body are written back to WordPress together.'],
 ] as const
@@ -84,8 +84,13 @@ function stageState(
   const currentIndex = list.findIndex(([id]) => id === run.currentStage)
   const automaticStillRunning = run.workflowMode === 'draft_automation'
     && !stages.some((stage) => stage.stage === 'wordpress_draft')
-    && !['error', 'stopped'].includes(run.status)
-  if (currentIndex === index || ((run.status === 'running' || automaticStillRunning) && currentIndex < 0 && index === stages.length)) return 'running'
+    && !['error', 'stopped', 'completed'].includes(run.status)
+  // A stage may only render as running while the run actually is. Without this a pass
+  // that halts early — the score gate holding a rewrite back, for instance — leaves
+  // currentStage pointing at a stage it never reached, and the panel spins forever.
+  const live = run.status === 'running' || run.status === 'waiting_for_approval' || automaticStillRunning
+  if (!live) return 'pending'
+  if (currentIndex === index || (currentIndex < 0 && index === stages.length)) return 'running'
   return 'pending'
 }
 
@@ -117,7 +122,9 @@ export default function ContentOperations() {
   const [reoptimize, setReoptimize] = useState(true)
   const [research, setResearch] = useState(true)
   const [regenerateImages, setRegenerateImages] = useState(false)
-  const [enforceScoreFloor, setEnforceScoreFloor] = useState(true)
+  // Off by default: the revision always finishes and reports a score drop. Turn this on
+  // only if you would rather an edit be abandoned than cost ranking.
+  const [enforceScoreFloor, setEnforceScoreFloor] = useState(false)
   const [applyToLive, setApplyToLive] = useState(false)
 
   const loadPreview = useCallback(async (postId: number) => {
@@ -601,8 +608,8 @@ export default function ContentOperations() {
                   <Tooltip title="Push the rewrite back through SurferSEO and keep revising until the score stops improving. Your direction always outranks the SEO target.">
                     <Space size="small"><Switch size="small" checked={reoptimize} disabled={revising} onChange={setReoptimize} /><Text>Re-run SurferSEO</Text></Space>
                   </Tooltip>
-                  <Tooltip title="Treat the current SurferSEO score as a floor. If the rewrite scores lower and recovery passes cannot close the gap, it is held back instead of applied — you can still apply it deliberately.">
-                    <Space size="small"><Switch size="small" checked={enforceScoreFloor} disabled={revising || !reoptimize} onChange={setEnforceScoreFloor} /><Text>Never lower the SEO score</Text></Space>
+                  <Tooltip title="Abandon the edit if the rewrite scores lower than before and the recovery passes cannot close the gap. Off by default: the pipeline always tries to recover the score, but finishes the edit either way and tells you if it dropped — undo is in the thread.">
+                    <Space size="small"><Switch size="small" checked={enforceScoreFloor} disabled={revising || !reoptimize} onChange={setEnforceScoreFloor} /><Text>Stop if the SEO score drops</Text></Space>
                   </Tooltip>
                   {isLive ? (
                     <Tooltip title="This article is already published. Without this, edits are saved to the run only and the live post is left untouched.">
@@ -617,8 +624,8 @@ export default function ContentOperations() {
               <Text type="secondary">
                 {'The title, slug and meta description are rewritten with the article. '}
                 {reoptimize && enforceScoreFloor && run.surferOptimization?.seoScoreAfter != null
-                  ? `A rewrite that scores below ${run.surferOptimization.seoScoreAfter} will be held back rather than applied. `
-                  : ''}
+                  ? `A rewrite that scores below ${run.surferOptimization.seoScoreAfter} will be abandoned rather than applied. `
+                  : 'The edit always runs to completion; a score drop is reported so you can undo it. '}
                 {isLive && !applyToLive
                   ? 'Edits are applied to the stored article only — the published post stays as readers see it now.'
                   : isLive
