@@ -2,8 +2,17 @@ import { useEffect, useRef, useState } from 'react'
 import grapesjs, { type Editor } from 'grapesjs'
 import 'grapesjs/dist/css/grapes.min.css'
 import presetNewsletterImport from 'grapesjs-preset-newsletter'
-import { Alert, Button, Space, Typography, message } from 'antd'
+import { Alert, Button, Input, Modal, Select, Space, Typography, message } from 'antd'
 import trustedLogo from '../assets/trusted-technology-primary-logo.png'
+import {
+  fetchBrevoLists,
+  fetchBrevoSenders,
+  createBrevoCampaign,
+  sendBrevoTest,
+  sendBrevoCampaign,
+  type BrevoList,
+  type BrevoSender,
+} from '../lib/api'
 
 const { Title, Text } = Typography
 
@@ -172,6 +181,39 @@ export default function EmailCampaignBuilder() {
   const [ready, setReady] = useState(false)
   const [initError, setInitError] = useState<string | null>(null)
 
+  const [lists, setLists] = useState<BrevoList[]>([])
+  const [senders, setSenders] = useState<BrevoSender[]>([])
+  const [brevoError, setBrevoError] = useState<string | null>(null)
+  const [listIds, setListIds] = useState<number[]>([])
+  const [senderEmail, setSenderEmail] = useState<string>('')
+  const [subject, setSubject] = useState('')
+  const [testEmail, setTestEmail] = useState('')
+  const [busy, setBusy] = useState<'test' | 'send' | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    Promise.all([fetchBrevoLists(), fetchBrevoSenders()])
+      .then(([nextLists, nextSenders]) => {
+        if (cancelled) return
+        setLists(nextLists)
+        setSenders(nextSenders)
+        const firstActive = nextSenders.find((sender) => sender.active)
+        if (firstActive) setSenderEmail(firstActive.email)
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return
+        setBrevoError(error instanceof Error ? error.message : 'Could not reach Brevo')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const recipientCount = listIds.reduce(
+    (total, id) => total + (lists.find((list) => list.id === id)?.contactCount ?? 0),
+    0,
+  )
+
   useEffect(() => {
     if (!containerRef.current || editorRef.current) return
 
@@ -244,17 +286,6 @@ export default function EmailCampaignBuilder() {
     preview.document.close()
   }
 
-  async function handleCopy() {
-    const html = getInlinedHtml()
-    if (!html) return
-    try {
-      await navigator.clipboard.writeText(html)
-      message.success('Email copied — ready to paste anywhere')
-    } catch {
-      message.error('Could not access the clipboard')
-    }
-  }
-
   function handleDownload() {
     const html = getInlinedHtml()
     if (!html) return
@@ -274,19 +305,174 @@ export default function EmailCampaignBuilder() {
     message.success('Loaded the Trusted starter template')
   }
 
+  // Every send path creates a fresh draft campaign first, so what goes out is
+  // exactly the HTML on screen right now.
+  async function createDraft(): Promise<number | null> {
+    const html = getInlinedHtml()
+    const sender = senders.find((candidate) => candidate.email === senderEmail)
+    if (!html) {
+      message.error('The email is empty')
+      return null
+    }
+    const { id } = await createBrevoCampaign({
+      subject: subject.trim(),
+      senderName: sender?.name || senderEmail,
+      senderEmail,
+      htmlContent: html,
+      listIds,
+    })
+    return id
+  }
+
+  async function handleSendTest() {
+    if (!testEmail.trim()) {
+      message.warning('Enter an address to send the test to')
+      return
+    }
+    setBusy('test')
+    try {
+      const id = await createDraft()
+      if (id) {
+        await sendBrevoTest(id, [testEmail.trim()])
+        message.success(`Test sent to ${testEmail.trim()}`)
+      }
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : 'Test send failed')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  function handleSend() {
+    const names = listIds
+      .map((id) => lists.find((list) => list.id === id)?.name)
+      .filter(Boolean)
+      .join(', ')
+
+    Modal.confirm({
+      title: 'Send this campaign now?',
+      okText: `Send to ${recipientCount.toLocaleString()} contacts`,
+      okButtonProps: { danger: true },
+      cancelText: 'Cancel',
+      content: (
+        <div>
+          <p style={{ marginBottom: 8 }}><b>Subject:</b> {subject.trim()}</p>
+          <p style={{ marginBottom: 8 }}><b>To:</b> {names}</p>
+          <p style={{ marginBottom: 8 }}><b>From:</b> {senderEmail}</p>
+          <p style={{ marginBottom: 0 }}>This sends immediately and cannot be undone.</p>
+        </div>
+      ),
+      onOk: async () => {
+        setBusy('send')
+        try {
+          const id = await createDraft()
+          if (id) {
+            await sendBrevoCampaign(id)
+            message.success('Campaign sent')
+          }
+        } catch (error) {
+          message.error(error instanceof Error ? error.message : 'Send failed')
+          throw error
+        } finally {
+          setBusy(null)
+        }
+      },
+    })
+  }
+
+  const canSend =
+    ready && Boolean(subject.trim()) && Boolean(senderEmail) && listIds.length > 0 && !busy
+
   return (
     <div className="email-builder">
       <div className="email-builder-head">
         <div>
-          <Title level={3} style={{ marginBottom: 4 }}>Campaign Builder</Title>
-          <Text type="secondary">Build a Trusted Technology email — no code, just drag, drop, and type.</Text>
+          <Title level={3} style={{ marginBottom: 4 }}>New Email</Title>
+          <Text type="secondary">Compose it, choose who gets it, send it through Brevo.</Text>
         </div>
         <Space wrap>
           <Button onClick={handleResetTemplate} disabled={!ready}>Start from template</Button>
           <Button onClick={handlePreview} disabled={!ready}>Preview</Button>
           <Button onClick={handleDownload} disabled={!ready}>Download</Button>
-          <Button type="primary" onClick={handleCopy} disabled={!ready}>Copy email</Button>
         </Space>
+      </div>
+
+      {brevoError ? (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message="Brevo is not connected"
+          description={`${brevoError}. You can still design the email, but recipients and sending are unavailable.`}
+        />
+      ) : null}
+
+      <div className="email-compose-fields">
+        <div className="email-compose-row">
+          <label htmlFor="brevo-to">To</label>
+          <Select
+            id="brevo-to"
+            mode="multiple"
+            allowClear
+            style={{ width: '100%' }}
+            placeholder="Choose one or more Brevo lists"
+            value={listIds}
+            onChange={setListIds}
+            options={lists.map((list) => ({
+              value: list.id,
+              label: `${list.name} — ${list.contactCount.toLocaleString()} contacts`,
+            }))}
+          />
+        </div>
+
+        <div className="email-compose-row">
+          <label htmlFor="brevo-from">From</label>
+          <Select
+            id="brevo-from"
+            style={{ width: '100%' }}
+            placeholder="Choose a verified sender"
+            value={senderEmail || undefined}
+            onChange={setSenderEmail}
+            options={senders.map((sender) => ({
+              value: sender.email,
+              label: sender.name ? `${sender.name} <${sender.email}>` : sender.email,
+              disabled: !sender.active,
+            }))}
+          />
+        </div>
+
+        <div className="email-compose-row">
+          <label htmlFor="brevo-subject">Subject</label>
+          <Input
+            id="brevo-subject"
+            placeholder="What lands in their inbox"
+            value={subject}
+            onChange={(event) => setSubject(event.target.value)}
+            maxLength={200}
+          />
+        </div>
+
+        <div className="email-compose-actions">
+          <Space wrap>
+            <Input
+              style={{ width: 260 }}
+              placeholder="you@trustedtechnology.ai"
+              value={testEmail}
+              onChange={(event) => setTestEmail(event.target.value)}
+            />
+            <Button onClick={handleSendTest} loading={busy === 'test'} disabled={!ready || !senderEmail}>
+              Send test
+            </Button>
+          </Space>
+          <Space wrap align="center">
+            {listIds.length ? (
+              <Text type="secondary">{recipientCount.toLocaleString()} recipients</Text>
+            ) : null}
+            <Button type="primary" onClick={handleSend} loading={busy === 'send'} disabled={!canSend}>
+              Send campaign
+            </Button>
+          </Space>
+        </div>
       </div>
 
       {initError ? (
@@ -302,7 +488,7 @@ export default function EmailCampaignBuilder() {
             <ol className="email-builder-steps">
               <li><b>Drag</b> a block — Logo, Image / Content, or Bottom Text — onto your email.</li>
               <li><b>Double-click</b> any text to edit it, and <b>click an image</b> to swap it.</li>
-              <li>Hit <b>Preview</b> to see it, then <b>Copy email</b> when you’re happy. (Sending through Brevo is coming next.)</li>
+              <li>Set <b>To</b>, <b>From</b>, and <b>Subject</b> above, send yourself a test, then <b>Send campaign</b>.</li>
             </ol>
           }
         />

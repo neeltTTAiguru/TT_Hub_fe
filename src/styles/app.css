@@ -2730,3 +2730,50 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Compose header — the "writing an email" surface above the design canvas. */
+.email-compose-fields {
+  border: 1px solid var(--tt-border, #d4d6ce);
+  border-radius: 10px;
+  padding: 16px 18px;
+  margin-bottom: 16px;
+  background: var(--tt-surface, #fff);
+}
+
+.email-compose-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--tt-border-subtle, #ececec);
+}
+
+.email-compose-row label {
+  flex: 0 0 72px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--tt-text-muted, #6b6f76);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.email-compose-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 14px;
+}
+
+@media (max-width: 720px) {
+  .email-compose-row {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .email-compose-row label {
+    flex: none;
+  }
+}

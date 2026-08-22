@@ -18,7 +18,6 @@ import TrustedTechAssistant from './pages/TrustedTechAssistant'
 import CompetitorAnalyst from './pages/CompetitorAnalyst'
 import TrustedTechHubSpotAssistant from './pages/TrustedTechHubSpotAssistant'
 import TrustedTechYouTrackAssistant from './pages/TrustedTechYouTrackAssistant'
-import TrustedTechBrevoAssistant from './pages/TrustedTechBrevoAssistant'
 import EmailCampaignBuilder from './pages/EmailCampaignBuilder'
 import TrustedTechAhrefsAssistant from './pages/TrustedTechAhrefsAssistant'
 import ContentOperations from './pages/ContentOperations'
@@ -92,19 +91,9 @@ const baseNavItems = [
     label: <Link to="/youtrack-assistant">YouTrack</Link>,
   },
   {
-    key: 'brevo-menu',
+    key: '/email-builder',
     icon: brevoIcon,
-    label: 'Brevo',
-    children: [
-      {
-        key: '/brevo-assistant',
-        label: <Link to="/brevo-assistant">Brevo Assistant</Link>,
-      },
-      {
-        key: '/email-builder',
-        label: <Link to="/email-builder">Email Builder</Link>,
-      },
-    ],
+    label: <Link to="/email-builder">Brevo</Link>,
   },
   {
     key: 'content-generator-menu',
@@ -128,24 +117,15 @@ const contentGeneratorPaths = [
   '/assistants/product-360',
 ]
 
-const brevoPaths = [
-  '/brevo-assistant',
-  '/email-builder',
-]
-
 function AppShell({ isDark, onToggle }: { isDark: boolean; onToggle: () => void }) {
   const location = useLocation()
   const { user, logout } = useAuth0()
-  const submenuPaths = [...contentGeneratorPaths, ...brevoPaths]
-  const selectedNavKey = submenuPaths.find((path) =>
+  const selectedNavKey = contentGeneratorPaths.find((path) =>
     location.pathname === path || location.pathname.startsWith(`${path}/`),
   ) || baseNavItems.find((item) =>
     !item.children && (location.pathname === item.key || location.pathname.startsWith(`${item.key}/`)),
   )?.key
   const contentGeneratorOpen = contentGeneratorPaths.some((path) =>
-    location.pathname === path || location.pathname.startsWith(`${path}/`),
-  )
-  const brevoOpen = brevoPaths.some((path) =>
     location.pathname === path || location.pathname.startsWith(`${path}/`),
   )
 
@@ -166,10 +146,7 @@ function AppShell({ isDark, onToggle }: { isDark: boolean; onToggle: () => void 
           mode="inline"
           items={baseNavItems}
           selectedKeys={selectedNavKey ? [selectedNavKey] : []}
-          defaultOpenKeys={[
-            ...(contentGeneratorOpen ? ['content-generator-menu'] : []),
-            ...(brevoOpen ? ['brevo-menu'] : []),
-          ]}
+          defaultOpenKeys={contentGeneratorOpen ? ['content-generator-menu'] : []}
         />
       </Sider>
 
@@ -203,7 +180,6 @@ function AppShell({ isDark, onToggle }: { isDark: boolean; onToggle: () => void 
             <Route path="/competitor-analyst" element={<CompetitorAnalyst />} />
             <Route path="/hubspot-assistant" element={<TrustedTechHubSpotAssistant />} />
             <Route path="/youtrack-assistant" element={<TrustedTechYouTrackAssistant />} />
-            <Route path="/brevo-assistant" element={<TrustedTechBrevoAssistant />} />
             <Route path="/email-builder" element={<EmailCampaignBuilder />} />
             <Route path="/ahrefs-assistant" element={<TrustedTechAhrefsAssistant />} />
             <Route path="/assistants/content-operations" element={<ContentOperations />} />

@@ -1599,3 +1599,52 @@ export function runTwitterSurfer(payload?: { searches?: string[]; filter?: strin
     body: JSON.stringify(payload ?? {}),
   })
 }
+
+export type BrevoList = {
+  id: number
+  name: string
+  folderId?: number
+  contactCount: number
+}
+
+export type BrevoSender = {
+  id: number
+  name: string
+  email: string
+  active: boolean
+}
+
+export function fetchBrevoLists() {
+  return request<BrevoList[]>('/brevo/lists')
+}
+
+export function fetchBrevoSenders() {
+  return request<BrevoSender[]>('/brevo/senders')
+}
+
+export function createBrevoCampaign(payload: {
+  name?: string
+  subject: string
+  senderName: string
+  senderEmail: string
+  htmlContent: string
+  listIds: number[]
+}) {
+  return request<{ id: number }>('/brevo/campaigns', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function sendBrevoTest(campaignId: number, emails: string[]) {
+  return request<{ sent: boolean }>(`/brevo/campaigns/${campaignId}/test`, {
+    method: 'POST',
+    body: JSON.stringify({ emails }),
+  })
+}
+
+export function sendBrevoCampaign(campaignId: number) {
+  return request<{ sent: boolean }>(`/brevo/campaigns/${campaignId}/send`, {
+    method: 'POST',
+  })
+}
