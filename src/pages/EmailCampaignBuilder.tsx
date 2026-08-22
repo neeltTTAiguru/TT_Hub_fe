@@ -263,6 +263,40 @@ function constrainCanvas(editor: Editor) {
   editor.on('canvas:frame:load', apply)
 }
 
+// A photo dropped straight from a desktop arrives at full camera resolution —
+// several megabytes, far past what an email should carry and past Brevo's 2MB
+// per-image ceiling. Downscale to twice the email width (retina) and re-encode.
+const MAX_IMAGE_WIDTH = EMAIL_WIDTH * 2
+const RECOMPRESS_ABOVE_BYTES = 400 * 1024
+
+function blobToDataUri(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result))
+    reader.onerror = () => reject(new Error('Could not read image'))
+    reader.readAsDataURL(blob)
+  })
+}
+
+async function shrinkImage(blob: Blob): Promise<string> {
+  if (blob.size <= RECOMPRESS_ABOVE_BYTES) return blobToDataUri(blob)
+
+  const bitmap = await createImageBitmap(blob)
+  const scale = Math.min(1, MAX_IMAGE_WIDTH / bitmap.width)
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.round(bitmap.width * scale)
+  canvas.height = Math.round(bitmap.height * scale)
+
+  const context = canvas.getContext('2d')
+  if (!context) return blobToDataUri(blob)
+  context.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+  bitmap.close?.()
+
+  // JPEG for photographs; PNG would keep them enormous. Transparency is rare in
+  // email art and not worth the payload.
+  return canvas.toDataURL('image/jpeg', 0.82)
+}
+
 // The logo and any bundled art are served from this app's origin, which means
 // nothing to a mail client. Convert those to data URIs so the backend can store
 // them and rewrite the markup to absolute, publicly fetchable URLs.
@@ -270,29 +304,23 @@ async function inlineLocalImages(html: string): Promise<string> {
   const doc = new DOMParser().parseFromString(html, 'text/html')
   const images = Array.from(doc.querySelectorAll('img'))
 
-  await Promise.all(
-    images.map(async (img) => {
-      const src = img.getAttribute('src') || ''
-      if (!src || src.startsWith('data:')) return
-      const isForeign = /^https?:\/\//i.test(src) && !src.startsWith(window.location.origin)
-      if (isForeign) return
+  for (const img of images) {
+    const src = img.getAttribute('src') || ''
+    if (!src) continue
 
-      try {
-        const response = await fetch(src)
-        if (!response.ok) return
-        const blob = await response.blob()
-        const dataUri = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader()
-          reader.onload = () => resolve(String(reader.result))
-          reader.onerror = () => reject(new Error('read failed'))
-          reader.readAsDataURL(blob)
-        })
-        img.setAttribute('src', dataUri)
-      } catch {
-        // Leave the original src; the send will still go out, just without it.
-      }
-    }),
-  )
+    const isForeign = /^https?:\/\//i.test(src) && !src.startsWith(window.location.origin)
+    if (isForeign) continue
+
+    try {
+      // Covers app-relative assets, blob: URLs from a drag-and-drop, and
+      // oversized data: URIs alike — fetch() handles all three.
+      const response = await fetch(src)
+      if (!response.ok) continue
+      img.setAttribute('src', await shrinkImage(await response.blob()))
+    } catch {
+      // Leave the original src; the rest of the email still goes out.
+    }
+  }
 
   return doc.body.innerHTML
 }
@@ -491,13 +519,15 @@ export default function EmailCampaignBuilder() {
       message.warning('Enter a valid address to send the test to')
       return
     }
-    const html = await getSendableHtml()
-    if (!html) {
-      message.error('The email is empty')
-      return
-    }
+    // Spinner first: shrinking a large photo takes a moment, and without
+    // feedback the click reads as a no-op.
     setBusy('test')
     try {
+      const html = await getSendableHtml()
+      if (!html) {
+        message.error('The email is empty')
+        return
+      }
       const sender = senders.find((candidate) => candidate.email === senderEmail)
       await sendBrevoDirect({
         subject: subject.trim() || 'Test email',
@@ -508,7 +538,7 @@ export default function EmailCampaignBuilder() {
       })
       message.success(`Test sent to ${address}`)
     } catch (error) {
-      message.error(error instanceof Error ? error.message : 'Test send failed')
+      message.error(error instanceof Error ? error.message : 'Test send failed', 8)
     } finally {
       setBusy(null)
     }
