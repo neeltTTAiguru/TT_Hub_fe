@@ -21,7 +21,6 @@ import TrustedTechYouTrackAssistant from './pages/TrustedTechYouTrackAssistant'
 import EmailCampaignBuilder from './pages/EmailCampaignBuilder'
 import TrustedTechAhrefsAssistant from './pages/TrustedTechAhrefsAssistant'
 import ContentOperations from './pages/ContentOperations'
-import Product360 from './pages/Product360'
 import Settings from './pages/Settings'
 import NotFound from './pages/NotFound'
 import { setAccessTokenProvider } from './lib/api'
@@ -96,38 +95,18 @@ const baseNavItems = [
     label: <Link to="/email-builder">Brevo</Link>,
   },
   {
-    key: 'content-generator-menu',
+    key: '/assistants/content-operations',
     icon: contentGeneratorIcon,
-    label: 'Content Generator',
-    children: [
-      {
-        key: '/assistants/content-operations',
-        label: <Link to="/assistants/content-operations">Generate Article</Link>,
-      },
-      {
-        key: '/assistants/product-360',
-        label: <Link to="/assistants/product-360">3D Viewer</Link>,
-      },
-    ],
+    label: <Link to="/assistants/content-operations">Content Generator</Link>,
   },
-]
-
-const contentGeneratorPaths = [
-  '/assistants/content-operations',
-  '/assistants/product-360',
 ]
 
 function AppShell({ isDark, onToggle }: { isDark: boolean; onToggle: () => void }) {
   const location = useLocation()
   const { user, logout } = useAuth0()
-  const selectedNavKey = contentGeneratorPaths.find((path) =>
-    location.pathname === path || location.pathname.startsWith(`${path}/`),
-  ) || baseNavItems.find((item) =>
-    !item.children && (location.pathname === item.key || location.pathname.startsWith(`${item.key}/`)),
+  const selectedNavKey = baseNavItems.find((item) =>
+    location.pathname === item.key || location.pathname.startsWith(`${item.key}/`),
   )?.key
-  const contentGeneratorOpen = contentGeneratorPaths.some((path) =>
-    location.pathname === path || location.pathname.startsWith(`${path}/`),
-  )
 
   return (
     <Layout className="app-shell">
@@ -146,7 +125,6 @@ function AppShell({ isDark, onToggle }: { isDark: boolean; onToggle: () => void 
           mode="inline"
           items={baseNavItems}
           selectedKeys={selectedNavKey ? [selectedNavKey] : []}
-          defaultOpenKeys={contentGeneratorOpen ? ['content-generator-menu'] : []}
         />
       </Sider>
 
@@ -183,7 +161,6 @@ function AppShell({ isDark, onToggle }: { isDark: boolean; onToggle: () => void 
             <Route path="/email-builder" element={<EmailCampaignBuilder />} />
             <Route path="/ahrefs-assistant" element={<TrustedTechAhrefsAssistant />} />
             <Route path="/assistants/content-operations" element={<ContentOperations />} />
-            <Route path="/assistants/product-360" element={<Product360 />} />
             <Route path="/assistants/content-operations/blog/*" element={<Navigate to="/assistants/content-operations" replace />} />
             <Route path="/assistants/wordpress-draft-test" element={<Navigate to="/assistants/content-operations" replace />} />
             <Route path="/assistants/wordpress-draft-editor" element={<Navigate to="/assistants/content-operations" replace />} />
