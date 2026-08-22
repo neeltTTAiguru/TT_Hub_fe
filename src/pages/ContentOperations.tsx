@@ -24,6 +24,7 @@ const pipelineStages = [
   ['opportunity_research', 'Ahrefs research', 'Hermes researches current keyword and competitor signals through Ahrefs MCP.'],
   ['opportunity_scoring', 'Opportunity selection', 'The strongest relevant opportunity is selected from the evidence.'],
   ['seo_brief', 'SEO brief', 'Hermes turns the selected opportunity into a structured article plan.'],
+  ['surfer_setup', 'Surfer guidelines', 'SurferSEO analyses the SERP and returns the word-count and term targets the draft is written to. This can take several minutes.'],
   ['article_writing', 'Article writing', 'Hermes writes the complete Trusted Tech article from the approved context.'],
   ['content_optimization', 'Surfer SEO optimization', 'Hermes scores the draft in SurferSEO and revises it toward the SEO guidelines.'],
   ['human_review', 'Draft safety review', 'The article passes a draft-only factual and brand gate.'],
@@ -482,11 +483,15 @@ export default function ContentOperations() {
             {activeStageList.map(([id, label, description], index) => {
               const state = stageState(run, cycleStages, activeStageList, id, index)
               const completed = cycleStages.find((stage) => stage.stage === id)
-              const legacyImageStage = id === 'image_generation' && !completed && cycleStages.some((stage) => stage.stage === 'wordpress_draft')
+              // Stages added after a run finished have no record on it. Treat them as done
+              // rather than perpetually pending once the pass reached WordPress.
+              const legacyImageStage = (id === 'image_generation' || id === 'surfer_setup')
+                && !completed
+                && cycleStages.some((stage) => stage.stage === 'wordpress_draft')
               return (
                 <div className={`content-stage content-stage-${legacyImageStage ? 'complete' : state}`} key={id}>
                   <div className="content-stage-index">{state === 'complete' || legacyImageStage ? '✓' : index + 1}</div>
-                  <div><div className="content-stage-heading"><Text strong>{label}</Text><Tag color={stateColor(legacyImageStage ? 'complete' : state)}>{legacyImageStage ? 'Legacy complete' : displayStatus(state)}</Tag></div><Paragraph>{legacyImageStage ? 'This article was completed before automatic image generation was added.' : completed?.result ? String(completed.result) : description}</Paragraph></div>
+                  <div><div className="content-stage-heading"><Text strong>{label}</Text><Tag color={stateColor(legacyImageStage ? 'complete' : state)}>{legacyImageStage ? 'Legacy complete' : displayStatus(state)}</Tag></div><Paragraph>{legacyImageStage ? 'This article was completed before this step existed in the workflow.' : completed?.result ? String(completed.result) : description}</Paragraph></div>
                 </div>
               )
             })}
