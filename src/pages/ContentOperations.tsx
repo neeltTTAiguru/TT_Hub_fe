@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, Button, Card, Checkbox, Empty, Input, Modal, Space, Spin, Switch, Tag, Tooltip, Typography, message } from 'antd'
 import {
   applyContentOperationsRevision,
@@ -128,14 +128,24 @@ export default function ContentOperations() {
   const [enforceScoreFloor, setEnforceScoreFloor] = useState(false)
   const [applyToLive, setApplyToLive] = useState(false)
 
+  // Which preview the panel is currently meant to show. Selecting a second article while
+  // the first is still loading would otherwise let the slower response win and render the
+  // wrong article under the right heading.
+  const previewRequestRef = useRef(0)
+
   const loadPreview = useCallback(async (postId: number) => {
+    const requestId = previewRequestRef.current + 1
+    previewRequestRef.current = requestId
     setPreviewLoading(true)
     try {
-      setPreview(await getWordPressDraftPreview(postId))
+      const loaded = await getWordPressDraftPreview(postId)
+      if (previewRequestRef.current !== requestId) return
+      setPreview(loaded)
     } catch (previewError) {
+      if (previewRequestRef.current !== requestId) return
       setError(previewError instanceof Error ? previewError.message : 'The WordPress preview could not be loaded.')
     } finally {
-      setPreviewLoading(false)
+      if (previewRequestRef.current === requestId) setPreviewLoading(false)
     }
   }, [])
 
@@ -460,6 +470,9 @@ export default function ContentOperations() {
                       <button
                         type="button"
         onClick={() => {
+                          // Invalidates any preview still loading for the previous
+                          // selection, so it cannot land after this one.
+                          previewRequestRef.current += 1
                           setRun(item)
                           setPreview(null)
                         }}
