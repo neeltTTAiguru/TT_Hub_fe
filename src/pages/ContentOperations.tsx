@@ -160,7 +160,6 @@ export default function ContentOperations() {
       <div className="draft-panel-body">
         <header className="tt-hero">
           <div className="tt-hero-main">
-            <p className="tt-eyebrow">Trusted Tech Knowledge Center &nbsp;•&nbsp; Field Guide</p>
             <h1 className="tt-hero-title">{guide.title}</h1>
             {guide.lead ? <p className="tt-hero-lead">{guide.lead}</p> : null}
             <hr className="tt-hero-rule" />

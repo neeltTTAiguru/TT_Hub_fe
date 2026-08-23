@@ -3789,7 +3789,8 @@
 }
 
 .tt-hero-main {
-  padding: 40px 32px 28px;
+  /* The title leads the page, so the top padding is only breathing room. */
+  padding: 28px 32px 28px;
   min-width: 0;
 }
 
