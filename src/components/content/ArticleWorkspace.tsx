@@ -71,6 +71,9 @@ type Props = {
   // Whether this phase generates artwork. Only Write does; the later phases
   // inherit whatever the article already has.
   generatesImages?: boolean
+  // Only the SEO phase shows the pass progress. seoStage is shared state, so
+  // without this every page renders the takeover.
+  showsSeoProgress?: boolean
   draftKey: string
 }
 
@@ -80,6 +83,7 @@ export default function ArticleWorkspace({
   queryingLabel,
   panelActions,
   generatesImages = false,
+  showsSeoProgress = false,
   draftKey,
 }: Props) {
   const pipeline = useContentPipeline()
@@ -177,7 +181,7 @@ export default function ArticleWorkspace({
         </Space>
       </div>
       <div className="draft-panel-body">
-        {pipeline.seoStage && pipeline.seoStage !== 'done' ? (
+        {showsSeoProgress && pipeline.seoStage && pipeline.seoStage !== 'done' ? (
           // While the pass runs the panel is the progress view. Showing the old
           // article beside a running rewrite invites reading a version that is
           // about to be replaced.

@@ -3,6 +3,7 @@ import { Alert, Button, Space, Tag, Typography, message } from 'antd'
 import {
   getContentOperationsRun,
   startContentOperationsSeoPass,
+  stopContentOperationsRun,
   type ContentOperationsRun,
 } from '../../lib/api'
 import { useContentPipeline } from '../../lib/contentPipeline'
@@ -68,6 +69,10 @@ export default function SeoPassAction({ chat }: { chat: ChatApi }) {
 
         setRunning(false)
         pipeline.update({ seoStage: 'done' })
+        if (next.status === 'stopped') {
+          chat.appendAssistantMessage('**SEO pass stopped.** The article is unchanged.')
+          return
+        }
         if (next.status === 'error') {
           const why = next.errors?.[next.errors.length - 1] || 'The SEO pass failed.'
           setError(why)
@@ -114,6 +119,20 @@ export default function SeoPassAction({ chat }: { chat: ChatApi }) {
     }
   }
 
+  const stop = async () => {
+    const runId = pipeline.runId
+    if (!runId) return
+    if (timer.current) window.clearTimeout(timer.current)
+    setRunning(false)
+    pipeline.update({ seoStage: 'done' })
+    try {
+      await stopContentOperationsRun(runId)
+      chat.appendAssistantMessage('**SEO pass stopped.** The article is unchanged.')
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'The pass could not be stopped.')
+    }
+  }
+
   const before = run?.surferOptimization?.seoScoreBefore
   const after = run?.surferOptimization?.seoScoreAfter
 
@@ -129,6 +148,9 @@ export default function SeoPassAction({ chat }: { chat: ChatApi }) {
         <Text type="secondary" style={{ fontSize: 12 }}>
           {stage === 'content_optimization' ? 'Scoring and revising…' : 'Building Surfer guidelines…'}
         </Text>
+      ) : null}
+      {running ? (
+        <Button size="small" danger onClick={() => void stop()}>Stop</Button>
       ) : null}
       <Button size="small" type="primary" loading={running} onClick={() => void start()}>
         {after != null ? 'Run again' : 'Run Ahrefs + Surfer pass'}

@@ -3999,15 +3999,16 @@
 }
 
 
-/* SEO pass progress: three circles across the middle of the panel, joined by
-   arrows. Replaces the article while the rewrite runs — showing the old version
-   beside a running rewrite invites reading a draft about to be replaced. */
+/* SEO pass progress: three rectangular stage boxes filling the panel, joined by
+   thick arrows, each carrying a circular step marker. Replaces the article while
+   the rewrite runs — showing the old version beside a running rewrite invites
+   reading a draft about to be replaced. */
 .seo-progress {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 28px;
+  gap: 30px;
   min-height: 100%;
   padding: 40px;
   text-align: center;
@@ -4015,22 +4016,25 @@
 
 .seo-progress-track {
   display: flex;
-  align-items: flex-start;
+  align-items: stretch;
   justify-content: center;
+  width: 100%;
 }
 
 .seo-progress-node {
   display: flex;
-  align-items: flex-start;
+  align-items: stretch;
+  flex: 1;
+  min-width: 0;
 }
 
 .seo-progress-arrow {
-  /* A thick shaft with a head, drawn rather than typed so it scales with the
-     circles and keeps its weight. */
   position: relative;
-  width: 56px;
-  height: 6px;
-  margin-top: 27px;
+  flex: none;
+  align-self: center;
+  width: 44px;
+  height: 8px;
+  margin: 0 6px;
   background: rgb(168, 164, 143);
 }
 
@@ -4040,35 +4044,41 @@
   right: -1px;
   top: 50%;
   transform: translateY(-50%);
-  border-left: 13px solid rgb(168, 164, 143);
-  border-top: 9px solid transparent;
-  border-bottom: 9px solid transparent;
+  border-left: 16px solid rgb(168, 164, 143);
+  border-top: 11px solid transparent;
+  border-bottom: 11px solid transparent;
 }
 
 .seo-progress-step {
   display: flex;
+  flex: 1;
+  min-width: 0;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
-  width: 150px;
+  justify-content: center;
+  gap: 12px;
+  padding: 34px 20px;
+  border-radius: var(--app-radius);
+  border: 2px solid rgb(214, 212, 202);
+  background: var(--app-surface);
 }
 
 .seo-progress-circle {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 60px;
-  height: 60px;
+  width: 56px;
+  height: 56px;
   border-radius: 50%;
   border: 3px solid rgb(168, 164, 143);
-  background: var(--app-surface);
+  background: rgb(244, 242, 236);
   color: var(--app-text-muted);
   font-size: 20px;
   font-weight: 700;
 }
 
 .seo-progress-label {
-  font-size: 15px;
+  font-size: 16px;
 }
 
 .seo-progress-detail {
@@ -4077,10 +4087,18 @@
   color: var(--app-text-muted);
 }
 
+.seo-progress-active {
+  border-color: var(--app-primary);
+}
+
 .seo-progress-active .seo-progress-circle {
   border-color: var(--app-primary);
   background: var(--app-primary);
   color: #fff;
+}
+
+.seo-progress-done {
+  border-color: rgb(85, 87, 72);
 }
 
 .seo-progress-done .seo-progress-circle {
@@ -4093,6 +4111,10 @@
   opacity: 0.5;
 }
 
+.seo-progress-error {
+  border-color: #b4453a;
+}
+
 .seo-progress-error .seo-progress-circle {
   border-color: #b4453a;
   background: #b4453a;
@@ -4101,7 +4123,7 @@
 
 .seo-progress-note {
   margin: 0;
-  max-width: 420px;
+  max-width: 460px;
   font-size: 13px;
   color: var(--app-text-muted);
 }
