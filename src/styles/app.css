@@ -3256,3 +3256,223 @@
   .product-viewer-grid { grid-template-columns: minmax(0, 1fr); }
   .product-viewer-canvas { height: 460px; }
 }
+
+/* Full-height chat (opt-in via AgentChatWorkspace's `fullHeight`). The card fills
+   the viewport, the thread takes every spare pixel, and the composer sits on the
+   bottom edge — instead of an empty thread collapsing and leaving the input
+   stranded at the top of a tall blank card. */
+.page-chat-full {
+  /* Ant's Header (64px) plus .app-content's 28px top/bottom padding. */
+  height: calc(100dvh - 120px);
+  min-height: 460px;
+  /* Flex, not grid rows: the chat must be the growing child whether or not a
+     page header sits above it, and a fixed row template can't do both. */
+  display: flex;
+  flex-direction: column;
+}
+
+/* No card chrome in full-height mode — the chat IS the page, not a panel
+   floating on it. Border, shadow, radius and body padding all go. */
+/* .ant-card is doubled up because AntD injects its own styles at runtime and can
+   land after this sheet — equal specificity would let the card chrome win. */
+.ant-card.chat-card-full {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.chat-card-full > .ant-card-head {
+  padding-left: 0;
+  padding-right: 0;
+  background: transparent;
+  border-bottom: 0;
+}
+
+.chat-card-full > .ant-card-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  padding: 0;
+  background: transparent;
+}
+
+/* Space wraps every child in its own .ant-space-item, so the chat's item has to
+   be told to grow before .chat-shell can inherit the height. */
+.chat-card-full .ant-space-vertical {
+  flex: 1;
+  min-height: 0;
+}
+
+.chat-card-full .ant-space-vertical > .ant-space-item:last-child {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.chat-card-full .chat-shell,
+.chat-card-full .chat-workspace-single {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-card-full .chat-main {
+  flex: 1;
+  min-height: 0;
+  /* Thread absorbs the slack; the composer keeps its natural height. */
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
+.chat-card-full .chat-thread {
+  max-height: none;
+  align-content: start;
+}
+
+/* Persistent thread rail (AgentChatWorkspace `threadRail`) — a standing list
+   beside the conversation, replacing the header's saved-chats dropdown. */
+/* Collapsed by default; the header's toggle slides the column open. Animating
+   the track width (not the aside) keeps the conversation reflowing with it. */
+.chat-shell-railed {
+  display: grid;
+  /* Snaps rather than animates: grid-template-columns transitions are not
+     supported in Safari, so an animated open would be inconsistent anyway. */
+  grid-template-columns: minmax(0, 1fr) 0px;
+  gap: 0;
+}
+
+.chat-shell-railed-open {
+  grid-template-columns: minmax(0, 1fr) 230px;
+  gap: 20px;
+}
+
+/* Closed state is pure geometry — the 0-width track plus overflow:hidden clips
+   the rail. Nothing here depends on a transition landing. */
+.chat-shell-railed:not(.chat-shell-railed-open) .chat-rail {
+  padding-left: 0;
+  border-left: 0;
+  pointer-events: none;
+  /* Also takes the clipped items out of the tab order, which is what makes the
+     aria-hidden on the collapsed rail honest. */
+  visibility: hidden;
+}
+
+.chat-rail-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  background: none;
+  color: var(--app-text-muted);
+  cursor: pointer;
+  transition:
+    color 140ms ease,
+    border-color 140ms ease,
+    background 140ms ease;
+}
+
+.chat-rail-toggle:hover {
+  color: var(--app-primary-strong);
+  border-color: var(--app-primary);
+  background: color-mix(in srgb, var(--app-primary) 8%, transparent);
+}
+
+.chat-head-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.chat-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  /* The grid track is what animates, so the rail must clip rather than spill. */
+  overflow: hidden;
+  padding-left: 20px;
+  border-left: 1px solid var(--app-border);
+}
+
+.chat-rail-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.chat-rail-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 10px;
+}
+
+.chat-rail-item:hover {
+  background: color-mix(in srgb, var(--app-primary) 8%, transparent);
+}
+
+.chat-rail-item-active {
+  background: color-mix(in srgb, var(--app-primary) 14%, transparent);
+}
+
+.chat-rail-open {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+
+.chat-rail-open strong {
+  font-size: 13px;
+  font-weight: 600;
+  /* Titles are the first user message, so they must not wrap the rail open. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-rail-open span {
+  font-size: 11px;
+  color: var(--app-text-muted);
+}
+
+.chat-rail-open:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* Railed shells stay two columns in full-height mode; the flex rule above would
+   otherwise stack the rail on top of the conversation. */
+.chat-card-full .chat-shell-railed {
+  display: grid;
+  flex: 1;
+  min-height: 0;
+}
+
+@media (max-width: 900px) {
+  .chat-shell-railed-open {
+    grid-template-columns: minmax(0, 1fr) 180px;
+    gap: 14px;
+  }
+
+  .chat-rail {
+    padding-left: 14px;
+  }
+}

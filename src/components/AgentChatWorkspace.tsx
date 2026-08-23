@@ -180,6 +180,19 @@ type AgentChatWorkspaceProps = {
   // Called after a memory is saved/updated so the caller can refresh its section list.
   onMemorySaved?: () => void
   chatSidePanel?: ReactNode
+  // Persistent left rail listing saved threads, instead of the header dropdown.
+  threadRail?: boolean
+  threadRailTitle?: string
+  threadRailNewLabel?: string
+  threadRailEmptyText?: string
+  // The page's <h1>/subtitle block above the chat.
+  showPageHeader?: boolean
+  // The header's tag / New chat / Saved chats cluster. Off when the rail owns them.
+  showHeaderControls?: boolean
+  // Fill the viewport: the conversation takes all remaining height and the
+  // composer stays pinned to the bottom, instead of the thread collapsing and
+  // leaving the input floating in an empty card.
+  fullHeight?: boolean
   onChatResponse?: (response: AgentChatResponse) => void
   // Storage key for autosaving the in-progress conversation to the browser so a
   // refresh/freeze doesn't lose it. Defaults to the agentId; pass a more specific
@@ -376,6 +389,13 @@ export default function AgentChatWorkspace({
   sectionMemories,
   onMemorySaved,
   chatSidePanel,
+  threadRail = false,
+  threadRailTitle = 'Chats',
+  threadRailNewLabel = 'New chat',
+  threadRailEmptyText = 'Nothing saved yet.',
+  showPageHeader = true,
+  showHeaderControls = true,
+  fullHeight = false,
   onChatResponse,
   draftKey,
   competitor,
@@ -1027,12 +1047,30 @@ export default function AgentChatWorkspace({
     }
   }
 
+  const railToggle = (
+    <button
+      type="button"
+      className="chat-rail-toggle"
+      aria-label={isThreadSidebarOpen ? `Hide ${threadRailTitle}` : `Show ${threadRailTitle}`}
+      aria-expanded={isThreadSidebarOpen}
+      title={isThreadSidebarOpen ? `Hide ${threadRailTitle}` : `Show ${threadRailTitle}`}
+      onClick={() => setIsThreadSidebarOpen((current) => !current)}
+    >
+      <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
+        <rect x="1.5" y="2.5" width="15" height="13" rx="2.5" fill="none" stroke="currentColor" strokeWidth="1.5" />
+        <line x1="11" y1="2.5" x2="11" y2="15.5" stroke="currentColor" strokeWidth="1.5" />
+      </svg>
+    </button>
+  )
+
   return (
-    <div className="page">
-      <div>
-        <h1 className="page-title">{title}</h1>
-        <p className="page-subtitle">{subtitle}</p>
-      </div>
+    <div className={`page${fullHeight ? ' page-chat-full' : ''}`}>
+      {showPageHeader ? (
+        <div>
+          <h1 className="page-title">{title}</h1>
+          <p className="page-subtitle">{subtitle}</p>
+        </div>
+      ) : null}
 
       {error ? <Alert type="error" showIcon message={`Unable to load ${title}`} description={error} /> : null}
 
@@ -1071,9 +1109,11 @@ export default function AgentChatWorkspace({
 
           {showChatWorkspace ? (
             <Card
-              className="section-card"
+              className={`section-card${fullHeight ? ' chat-card-full' : ''}`}
               title={chatTitle || undefined}
               extra={
+                <Space size="small" wrap>
+                {showHeaderControls ? (
                 <Space size="small" wrap>
                   {showBackendTag && agent ? <Tag color="gold">{backendLabel}</Tag> : null}
                   <Button type="primary" onClick={handleNewThread} disabled={isChatting}>
@@ -1143,6 +1183,9 @@ export default function AgentChatWorkspace({
                     </Button>
                   ) : null}
                 </Space>
+                ) : null}
+                {threadRail ? railToggle : null}
+                </Space>
               }
             >
               <Space direction="vertical" size="middle" style={{ width: '100%' }}>
@@ -1152,7 +1195,11 @@ export default function AgentChatWorkspace({
                   <Alert type="error" showIcon message={`${assistantLabel} chat is unavailable`} description={chatError} />
                 ) : null}
 
-                <div className="chat-shell">
+                <div
+                  className={`chat-shell${threadRail ? ' chat-shell-railed' : ''}${
+                    threadRail && isThreadSidebarOpen ? ' chat-shell-railed-open' : ''
+                  }`}
+                >
                   {showThreadControls ? (
                     <aside className={`chat-sidebar ${isThreadSidebarOpen ? 'chat-sidebar-open' : ''}`}>
                       <div className="chat-sidebar-header">
@@ -1188,7 +1235,7 @@ export default function AgentChatWorkspace({
                     </aside>
                   ) : null}
 
-                  <div className={chatSidePanel ? 'chat-workspace-grid' : undefined}>
+                  <div className={chatSidePanel ? 'chat-workspace-grid' : 'chat-workspace-single'}>
                     <div
                       className={`chat-main${isDragActive ? ' chat-main-dragging' : ''}`}
                       onDragEnter={handleDragEnter}
@@ -1375,6 +1422,49 @@ export default function AgentChatWorkspace({
                     </div>
                     {chatSidePanel}
                   </div>
+                  {threadRail ? (
+                    <aside className="chat-rail" aria-label={threadRailTitle} aria-hidden={!isThreadSidebarOpen}>
+                      <div className="chat-rail-header">
+                        <Text strong>{threadRailTitle}</Text>
+                        <Text type="secondary">{savedThreads.length}</Text>
+                      </div>
+                      <Button type="primary" block onClick={handleNewThread} disabled={isChatting}>
+                        {threadRailNewLabel}
+                      </Button>
+                      <div className="chat-thread-list">
+                        {savedThreads.length ? (
+                          savedThreads.map((thread) => (
+                            <div
+                              key={thread._id}
+                              className={`chat-rail-item${activeThreadId === thread._id ? ' chat-rail-item-active' : ''}`}
+                            >
+                              <button
+                                type="button"
+                                className="chat-rail-open"
+                                onClick={() => void handleImportThread(thread._id)}
+                                disabled={isChatting}
+                              >
+                                <strong>{thread.title || 'Untitled'}</strong>
+                                <span>{new Date(thread.updatedAt).toLocaleDateString()}</span>
+                              </button>
+                              <Button
+                                type="text"
+                                size="small"
+                                danger
+                                aria-label={`Delete ${thread.title || 'item'}`}
+                                onClick={() => void handleDeleteThread(thread._id)}
+                                disabled={isChatting}
+                              >
+                                ✕
+                              </Button>
+                            </div>
+                          ))
+                        ) : (
+                          <Text type="secondary" style={{ fontSize: 12 }}>{threadRailEmptyText}</Text>
+                        )}
+                      </div>
+                    </aside>
+                  ) : null}
                 </div>
               </Space>
             </Card>
