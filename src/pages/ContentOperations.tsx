@@ -3,17 +3,19 @@ import { Alert, Button, Empty, Space, Typography, message } from 'antd'
 import AgentChatWorkspace from '../components/AgentChatWorkspace'
 import MarkdownArticle, { type ArticleImage } from '../components/MarkdownArticle'
 import surferLogo from '../assets/agent-logos/surfer.svg'
-import { generateContentOperationsDraftImages, type AgentChatResponse } from '../lib/api'
+import { generateContentOperationsDraftImages } from '../lib/api'
 
 const { Text } = Typography
 
-// An article reply is long-form Markdown with a heading; a conversational reply
-// ("which audience is this for?") is neither. Only the former belongs in the
-// draft pane, so a follow-up question never blanks the article you're reading.
+// An article is long and multi-paragraph; a conversational reply ("which
+// audience is this for?") is short. Headings are the strongest signal but not
+// required — the writer does not always return them, and an article stranded in
+// the chat with an empty draft pane beside it is the worse failure.
 function looksLikeArticle(value: string) {
   const body = value.trim()
-  if (body.length < 400) return false
-  return /^#{1,3}\s+\S/m.test(body)
+  if (/^#{1,3}\s+\S/m.test(body) && body.length > 240) return true
+  const paragraphs = body.split(/\n{2,}|\n(?=[A-Z])/).filter((part) => part.trim().length > 80)
+  return body.length > 700 && paragraphs.length >= 3
 }
 
 function wordCount(value: string) {
@@ -32,8 +34,7 @@ export default function ContentOperations() {
   const [imagesLoading, setImagesLoading] = useState(false)
   const [imageError, setImageError] = useState('')
 
-  const handleChatResponse = (response: AgentChatResponse) => {
-    const content = typeof response.message?.content === 'string' ? response.message.content : ''
+  const handleAssistantMessage = (content: string) => {
     if (!looksLikeArticle(content)) return
     setDraft(content)
     // A new draft invalidates artwork generated for the previous one — those
@@ -123,7 +124,7 @@ export default function ContentOperations() {
       showHeaderControls={false}
       chatSidePanel={draftPanel}
       chatSidePanelPosition="left"
-      onChatResponse={handleChatResponse}
+      onAssistantMessage={handleAssistantMessage}
       draftKey="content-operations"
     />
   )

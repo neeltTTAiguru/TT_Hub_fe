@@ -197,6 +197,10 @@ type AgentChatWorkspaceProps = {
   // leaving the input floating in an empty card.
   fullHeight?: boolean
   onChatResponse?: (response: AgentChatResponse) => void
+  // The assistant's final text, resolved. Streaming may end without a `message`
+  // event (the accumulated text is the answer), so onChatResponse alone is not a
+  // reliable way to see what was said.
+  onAssistantMessage?: (content: string) => void
   // Storage key for autosaving the in-progress conversation to the browser so a
   // refresh/freeze doesn't lose it. Defaults to the agentId; pass a more specific
   // key (e.g. per competitor) to keep separate drafts.
@@ -401,6 +405,7 @@ export default function AgentChatWorkspace({
   showHeaderControls = true,
   fullHeight = false,
   onChatResponse,
+  onAssistantMessage,
   draftKey,
   competitor,
 }: AgentChatWorkspaceProps) {
@@ -832,6 +837,8 @@ export default function AgentChatWorkspace({
         ]
         setChatMessages(finalMessages)
         onChatResponse?.(response)
+        const streamed = typeof response.message?.content === 'string' ? response.message.content : accumulated
+        if (streamed.trim()) onAssistantMessage?.(streamed)
         await autoSaveThread(finalMessages)
       } else {
         const runKey = draftStorageKey
@@ -855,6 +862,8 @@ export default function AgentChatWorkspace({
         setChatMessages(settled.finalMessages)
         setHasLastChat(true)
         onChatResponse?.(settled.response)
+        const replied = settled.response.message?.content
+        if (typeof replied === 'string' && replied.trim()) onAssistantMessage?.(replied)
         // Await so the session id is set before another message can be sent
         // (prevents duplicate sessions).
         await autoSaveThread(settled.finalMessages)

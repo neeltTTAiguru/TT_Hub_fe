@@ -3485,7 +3485,8 @@
 /* Draft-and-chat split: the article on the left, the conversation on the right.
    The panel order is set in markup, so this only has to size the columns. */
 .chat-workspace-grid-flipped {
-  grid-template-columns: minmax(0, 1.15fr) minmax(360px, 0.85fr);
+  /* A true half and half. */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 }
 
 .draft-panel {
