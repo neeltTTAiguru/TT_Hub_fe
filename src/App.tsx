@@ -22,7 +22,6 @@ import EmailCampaignBuilder from './pages/EmailCampaignBuilder'
 import TrustedTechAhrefsAssistant from './pages/TrustedTechAhrefsAssistant'
 import CompanyFiles from './pages/CompanyFiles'
 import ContentOperations from './pages/ContentOperations'
-import ProductViewer from './pages/ProductViewer'
 import Settings from './pages/Settings'
 import NotFound from './pages/NotFound'
 import { setAccessTokenProvider } from './lib/api'
@@ -33,7 +32,6 @@ import youtrackLogo from './assets/agent-logos/youtrack.svg'
 import brevoLogo from './assets/agent-logos/brevo.svg'
 import competitorAnalystLogo from './assets/agent-logos/competitor-analyst.svg'
 import surferLogo from './assets/agent-logos/surfer.svg'
-import product3dLogo from './assets/agent-logos/product-3d.svg'
 import './styles/app.css'
 
 const brainIcon = (
@@ -58,10 +56,6 @@ const competitorAnalystIcon = (
 
 const contentGeneratorIcon = (
   <img src={surferLogo} alt="" aria-hidden="true" className="agent-icon" />
-)
-
-const product3dIcon = (
-  <img src={product3dLogo} alt="" aria-hidden="true" className="agent-icon" />
 )
 
 const { Header, Sider, Content } = Layout
@@ -115,11 +109,6 @@ const baseNavItems = [
     key: '/assistants/content-operations',
     icon: contentGeneratorIcon,
     label: <Link to="/assistants/content-operations">Content Generator</Link>,
-  },
-  {
-    key: '/product-3d',
-    icon: product3dIcon,
-    label: <Link to="/product-3d">T500 in 3D</Link>,
   },
 ]
 
@@ -218,7 +207,6 @@ function AppShell({ isDark, onToggle }: { isDark: boolean; onToggle: () => void 
             <Route path="/assistants/content-operations/blog/*" element={<Navigate to="/assistants/content-operations" replace />} />
             <Route path="/assistants/wordpress-draft-test" element={<Navigate to="/assistants/content-operations" replace />} />
             <Route path="/assistants/wordpress-draft-editor" element={<Navigate to="/assistants/content-operations" replace />} />
-            <Route path="/product-3d" element={<ProductViewer />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
