@@ -121,10 +121,15 @@ export default function ArticleWorkspace({
   }, [draft])
 
   const handleThreadReset = () => {
-    setPanelOpen(false)
     setImageError('')
     imagesStartedRef.current = false
     liveTurnRef.current = false
+    // An empty thread on this phase does not mean there is no article. The
+    // article lives in the shared pipeline and was very likely written on
+    // another phase — or by the SEO pass, which remounts this chat with an
+    // empty thread the moment it finishes. Only close the panel when there is
+    // genuinely nothing to show.
+    if (!pipeline.draft) setPanelOpen(false)
   }
 
   const generateImagesFor = async (article: string) => {
