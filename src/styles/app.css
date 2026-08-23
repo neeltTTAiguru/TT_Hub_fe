@@ -3594,18 +3594,3 @@
     max-height: 46vh;
   }
 }
-
-/* Before an article exists the chat owns the page, so hold it to a reading
-   measure and centre it rather than stretching messages across a wide monitor. */
-.chat-card-full .chat-workspace-single .chat-main {
-  width: 100%;
-  max-width: 860px;
-  margin: 0 auto;
-}
-
-/* A conversation that hasn't started yet: the composer sits in the middle of the
-   page rather than pinned under an empty thread. */
-.chat-card-full .chat-main-empty {
-  grid-template-rows: auto auto;
-  align-content: center;
-}
