@@ -56,6 +56,7 @@ function splitDraft(value: string) {
 import { useContentPipeline } from '../../lib/contentPipeline'
 import PhaseNav from './PhaseNav'
 import SeoProgress from './SeoProgress'
+import { getSeoPassState, stopSeoPass, subscribeSeoPass } from '../../lib/seoPassRunner'
 
 export type ChatApi = { appendAssistantMessage: (content: string) => void }
 
@@ -103,6 +104,12 @@ export default function ArticleWorkspace({
   const chatApi = useRef<ChatApi>({
     appendAssistantMessage: (content: string) => chatApiRef.current.appendAssistantMessage(content),
   })
+
+  const [pass, setPass] = useState(getSeoPassState)
+  useEffect(() => {
+    const unsubscribe = subscribeSeoPass(() => setPass(getSeoPassState()))
+    return () => { unsubscribe() }
+  }, [])
 
   const draft = pipeline.draft
   const images = pipeline.images
@@ -181,13 +188,6 @@ export default function ArticleWorkspace({
         </Space>
       </div>
       <div className="draft-panel-body">
-        {showsSeoProgress && pipeline.seoStage && pipeline.seoStage !== 'done' ? (
-          // While the pass runs the panel is the progress view. Showing the old
-          // article beside a running rewrite invites reading a version that is
-          // about to be replaced.
-          <SeoProgress stage={pipeline.seoStage} />
-        ) : (
-        <>
         <header className="tt-hero">
           <div className="tt-hero-main">
             <h1 className="tt-hero-title">{guide.title}</h1>
@@ -226,11 +226,20 @@ export default function ArticleWorkspace({
             <pre>{meta}</pre>
           </details>
         ) : null}
-        </>
-        )}
       </div>
     </aside>
   )
+
+  // While the pass runs the page is the progress view: the article is being
+  // rewritten and the conversation has nothing to act on until it returns.
+  if (showsSeoProgress && pass.running) {
+    return (
+      <div className="page page-chat-full">
+        <PhaseNav />
+        <SeoProgress stage={pass.stage} error={pass.error} onStop={() => void stopSeoPass()} />
+      </div>
+    )
+  }
 
   return (
     <AgentChatWorkspace

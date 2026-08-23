@@ -4009,7 +4009,10 @@
   align-items: center;
   justify-content: center;
   gap: 30px;
-  min-height: 100%;
+  /* Owns the page while the pass runs. */
+  flex: 1;
+  min-height: 0;
+  width: 100%;
   padding: 40px;
   text-align: center;
 }
@@ -4126,4 +4129,21 @@
   max-width: 460px;
   font-size: 13px;
   color: var(--app-text-muted);
+}
+
+/* The three boxes lift in turn while the pass runs, so a wait of several minutes
+   still reads as motion. Stagger comes from an inline animation-delay per box. */
+@keyframes seo-step-cycle {
+  0%, 66%, 100% { transform: translateY(0); box-shadow: none; }
+  22% { transform: translateY(-8px); box-shadow: 0 14px 30px rgba(85, 87, 72, 0.18); }
+}
+
+.seo-progress-step {
+  animation: seo-step-cycle 2.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .seo-progress-step {
+    animation: none;
+  }
 }
