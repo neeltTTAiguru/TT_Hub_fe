@@ -204,6 +204,9 @@ type AgentChatWorkspaceProps = {
   // Fires on every streamed token with the text so far, so a side panel can open
   // while the answer is still arriving instead of only once it lands.
   onAssistantDelta?: (content: string) => void
+  // Suppress an assistant message in the thread — for a host that is already
+  // showing that exact text somewhere better, e.g. in a side panel.
+  hideAssistantMessage?: (content: string) => boolean
   // Storage key for autosaving the in-progress conversation to the browser so a
   // refresh/freeze doesn't lose it. Defaults to the agentId; pass a more specific
   // key (e.g. per competitor) to keep separate drafts.
@@ -410,6 +413,7 @@ export default function AgentChatWorkspace({
   onChatResponse,
   onAssistantMessage,
   onAssistantDelta,
+  hideAssistantMessage,
   draftKey,
   competitor,
 }: AgentChatWorkspaceProps) {
@@ -1317,7 +1321,13 @@ export default function AgentChatWorkspace({
                       : null}
 
                     <div className="chat-thread">
-                      {chatMessages.map((entry, index) => (
+                      {chatMessages
+                        .filter((entry) => !(
+                          entry.role === 'assistant'
+                          && typeof entry.content === 'string'
+                          && hideAssistantMessage?.(entry.content)
+                        ))
+                        .map((entry, index) => (
                         <div
                           key={`${entry.role}-${index}`}
                           className={`chat-message ${entry.role === 'user' ? 'chat-message-user' : 'chat-message-assistant'}`}

@@ -139,6 +139,11 @@ export default function ContentOperations() {
       threadRailEmptyText="No articles yet — start writing and they'll appear here."
       showHeaderControls={false}
       chatSidePanel={draft && panelOpen ? draftPanel : undefined}
+      chatSidePanelPosition="left"
+      // The panel is already showing this exact text, so don't print it twice.
+      // Tied to the open panel: close it and the article returns to the thread
+      // rather than vanishing from the page altogether.
+      hideAssistantMessage={(content) => panelOpen && content === draft}
       onAssistantMessage={handleAssistantMessage}
       onAssistantDelta={handleAssistantMessage}
       draftKey="content-operations"
