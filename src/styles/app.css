@@ -3494,8 +3494,8 @@
    it spans the full height of the split rather than only the panel's own box. */
 .chat-workspace-grid-flipped > .chat-main {
   border-left: 1px solid var(--app-border);
-  padding-left: 24px;
-  margin-left: 24px;
+  padding-left: 28px;
+  margin-left: 28px;
 }
 
 @media (max-width: 1100px) {
@@ -3515,8 +3515,12 @@
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  border: 1px solid var(--app-border);
-  border-radius: var(--app-radius);
+  /* Full bleed, not a card: no border, no radius, and pulled out past
+     .app-content's padding so the article surface runs to the edge of the
+     window the way a published page does. */
+  border: 0;
+  border-radius: 0;
+  margin-left: -28px;
   background: var(--app-surface);
   overflow: hidden;
 }
@@ -3921,4 +3925,11 @@
   border-color: var(--app-primary);
   border-style: solid;
   background: color-mix(in srgb, var(--app-primary) 10%, transparent);
+}
+
+@media (max-width: 1100px) {
+  /* Stacked, the pull-out would drag the panel off the left of the screen. */
+  .draft-panel {
+    margin-left: 0;
+  }
 }
