@@ -9,11 +9,14 @@ export type ContentPipelineState = {
   draft: string
   images: ArticleImage[]
   runId: string
+  // Which stage the SEO pass is in, so the draft panel can show progress
+  // instead of the article. Empty when nothing is running.
+  seoStage: string
 }
 
 const KEY = 'tt-content-pipeline'
 const EVENT = 'tt-content-pipeline-change'
-const EMPTY: ContentPipelineState = { draft: '', images: [], runId: '' }
+const EMPTY: ContentPipelineState = { draft: '', images: [], runId: '', seoStage: '' }
 
 function read(): ContentPipelineState {
   try {
@@ -24,6 +27,7 @@ function read(): ContentPipelineState {
       draft: typeof parsed.draft === 'string' ? parsed.draft : '',
       images: Array.isArray(parsed.images) ? parsed.images : [],
       runId: typeof parsed.runId === 'string' ? parsed.runId : '',
+      seoStage: typeof parsed.seoStage === 'string' ? parsed.seoStage : '',
     }
   } catch {
     return EMPTY

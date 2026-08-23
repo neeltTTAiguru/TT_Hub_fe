@@ -3998,3 +3998,75 @@
   color: #fff;
 }
 
+
+/* SEO pass progress. Replaces the article while the rewrite runs — showing the
+   old version beside a running rewrite invites reading a draft that is about to
+   be replaced. */
+.seo-progress {
+  padding: 40px;
+  max-width: 720px;
+}
+
+.seo-progress-step {
+  display: flex;
+  gap: 16px;
+  margin: 0 0 12px;
+  padding: 20px 22px;
+  border-radius: var(--app-radius);
+  background: rgb(240, 239, 233);
+  border-left: 5px solid rgb(168, 164, 143);
+}
+
+.seo-progress-step p {
+  margin: 6px 0 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--app-text-muted);
+}
+
+.seo-progress-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--app-surface);
+  color: var(--app-text-muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.seo-progress-active {
+  border-left-color: var(--app-primary);
+}
+
+.seo-progress-active .seo-progress-mark {
+  background: var(--app-primary);
+  color: #fff;
+}
+
+.seo-progress-done .seo-progress-mark {
+  background: rgb(85, 87, 72);
+  color: #fff;
+}
+
+.seo-progress-waiting {
+  opacity: 0.55;
+}
+
+.seo-progress-error {
+  border-left-color: #b4453a;
+}
+
+.seo-progress-error .seo-progress-mark {
+  background: #b4453a;
+  color: #fff;
+}
+
+.seo-progress-note {
+  margin: 22px 0 0;
+  font-size: 13px;
+  color: var(--app-text-muted);
+}

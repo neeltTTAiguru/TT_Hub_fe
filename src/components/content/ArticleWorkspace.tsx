@@ -55,6 +55,7 @@ function splitDraft(value: string) {
 
 import { useContentPipeline } from '../../lib/contentPipeline'
 import PhaseNav from './PhaseNav'
+import SeoProgress from './SeoProgress'
 
 export type ChatApi = { appendAssistantMessage: (content: string) => void }
 
@@ -167,6 +168,13 @@ export default function ArticleWorkspace({
         </Space>
       </div>
       <div className="draft-panel-body">
+        {pipeline.seoStage && pipeline.seoStage !== 'done' ? (
+          // While the pass runs the panel is the progress view. Showing the old
+          // article beside a running rewrite invites reading a version that is
+          // about to be replaced.
+          <SeoProgress stage={pipeline.seoStage} />
+        ) : (
+        <>
         <header className="tt-hero">
           <div className="tt-hero-main">
             <h1 className="tt-hero-title">{guide.title}</h1>
@@ -205,6 +213,8 @@ export default function ArticleWorkspace({
             <pre>{meta}</pre>
           </details>
         ) : null}
+        </>
+        )}
       </div>
     </aside>
   )

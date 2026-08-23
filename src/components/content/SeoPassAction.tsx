@@ -63,9 +63,11 @@ export default function SeoPassAction({ chat }: { chat: ChatApi }) {
         const next = await getContentOperationsRun(runId)
         setRun(next)
         setStage(next.currentStage || '')
+        pipeline.update({ seoStage: next.currentStage || 'surfer_setup' })
         if (next.status === 'running' || next.status === 'ready') return poll(runId)
 
         setRunning(false)
+        pipeline.update({ seoStage: 'done' })
         if (next.status === 'error') {
           const why = next.errors?.[next.errors.length - 1] || 'The SEO pass failed.'
           setError(why)
@@ -82,6 +84,7 @@ export default function SeoPassAction({ chat }: { chat: ChatApi }) {
         message.success(after != null ? `Surfer score ${after}` : 'SEO pass complete')
       } catch (cause) {
         setRunning(false)
+        pipeline.update({ seoStage: 'done' })
         setError(cause instanceof Error ? cause.message : 'Lost contact with the SEO pass.')
       }
     }, POLL_MS)
@@ -95,7 +98,8 @@ export default function SeoPassAction({ chat }: { chat: ChatApi }) {
     setRunning(true)
     setError('')
     setRun(null)
-    setStage('surfer_setup')
+    setStage('opportunity_research')
+    pipeline.update({ seoStage: 'opportunity_research' })
     try {
       const { runId } = await startContentOperationsSeoPass({
         article: pipeline.draft,
@@ -105,6 +109,7 @@ export default function SeoPassAction({ chat }: { chat: ChatApi }) {
       poll(runId)
     } catch (cause) {
       setRunning(false)
+      pipeline.update({ seoStage: 'done' })
       setError(cause instanceof Error ? cause.message : 'The SEO pass could not be started.')
     }
   }
