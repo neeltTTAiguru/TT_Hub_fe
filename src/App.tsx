@@ -126,13 +126,31 @@ const baseNavItems = [
 function AppShell({ isDark, onToggle }: { isDark: boolean; onToggle: () => void }) {
   const location = useLocation()
   const { user, logout } = useAuth0()
-  const selectedNavKey = baseNavItems.find((item) =>
-    location.pathname === item.key || location.pathname.startsWith(`${item.key}/`),
-  )?.key
+  const [navCollapsed, setNavCollapsed] = useState(false)
+  // Brain is a submenu now, so its children have to be considered too or a
+  // route under it never highlights.
+  const navKeys: string[] = baseNavItems.flatMap((item) => {
+    const children = (item as { children?: Array<{ key: string }> }).children
+    return Array.isArray(children) ? children.map((child) => child.key) : [item.key]
+  })
+  const selectedNavKey = navKeys.find((key) =>
+    location.pathname === key || location.pathname.startsWith(`${key}/`),
+  )
 
   return (
     <Layout className="app-shell">
-      <Sider className="app-sider" width={220} breakpoint="lg" collapsedWidth={0}>
+      <Sider
+        className="app-sider"
+        width={220}
+        breakpoint="lg"
+        collapsedWidth={0}
+        collapsed={navCollapsed}
+        // Controlled so the header's toggle and the breakpoint drive the same
+        // state. Left uncontrolled, the sider collapses to zero width below lg
+        // with no trigger, and the agent list becomes unreachable.
+        onBreakpoint={setNavCollapsed}
+        trigger={null}
+      >
         <div style={{ padding: 20 }}>
           <div className="brand">
             <img
@@ -152,7 +170,20 @@ function AppShell({ isDark, onToggle }: { isDark: boolean; onToggle: () => void 
 
       <Layout>
         <Header className="app-header">
-          <Text strong>Trusted Tech Smart Hub</Text>
+          <span className="app-header-brand">
+            <button
+              type="button"
+              className="app-nav-toggle"
+              aria-label={navCollapsed ? 'Show agents' : 'Hide agents'}
+              aria-expanded={!navCollapsed}
+              onClick={() => setNavCollapsed((current) => !current)}
+            >
+              <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
+                <path d="M2 4.5h14M2 9h14M2 13.5h14" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+              </svg>
+            </button>
+            <Text strong>Trusted Tech Smart Hub</Text>
+          </span>
           <div className="theme-toggle">
             {user?.name ? <Text type="secondary">Signed in as {user.name}</Text> : null}
             <span>{isDark ? 'Dark' : 'Light'} mode</span>

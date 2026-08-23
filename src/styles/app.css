@@ -3286,11 +3286,21 @@
   box-shadow: none;
 }
 
+/* The head exists only to carry the rail toggle. Left in flow it opens a band of
+   empty space above the article, so it is lifted out and pinned to the corner. */
 .chat-card-full > .ant-card-head {
-  padding-left: 0;
-  padding-right: 0;
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 6;
+  min-height: 0;
+  padding: 0;
   background: transparent;
   border-bottom: 0;
+}
+
+.ant-card.chat-card-full {
+  position: relative;
 }
 
 .chat-card-full > .ant-card-body {
@@ -3916,4 +3926,37 @@
 :root[data-theme='dark'] .chat-workspace-grid-flipped > .chat-main {
   /* Black on the dark shell is invisible. */
   border-left-color: var(--app-text);
+}
+
+/* Header control for the agent sider. Below the lg breakpoint the sider
+   collapses to zero width, and without this there is no way to bring it back. */
+.app-header-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.app-nav-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  background: none;
+  color: var(--app-text-muted);
+  cursor: pointer;
+  transition:
+    color 140ms ease,
+    border-color 140ms ease,
+    background 140ms ease;
+}
+
+.app-nav-toggle:hover {
+  color: var(--app-primary-strong);
+  border-color: var(--app-primary);
+  background: color-mix(in srgb, var(--app-primary) 8%, transparent);
 }
