@@ -3656,3 +3656,26 @@
   padding-inline: 18px;
   border-radius: 10px;
 }
+
+/* Publishing metadata trails the article behind a rule. It belongs to the editor,
+   not the piece, so it is folded away rather than read as part of the prose. */
+.draft-panel-meta {
+  margin-top: 32px;
+  padding-top: 16px;
+  border-top: 1px solid var(--app-border);
+}
+
+.draft-panel-meta summary {
+  cursor: pointer;
+  color: var(--app-text-muted);
+  font-size: 13px;
+}
+
+.draft-panel-meta pre {
+  margin: 12px 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--app-text-muted);
+}

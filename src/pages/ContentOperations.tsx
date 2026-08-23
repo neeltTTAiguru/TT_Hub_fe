@@ -24,6 +24,18 @@ function draftTitle(value: string) {
   return value.match(/^#\s+(.+)$/m)?.[1]?.replace(/[*_`]/g, '').trim() || 'Untitled draft'
 }
 
+// The writer ends an article with a `---` rule, then publishing metadata for the
+// editor. That tail is not part of the piece, so the panel reads the article and
+// the metadata separately instead of rendering the seam as prose.
+function splitDraft(value: string) {
+  const match = value.match(/\n-{3,}\s*\n(?=[\s\S]*?^(?:Meta title|Slug|Sources|Needs verification)\s*:)/m)
+  if (!match || match.index === undefined) return { article: value, meta: '' }
+  return {
+    article: value.slice(0, match.index).trimEnd(),
+    meta: value.slice(match.index + match[0].length).trim(),
+  }
+}
+
 export default function ContentOperations() {
   const [draft, setDraft] = useState('')
   const [panelOpen, setPanelOpen] = useState(false)
@@ -89,6 +101,7 @@ export default function ContentOperations() {
   }
 
   const title = useMemo(() => (draft ? draftTitle(draft) : ''), [draft])
+  const { article, meta } = useMemo(() => splitDraft(draft), [draft])
 
   const draftPanel = (
     <aside
@@ -131,7 +144,13 @@ export default function ContentOperations() {
         {imageError ? (
           <Alert type="error" showIcon message="Images unavailable" description={imageError} style={{ marginBottom: 16 }} />
         ) : null}
-        <MarkdownArticle markdown={draft} images={images} />
+        <MarkdownArticle markdown={article} images={images} />
+        {meta ? (
+          <details className="draft-panel-meta">
+            <summary>Publishing details</summary>
+            <pre>{meta}</pre>
+          </details>
+        ) : null}
       </div>
     </aside>
   )
