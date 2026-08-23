@@ -3592,28 +3592,81 @@
   height: 100%;
 }
 
-/* The draft is the reading surface, so give it article measure and rhythm
-   rather than the tighter spacing chat messages use. */
+/* Matches the published article on trustedtechnology.ai: Ubuntu throughout,
+   regular-weight headings (not bold), the site's heading greys, and its exact
+   body rhythm. Body and list sizes are the live values; headings are scaled to
+   the panel, which is roughly half the width of the published column. */
+.draft-panel-body .rendered-article {
+  font-family: Ubuntu, Roboto, Arial, sans-serif;
+  color: #000;
+  font-size: 16px;
+  line-height: 27.2px;
+}
+
+.draft-panel-body h1,
+.draft-panel-body h2,
+.draft-panel-body h3 {
+  font-family: Ubuntu, Roboto, Arial, sans-serif;
+  font-weight: 400;
+  letter-spacing: normal;
+}
+
 .draft-panel-body h1 {
-  margin: 0 0 14px;
-  font-size: 27px;
-  line-height: 1.25;
+  margin: 0 0 20px;
+  font-size: 38px;
+  line-height: 46px;
+  color: #000;
 }
 
 .draft-panel-body h2 {
-  margin: 30px 0 10px;
-  font-size: 20px;
+  margin: 48px 0 16px;
+  font-size: 26px;
+  line-height: 32px;
+  color: rgb(55, 55, 47);
 }
 
 .draft-panel-body h3 {
-  margin: 22px 0 8px;
-  font-size: 16px;
+  margin: 32px 0 12px;
+  font-size: 20px;
+  line-height: 26px;
+  color: rgb(74, 73, 65);
 }
 
-.draft-panel-body p,
+.draft-panel-body p {
+  margin: 0 0 20px;
+  font-size: 16px;
+  line-height: 27.2px;
+  color: #000;
+}
+
+.draft-panel-body ul,
+.draft-panel-body ol {
+  margin: 0 0 20px;
+  padding-left: 20px;
+  list-style-type: disc;
+}
+
 .draft-panel-body li {
-  font-size: 15px;
-  line-height: 1.68;
+  margin-bottom: 8px;
+  font-size: 14.4px;
+  line-height: 21.6px;
+}
+
+/* Expanded, the column approaches the published measure, so the headings take
+   their live sizes. */
+.draft-panel-expanded .draft-panel-body h1 {
+  font-size: 60px;
+  line-height: 72px;
+}
+
+.draft-panel-expanded .draft-panel-body h2 {
+  font-size: 37.6px;
+  line-height: 45.12px;
+}
+
+.draft-panel-expanded .draft-panel-body h3 {
+  font-size: 25.6px;
+  line-height: 33.28px;
 }
 
 .draft-panel-body > :first-child {
