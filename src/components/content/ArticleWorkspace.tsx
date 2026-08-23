@@ -105,6 +105,11 @@ export default function ArticleWorkspace({
   // past articles through the same handler, and that must never spend image
   // credits or upload to WordPress on a page load.
   const liveTurnRef = useRef(false)
+  const streamingDraftRef = useRef('')
+  const streamTimer = useRef<number | null>(null)
+  useEffect(() => () => {
+    if (streamTimer.current !== null) window.clearTimeout(streamTimer.current)
+  }, [])
   const chatApiRef = useRef<ChatApi>({ appendAssistantMessage: () => {} })
   // Handed to the panel instead of the ref's current value. Reading the ref
   // during render captures whatever is there at mount — the placeholder, since
@@ -177,7 +182,16 @@ export default function ArticleWorkspace({
     // First token: retrieval is done and the article is being written.
     setWriteStage('writing')
     if (!looksLikeArticle(content)) return
-    pipeline.update({ draft: content })
+    // Committing every token wrote the whole article to storage and broadcast it
+    // to every subscriber hundreds of times a turn. Behind the progress overlay
+    // none of it is even visible, so the partial is held locally and published
+    // at a readable rate instead.
+    streamingDraftRef.current = content
+    if (streamTimer.current !== null) return
+    streamTimer.current = window.setTimeout(() => {
+      streamTimer.current = null
+      pipeline.update({ draft: streamingDraftRef.current })
+    }, 400)
     setPanelOpen(true)
   }
 
@@ -196,6 +210,12 @@ export default function ArticleWorkspace({
     if (!liveTurnRef.current && pipeline.draft) {
       setPanelOpen(true)
       return
+    }
+    // The final version lands immediately rather than waiting behind a pending
+    // throttle that would overwrite it with a stale partial.
+    if (streamTimer.current !== null) {
+      window.clearTimeout(streamTimer.current)
+      streamTimer.current = null
     }
     pipeline.update({ draft: content })
     setPanelOpen(true)
@@ -272,6 +292,19 @@ export default function ArticleWorkspace({
   // autosave refs and the in-flight request — so the article being written was
   // never saved to the Articles rail. The overlay hides the same things without
   // tearing anything down.
+  const overlayActive = Boolean((generatesImages && writeStage) || (showsSeoProgress && pass.running))
+  // Held one beat past the work finishing so the overlay can fade rather than
+  // vanish mid-frame, which is what made this snap.
+  const [overlayVisible, setOverlayVisible] = useState(false)
+  useEffect(() => {
+    if (overlayActive) {
+      setOverlayVisible(true)
+      return
+    }
+    const timer = window.setTimeout(() => setOverlayVisible(false), 260)
+    return () => window.clearTimeout(timer)
+  }, [overlayActive])
+
   const overlay = generatesImages && writeStage ? (
     <StageProgress
       stages={WRITE_STAGES}
@@ -284,7 +317,11 @@ export default function ArticleWorkspace({
 
   return (
     <>
-    {overlay ? <div className="stage-overlay">{overlay}</div> : null}
+    {overlayVisible ? (
+      <div className={`stage-overlay${overlayActive ? '' : ' stage-overlay-leaving'}`}>
+        {overlay}
+      </div>
+    ) : null}
     <AgentChatWorkspace
       agentId="content-operations-assistant"
       title="Content Generator"
