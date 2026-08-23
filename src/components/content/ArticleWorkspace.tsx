@@ -56,6 +56,8 @@ function splitDraft(value: string) {
 import { useContentPipeline } from '../../lib/contentPipeline'
 import PhaseNav from './PhaseNav'
 
+export type ChatApi = { appendAssistantMessage: (content: string) => void }
+
 type Props = {
   // Phase-specific wiring. The layout, the field-guide rendering and the
   // draft-promotion logic are identical everywhere; only these differ.
@@ -63,7 +65,8 @@ type Props = {
   emptyPrompt: string
   queryingLabel: string
   // Extra controls for the draft toolbar — the SEO score, the publish action.
-  panelActions?: ReactNode
+  // Given the chat api so a background job can report into the conversation.
+  panelActions?: (api: ChatApi) => ReactNode
   // Whether this phase generates artwork. Only Write does; the later phases
   // inherit whatever the article already has.
   generatesImages?: boolean
@@ -87,6 +90,7 @@ export default function ArticleWorkspace({
   // past articles through the same handler, and that must never spend image
   // credits or upload to WordPress on a page load.
   const liveTurnRef = useRef(false)
+  const chatApiRef = useRef<ChatApi>({ appendAssistantMessage: () => {} })
 
   const draft = pipeline.draft
   const images = pipeline.images
@@ -152,7 +156,7 @@ export default function ArticleWorkspace({
         </span>
         <Space size={8}>
           {imagesLoading ? <Text type="secondary" style={{ fontSize: 12 }}>Generating images…</Text> : null}
-          {panelActions}
+          {panelActions?.(chatApiRef.current)}
         </Space>
       </div>
       <div className="draft-panel-body">
@@ -223,6 +227,7 @@ export default function ArticleWorkspace({
       threadRailEmptyText="No articles yet — start writing and they'll appear here."
       showHeaderControls={false}
       renderBeforeChat={<PhaseNav />}
+      registerChatApi={(api) => { chatApiRef.current = api }}
       chatSidePanel={draft && panelOpen ? draftPanel : undefined}
       chatSidePanelPosition="left"
       hideAssistantMessage={(content) => panelOpen && looksLikeArticle(content)}

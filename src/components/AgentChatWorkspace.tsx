@@ -207,6 +207,9 @@ type AgentChatWorkspaceProps = {
   // Fires when the thread holds no assistant turn at all — a new chat, or the
   // active one deleted. A side panel showing the last answer must clear.
   onThreadReset?: () => void
+  // Lets a side panel write into the conversation — a background job reporting
+  // what it did belongs in the thread, not only in a toolbar tag.
+  registerChatApi?: (api: { appendAssistantMessage: (content: string) => void }) => void
   // Suppress an assistant message in the thread — for a host that is already
   // showing that exact text somewhere better, e.g. in a side panel.
   hideAssistantMessage?: (content: string) => boolean
@@ -417,6 +420,7 @@ export default function AgentChatWorkspace({
   onAssistantMessage,
   onAssistantDelta,
   onThreadReset,
+  registerChatApi,
   hideAssistantMessage,
   draftKey,
   competitor,
@@ -467,6 +471,19 @@ export default function AgentChatWorkspace({
   assistantMessageRef.current = onAssistantMessage
   const threadResetRef = useRef(onThreadReset)
   threadResetRef.current = onThreadReset
+
+  // Registered once. The callback closes over setChatMessages only, so it stays
+  // valid without re-registering on every render.
+  useEffect(() => {
+    registerChatApi?.({
+      appendAssistantMessage: (content: string) => {
+        const text = String(content || '').trim()
+        if (!text) return
+        setChatMessages((current) => [...current, { role: 'assistant', content: text }])
+      },
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const [isSavingThread, setIsSavingThread] = useState(false)
   const [isThreadSidebarOpen, setIsThreadSidebarOpen] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)

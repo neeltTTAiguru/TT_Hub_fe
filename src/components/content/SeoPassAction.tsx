@@ -6,6 +6,7 @@ import {
   type ContentOperationsRun,
 } from '../../lib/api'
 import { useContentPipeline } from '../../lib/contentPipeline'
+import type { ChatApi } from './ArticleWorkspace'
 
 const { Text } = Typography
 
@@ -14,7 +15,35 @@ const { Text } = Typography
 // open on one request that would time out.
 const POLL_MS = 6000
 
-export default function SeoPassAction() {
+// Everything Surfer reported, written as prose. The score alone does not tell
+// you what changed, and a toolbar tag cannot hold the detail.
+function summarise(run: ContentOperationsRun) {
+  const o = run.surferOptimization
+  const lines: string[] = ['**SurferSEO pass complete**', '']
+  if (o?.seoScoreBefore != null || o?.seoScoreAfter != null) {
+    lines.push(`- Content score: **${o?.seoScoreBefore ?? '—'} → ${o?.seoScoreAfter ?? '—'}**`)
+  }
+  if (o?.targetScore != null) {
+    lines.push(`- Target ${o.targetScore}: ${o.targetMet ? 'met' : 'not reached'}`)
+  }
+  if (o?.aiSearchScore != null) lines.push(`- AI search score: ${o.aiSearchScore}`)
+  if (o?.passes) lines.push(`- Revision passes: ${o.passes}`)
+  if (o?.scoreFloor != null) {
+    lines.push(`- Score floor ${o.scoreFloor}: ${o.floorMet ? 'held' : 'not held'}`)
+  }
+  if (o?.notes) lines.push('', o.notes)
+
+  // The stage records carry Surfer's own explanation of what it did.
+  const stages = (run.stages || []).filter((stage) => stage.stage === 'content_optimization' || stage.stage === 'surfer_setup')
+  for (const stage of stages) {
+    if (stage.explanation) lines.push('', `_${stage.explanation}_`)
+  }
+  if (o?.editorUrl) lines.push('', `[Open the Surfer editor](${o.editorUrl})`)
+  lines.push('', 'The article on the left is the revised version. Tell me what to change if any of it reads wrong.')
+  return lines.join('\n')
+}
+
+export default function SeoPassAction({ chat }: { chat: ChatApi }) {
   const pipeline = useContentPipeline()
   const [running, setRunning] = useState(false)
   const [stage, setStage] = useState('')
@@ -38,12 +67,17 @@ export default function SeoPassAction() {
 
         setRunning(false)
         if (next.status === 'error') {
-          setError(next.errors?.[next.errors.length - 1] || 'The SEO pass failed.')
+          const why = next.errors?.[next.errors.length - 1] || 'The SEO pass failed.'
+          setError(why)
+          chat.appendAssistantMessage(`**SurferSEO pass failed**\n\n${why}\n\nThe article on the left is unchanged.`)
           return
         }
         // The optimised article replaces the draft, so every later phase — and
         // the Write page if you go back — works on the improved version.
         if (next.article) pipeline.update({ draft: next.article, runId })
+        // The run's own report goes into the conversation, where there is room
+        // for it and where the next instruction will be given.
+        chat.appendAssistantMessage(summarise(next))
         const after = next.surferOptimization?.seoScoreAfter
         message.success(after != null ? `Surfer score ${after}` : 'SEO pass complete')
       } catch (cause) {
