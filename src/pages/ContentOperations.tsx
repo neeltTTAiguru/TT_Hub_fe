@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Alert, Button, Empty, Space, Typography, message } from 'antd'
+import { Alert, Button, Space, Tooltip, Typography, message } from 'antd'
 import AgentChatWorkspace from '../components/AgentChatWorkspace'
 import MarkdownArticle, { type ArticleImage } from '../components/MarkdownArticle'
 import surferLogo from '../assets/agent-logos/surfer.svg'
@@ -10,7 +10,7 @@ const { Text } = Typography
 // An article is long and multi-paragraph; a conversational reply ("which
 // audience is this for?") is short. Headings are the strongest signal but not
 // required — the writer does not always return them, and an article stranded in
-// the chat with an empty draft pane beside it is the worse failure.
+// the chat with no panel beside it is the worse failure.
 function looksLikeArticle(value: string) {
   const body = value.trim()
   if (/^#{1,3}\s+\S/m.test(body) && body.length > 240) return true
@@ -18,18 +18,16 @@ function looksLikeArticle(value: string) {
   return body.length > 700 && paragraphs.length >= 3
 }
 
-function wordCount(value: string) {
-  return value.trim().split(/\s+/).filter(Boolean).length
-}
-
-// The H1 is the article's title; without one the backend falls back to a generic
-// filename slug for the uploaded media.
+// The H1 names the panel and the uploaded media; without one the backend falls
+// back to a generic filename slug.
 function draftTitle(value: string) {
-  return value.match(/^#\s+(.+)$/m)?.[1]?.replace(/[*_`]/g, '').trim() || ''
+  return value.match(/^#\s+(.+)$/m)?.[1]?.replace(/[*_`]/g, '').trim() || 'Untitled draft'
 }
 
 export default function ContentOperations() {
   const [draft, setDraft] = useState('')
+  const [panelOpen, setPanelOpen] = useState(false)
+  const [expanded, setExpanded] = useState(false)
   const [images, setImages] = useState<ArticleImage[]>([])
   const [imagesLoading, setImagesLoading] = useState(false)
   const [imageError, setImageError] = useState('')
@@ -37,8 +35,8 @@ export default function ContentOperations() {
   const handleAssistantMessage = (content: string) => {
     if (!looksLikeArticle(content)) return
     setDraft(content)
-    // A new draft invalidates artwork generated for the previous one — those
-    // scenes were planned from headings this rewrite may no longer have.
+    setPanelOpen(true)
+    // A new draft invalidates artwork planned from the previous draft's headings.
     setImages([])
     setImageError('')
   }
@@ -60,40 +58,52 @@ export default function ContentOperations() {
     }
   }
 
-  const words = useMemo(() => (draft ? wordCount(draft) : 0), [draft])
+  const title = useMemo(() => (draft ? draftTitle(draft) : ''), [draft])
 
   const draftPanel = (
-    <aside className="draft-panel" aria-label="Article draft">
+    <aside
+      className={`draft-panel${expanded ? ' draft-panel-expanded' : ''}`}
+      aria-label="Article draft"
+    >
       <div className="draft-panel-toolbar">
-        <Space size={10} align="baseline">
-          <Text strong>Draft</Text>
-          {draft ? <Text type="secondary">{words.toLocaleString()} words</Text> : null}
+        <span className="draft-panel-title">
+          <Text strong ellipsis>{title}</Text>
+          <Text type="secondary" className="draft-panel-kind">MD</Text>
+        </span>
+        <Space size={4}>
+          <Button size="small" type="primary" loading={imagesLoading} onClick={() => void handleGenerateImages()}>
+            {images.length ? 'Regenerate images' : 'Generate images'}
+          </Button>
+          <Button size="small" onClick={() => void navigator.clipboard.writeText(draft)}>
+            Copy
+          </Button>
+          <Tooltip title={expanded ? 'Collapse' : 'Expand'}>
+            <Button
+              size="small"
+              type="text"
+              aria-label={expanded ? 'Collapse draft' : 'Expand draft'}
+              onClick={() => setExpanded((current) => !current)}
+            >
+              {expanded ? '⤡' : '⤢'}
+            </Button>
+          </Tooltip>
+          <Tooltip title="Close">
+            <Button
+              size="small"
+              type="text"
+              aria-label="Close draft"
+              onClick={() => { setPanelOpen(false); setExpanded(false) }}
+            >
+              ✕
+            </Button>
+          </Tooltip>
         </Space>
-        {draft ? (
-          <Space size="small">
-            <Button size="small" type="primary" loading={imagesLoading} onClick={() => void handleGenerateImages()}>
-              {images.length ? 'Regenerate images' : 'Generate images'}
-            </Button>
-            <Button size="small" onClick={() => void navigator.clipboard.writeText(draft)}>
-              Copy Markdown
-            </Button>
-            <Button size="small" onClick={() => { setDraft(''); setImages([]) }}>
-              Clear
-            </Button>
-          </Space>
-        ) : null}
       </div>
       <div className="draft-panel-body">
         {imageError ? (
           <Alert type="error" showIcon message="Images unavailable" description={imageError} style={{ marginBottom: 16 }} />
         ) : null}
-        {draft ? (
-          <MarkdownArticle markdown={draft} images={images} />
-        ) : (
-          <div className="draft-panel-empty">
-            <Empty description="Ask for an article and the draft appears here." />
-          </div>
-        )}
+        <MarkdownArticle markdown={draft} images={images} />
       </div>
     </aside>
   )
@@ -122,8 +132,7 @@ export default function ContentOperations() {
       threadRailNewLabel="New article"
       threadRailEmptyText="No articles yet — start writing and they'll appear here."
       showHeaderControls={false}
-      chatSidePanel={draftPanel}
-      chatSidePanelPosition="left"
+      chatSidePanel={draft && panelOpen ? draftPanel : undefined}
       onAssistantMessage={handleAssistantMessage}
       draftKey="content-operations"
     />

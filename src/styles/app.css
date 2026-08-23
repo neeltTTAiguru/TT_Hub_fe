@@ -3505,11 +3505,41 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  flex-wrap: wrap;
-  padding: 12px 16px;
+  padding: 10px 12px 10px 16px;
   border-bottom: 1px solid var(--app-border);
   /* Stays put while the article scrolls under it. */
   flex: none;
+}
+
+.draft-panel-title {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.draft-panel-kind {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  /* Never let the format tag be what gets truncated. */
+  flex: none;
+}
+
+/* Expanded reading mode: the draft floats over the workspace instead of
+   fighting the chat for width. */
+.draft-panel-expanded {
+  position: fixed;
+  inset: 24px;
+  z-index: 60;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.28);
+}
+
+.draft-panel-expanded .draft-panel-body {
+  /* Long-form measure, so an expanded article doesn't run the full monitor. */
+  max-width: 820px;
+  margin: 0 auto;
+  width: 100%;
 }
 
 .draft-panel-body {
@@ -3563,4 +3593,19 @@
     /* Stacked, the draft would otherwise take the whole fold. */
     max-height: 46vh;
   }
+}
+
+/* Before an article exists the chat owns the page, so hold it to a reading
+   measure and centre it rather than stretching messages across a wide monitor. */
+.chat-card-full .chat-workspace-single .chat-main {
+  width: 100%;
+  max-width: 860px;
+  margin: 0 auto;
+}
+
+/* A conversation that hasn't started yet: the composer sits in the middle of the
+   page rather than pinned under an empty thread. */
+.chat-card-full .chat-main-empty {
+  grid-template-rows: auto auto;
+  align-content: center;
 }
