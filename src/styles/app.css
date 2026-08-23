@@ -3547,6 +3547,9 @@
   min-height: 0;
   overflow-y: auto;
   padding: 24px 28px 32px;
+  /* A long unbreakable token (slug, URL) must wrap rather than widen the column
+     and push the panel out of view. */
+  overflow-wrap: anywhere;
 }
 
 .draft-panel-empty {
