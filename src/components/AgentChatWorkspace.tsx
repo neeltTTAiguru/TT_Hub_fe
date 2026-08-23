@@ -583,11 +583,13 @@ export default function AgentChatWorkspace({
   useEffect(() => {
     const emit = assistantMessageRef.current
     if (!emit) return
-    for (let index = chatMessages.length - 1; index >= 0; index -= 1) {
-      const entry = chatMessages[index]
+    // Every assistant turn, oldest first — not just the newest. The host decides
+    // what it cares about, and replaying in order leaves it holding the most
+    // recent match. Reading only the last message meant a thread ending in a
+    // short conversational reply restored nothing at all.
+    for (const entry of chatMessages) {
       if (entry.role !== 'assistant') continue
       if (typeof entry.content === 'string' && entry.content.trim()) emit(entry.content)
-      return
     }
   }, [chatMessages])
 
