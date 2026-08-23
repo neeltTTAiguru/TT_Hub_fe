@@ -22,6 +22,8 @@ import EmailCampaignBuilder from './pages/EmailCampaignBuilder'
 import TrustedTechAhrefsAssistant from './pages/TrustedTechAhrefsAssistant'
 import CompanyFiles from './pages/CompanyFiles'
 import ContentOperations from './pages/ContentOperations'
+import ContentOperationsPublish from './pages/ContentOperationsPublish'
+import ContentOperationsSeo from './pages/ContentOperationsSeo'
 import Settings from './pages/Settings'
 import NotFound from './pages/NotFound'
 import { setAccessTokenProvider } from './lib/api'
@@ -204,6 +206,8 @@ function AppShell({ isDark, onToggle }: { isDark: boolean; onToggle: () => void 
             <Route path="/ahrefs-assistant" element={<TrustedTechAhrefsAssistant />} />
             <Route path="/company-files" element={<CompanyFiles />} />
             <Route path="/assistants/content-operations" element={<ContentOperations />} />
+            <Route path="/assistants/content-operations/seo" element={<ContentOperationsSeo />} />
+            <Route path="/assistants/content-operations/publish" element={<ContentOperationsPublish />} />
             <Route path="/assistants/content-operations/blog/*" element={<Navigate to="/assistants/content-operations" replace />} />
             <Route path="/assistants/wordpress-draft-test" element={<Navigate to="/assistants/content-operations" replace />} />
             <Route path="/assistants/wordpress-draft-editor" element={<Navigate to="/assistants/content-operations" replace />} />
