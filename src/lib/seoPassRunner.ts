@@ -85,8 +85,14 @@ export function summarise(run: ContentOperationsRun) {
   if (o?.targetScore != null) lines.push(`- Target ${o.targetScore}: ${o.targetMet ? 'met' : 'not reached'}`)
   if (o?.aiSearchScore != null) lines.push(`- AI search score: ${o.aiSearchScore}`)
   if (o?.passes) lines.push(`- Revision passes: ${o.passes}`)
+  const words = String(run.article || '').trim().split(/\s+/).filter(Boolean).length
+  const target = (run as { surferGuidelines?: { targetWordCount?: number } }).surferGuidelines?.targetWordCount
+  if (words) lines.push(`- Length: ${words.toLocaleString()} words${target ? ` against a Surfer target of ${target.toLocaleString()}` : ''}`)
   if (o?.notes) lines.push('', o.notes)
   for (const stage of run.stages || []) {
+    if (stage.stage === 'surfer_setup' && stage.explanation?.includes('words against')) {
+      lines.push('', `_${stage.explanation}_`)
+    }
     if (stage.stage === 'opportunity_research' && stage.explanation) {
       lines.push('', '**Ahrefs**', stage.explanation)
     }
