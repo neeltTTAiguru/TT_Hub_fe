@@ -3895,3 +3895,30 @@
 :root[data-theme='dark'] .draft-panel-body h1 {
   color: var(--app-text);
 }
+
+/* Company Files drop target. Dashed until a drag enters, so the affordance is
+   visible without competing with the table below it. */
+.company-files-dropzone {
+  display: grid;
+  place-items: center;
+  padding: 44px 24px;
+  border: 2px dashed var(--app-border);
+  border-radius: var(--app-radius);
+  background: var(--app-surface-alt);
+  cursor: pointer;
+  text-align: center;
+  transition:
+    border-color 140ms ease,
+    background 140ms ease;
+}
+
+.company-files-dropzone:hover,
+.company-files-dropzone:focus-visible {
+  border-color: var(--app-primary);
+}
+
+.company-files-dropzone-active {
+  border-color: var(--app-primary);
+  border-style: solid;
+  background: color-mix(in srgb, var(--app-primary) 10%, transparent);
+}

@@ -881,6 +881,51 @@ export type ContentIntegrationMap = Record<string, {
   status: 'connected' | 'not_configured' | 'partially_configured'
 }>
 
+export type CompanyFile = {
+  id: string
+  title: string
+  originalFilename: string
+  sizeBytes: number
+  pageCount: number
+  sourceType: string
+  approvalStatus: string
+  recordCount: number
+  createdAt: string
+  updatedAt: string
+}
+
+export function getCompanyFiles() {
+  return request<CompanyFile[]>('/company-files')
+}
+
+// Raw bytes with the name in headers — the backend uses express.raw, so this
+// must not be wrapped in FormData.
+export async function uploadCompanyFile(file: File) {
+  const headers = new Headers({
+    'Content-Type': 'application/octet-stream',
+    'x-file-name': encodeURIComponent(file.name).replace(/%20/g, ' '),
+    'x-file-type': file.type || 'application/octet-stream',
+  })
+  if (accessTokenProvider) {
+    const token = await accessTokenProvider()
+    if (token) headers.set('Authorization', `Bearer ${token}`)
+  }
+  const response = await fetch(`${API_BASE_URL}/company-files`, {
+    method: 'POST',
+    headers,
+    body: await file.arrayBuffer(),
+  })
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) throw new Error(payload?.message || `Upload failed (${response.status}).`)
+  return payload as { id: string; title: string; pageCount: number; sizeBytes: number; replaced: boolean }
+}
+
+export function deleteCompanyFile(id: string) {
+  return request<{ deletedRecords: number }>(`/company-files/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  })
+}
+
 // Artwork for a chat-authored draft. The draft has no run behind it, so the
 // article text goes up with the request and the images come straight back.
 export function generateContentOperationsDraftImages(payload: {
