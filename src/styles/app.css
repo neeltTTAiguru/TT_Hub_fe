@@ -3487,6 +3487,27 @@
 .chat-workspace-grid-flipped {
   /* A true half and half. */
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0;
+}
+
+/* A rule between the article and the conversation. It sits on the chat column so
+   it spans the full height of the split rather than only the panel's own box. */
+.chat-workspace-grid-flipped > .chat-main {
+  border-left: 1px solid var(--app-border);
+  padding-left: 24px;
+  margin-left: 24px;
+}
+
+@media (max-width: 1100px) {
+  /* Stacked, a left rule would read as a stray vertical line. */
+  .chat-workspace-grid-flipped > .chat-main {
+    border-left: 0;
+    padding-left: 0;
+    margin-left: 0;
+    border-top: 1px solid var(--app-border);
+    padding-top: 20px;
+    margin-top: 20px;
+  }
 }
 
 .draft-panel {
