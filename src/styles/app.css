@@ -3536,7 +3536,19 @@
   display: inline-flex;
   align-items: baseline;
   gap: 8px;
+  /* The title is the only thing allowed to shrink and ellipsis; the status text
+     and buttons beside it must never wrap into a stack. */
   min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+
+.draft-panel-toolbar .ant-space {
+  flex: none;
+}
+
+.draft-panel-toolbar .ant-typography {
+  white-space: nowrap;
 }
 
 .draft-panel-kind {
