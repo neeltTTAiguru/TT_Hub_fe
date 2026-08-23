@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react'
-import { Alert, Button, Space, Tooltip, Typography, message } from 'antd'
+import { useMemo, useRef, useState } from 'react'
+import { Alert, Button, Space, Tooltip, Typography } from 'antd'
 import AgentChatWorkspace from '../components/AgentChatWorkspace'
 import MarkdownArticle, { type ArticleImage } from '../components/MarkdownArticle'
 import surferLogo from '../assets/agent-logos/surfer.svg'
@@ -31,33 +31,45 @@ export default function ContentOperations() {
   const [images, setImages] = useState<ArticleImage[]>([])
   const [imagesLoading, setImagesLoading] = useState(false)
   const [imageError, setImageError] = useState('')
+  // Artwork is generated once, for the first article of a conversation, and then
+  // left alone. Every later revision keeps the images it already has.
+  const imagesStartedRef = useRef(false)
+  // Set only when tokens actually stream in. Restoring a saved thread replays
+  // past articles through the same handler, and that must never spend image
+  // credits or upload to WordPress on a page load.
+  const liveTurnRef = useRef(false)
 
-  const handleAssistantMessage = (content: string) => {
+  const handleAssistantDelta = (content: string) => {
+    liveTurnRef.current = true
     if (!looksLikeArticle(content)) return
-    setDraft((current) => {
-      // Streaming calls this on every token. Artwork is planned from a draft's
-      // headings, so it only resets when a genuinely new article starts — not on
-      // each token of the one being written.
-      if (!content.startsWith(current.slice(0, 120))) {
-        setImages([])
-        setImageError('')
-      }
-      return content
-    })
+    setDraft(content)
     setPanelOpen(true)
   }
 
-  const handleGenerateImages = async () => {
+  const handleAssistantMessage = (content: string) => {
+    if (!looksLikeArticle(content)) return
+    setDraft(content)
+    setPanelOpen(true)
+    // Only the first article of a live conversation gets artwork. Edits inherit
+    // it untouched, and a restored thread never generates at all.
+    if (liveTurnRef.current && !imagesStartedRef.current) {
+      imagesStartedRef.current = true
+      void generateImagesFor(content)
+    }
+  }
+
+  const generateImagesFor = async (article: string) => {
     setImagesLoading(true)
     setImageError('')
     try {
       const result = await generateContentOperationsDraftImages({
-        article: draft,
-        title: draftTitle(draft),
+        article,
+        title: draftTitle(article),
       })
       setImages(result.images)
-      message.success(`${result.images.length} image(s) generated and uploaded to WordPress media.`)
     } catch (error) {
+      // A failed generation must not lock the article out of artwork forever.
+      imagesStartedRef.current = false
       setImageError(error instanceof Error ? error.message : 'The article images could not be generated.')
     } finally {
       setImagesLoading(false)
@@ -77,9 +89,7 @@ export default function ContentOperations() {
           <Text type="secondary" className="draft-panel-kind">MD</Text>
         </span>
         <Space size={4}>
-          <Button size="small" type="primary" loading={imagesLoading} onClick={() => void handleGenerateImages()}>
-            {images.length ? 'Regenerate images' : 'Generate images'}
-          </Button>
+          {imagesLoading ? <Text type="secondary" style={{ fontSize: 12 }}>Generating images…</Text> : null}
           <Button size="small" onClick={() => void navigator.clipboard.writeText(draft)}>
             Copy
           </Button>
@@ -148,7 +158,7 @@ export default function ContentOperations() {
       // to the conversation instead of erasing it from the page.
       hideAssistantMessage={(content) => panelOpen && looksLikeArticle(content)}
       onAssistantMessage={handleAssistantMessage}
-      onAssistantDelta={handleAssistantMessage}
+      onAssistantDelta={handleAssistantDelta}
       draftKey="content-operations"
     />
   )
