@@ -140,10 +140,13 @@ export default function ContentOperations() {
       showHeaderControls={false}
       chatSidePanel={draft && panelOpen ? draftPanel : undefined}
       chatSidePanelPosition="left"
-      // The panel is already showing this exact text, so don't print it twice.
-      // Tied to the open panel: close it and the article returns to the thread
-      // rather than vanishing from the page altogether.
-      hideAssistantMessage={(content) => panelOpen && content === draft}
+      // Articles live in the panel, never in the thread. Matching on shape rather
+      // than on string equality matters: the streamed text and the final message
+      // the server sends can differ by whitespace, and earlier revisions stay in
+      // the thread — an exact comparison lets both leak back into the chat.
+      // Still gated on the panel being open, so closing it returns the article
+      // to the conversation instead of erasing it from the page.
+      hideAssistantMessage={(content) => panelOpen && looksLikeArticle(content)}
       onAssistantMessage={handleAssistantMessage}
       onAssistantDelta={handleAssistantMessage}
       draftKey="content-operations"
