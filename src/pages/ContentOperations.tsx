@@ -127,9 +127,6 @@ export default function ContentOperations() {
         </span>
         <Space size={4}>
           {imagesLoading ? <Text type="secondary" style={{ fontSize: 12 }}>Generating images…</Text> : null}
-          <Button size="small" onClick={() => void navigator.clipboard.writeText(draft)}>
-            Copy
-          </Button>
           <Tooltip title="Close">
             <Button
               size="small"
