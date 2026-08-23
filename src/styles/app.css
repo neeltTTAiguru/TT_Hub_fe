@@ -3744,3 +3744,46 @@
   line-height: 1.6;
   color: var(--app-text-muted);
 }
+
+/* The published article's own surface and accents, read off
+   trustedtechnology.ai: cream page, olive-grey heading tones, and the small
+   heavy letterspaced eyebrow above the headline. */
+.draft-panel {
+  background: rgb(244, 242, 236);
+}
+
+.draft-panel-toolbar {
+  background: rgb(247, 246, 242);
+}
+
+/* Doubled up: the panel's own `p` rule is more specific than a lone class and
+   would otherwise reset the size and colour. */
+.draft-panel-body p.draft-panel-eyebrow {
+  margin: 0 0 18px;
+  font-family: Ubuntu, Roboto, Arial, sans-serif;
+  font-size: 11.52px;
+  font-weight: 800;
+  letter-spacing: 1.6px;
+  text-transform: uppercase;
+  color: rgb(105, 106, 93);
+}
+
+/* The opening paragraph runs lighter than the body on the live page. */
+.draft-panel-body .rendered-article > h1 + p {
+  color: rgb(74, 73, 65);
+  font-size: 17px;
+  line-height: 28px;
+}
+
+/* Dark theme keeps the app's own surface — a cream panel against a dark shell
+   would read as a rendering fault rather than a design. */
+:root[data-theme='dark'] .draft-panel,
+:root[data-theme='dark'] .draft-panel-toolbar {
+  background: var(--app-surface);
+}
+
+:root[data-theme='dark'] .draft-panel-body .rendered-article,
+:root[data-theme='dark'] .draft-panel-body p,
+:root[data-theme='dark'] .draft-panel-body h1 {
+  color: var(--app-text);
+}

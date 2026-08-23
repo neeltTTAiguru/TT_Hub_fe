@@ -141,6 +141,7 @@ export default function ContentOperations() {
         </Space>
       </div>
       <div className="draft-panel-body">
+        <p className="draft-panel-eyebrow">Trusted Tech Knowledge Center &nbsp;•&nbsp; Field Guide</p>
         {imageError ? (
           <Alert type="error" showIcon message="Images unavailable" description={imageError} style={{ marginBottom: 16 }} />
         ) : null}
