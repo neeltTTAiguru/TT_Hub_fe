@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react'
-import { Button, Empty, Space, Typography } from 'antd'
+import { Alert, Button, Empty, Space, Typography, message } from 'antd'
 import AgentChatWorkspace from '../components/AgentChatWorkspace'
-import MarkdownArticle from '../components/MarkdownArticle'
+import MarkdownArticle, { type ArticleImage } from '../components/MarkdownArticle'
 import surferLogo from '../assets/agent-logos/surfer.svg'
-import type { AgentChatResponse } from '../lib/api'
+import { generateContentOperationsDraftImages, type AgentChatResponse } from '../lib/api'
 
 const { Text } = Typography
 
@@ -20,12 +20,43 @@ function wordCount(value: string) {
   return value.trim().split(/\s+/).filter(Boolean).length
 }
 
+// The H1 is the article's title; without one the backend falls back to a generic
+// filename slug for the uploaded media.
+function draftTitle(value: string) {
+  return value.match(/^#\s+(.+)$/m)?.[1]?.replace(/[*_`]/g, '').trim() || ''
+}
+
 export default function ContentOperations() {
   const [draft, setDraft] = useState('')
+  const [images, setImages] = useState<ArticleImage[]>([])
+  const [imagesLoading, setImagesLoading] = useState(false)
+  const [imageError, setImageError] = useState('')
 
   const handleChatResponse = (response: AgentChatResponse) => {
     const content = typeof response.message?.content === 'string' ? response.message.content : ''
-    if (looksLikeArticle(content)) setDraft(content)
+    if (!looksLikeArticle(content)) return
+    setDraft(content)
+    // A new draft invalidates artwork generated for the previous one — those
+    // scenes were planned from headings this rewrite may no longer have.
+    setImages([])
+    setImageError('')
+  }
+
+  const handleGenerateImages = async () => {
+    setImagesLoading(true)
+    setImageError('')
+    try {
+      const result = await generateContentOperationsDraftImages({
+        article: draft,
+        title: draftTitle(draft),
+      })
+      setImages(result.images)
+      message.success(`${result.images.length} image(s) generated and uploaded to WordPress media.`)
+    } catch (error) {
+      setImageError(error instanceof Error ? error.message : 'The article images could not be generated.')
+    } finally {
+      setImagesLoading(false)
+    }
   }
 
   const words = useMemo(() => (draft ? wordCount(draft) : 0), [draft])
@@ -39,18 +70,24 @@ export default function ContentOperations() {
         </Space>
         {draft ? (
           <Space size="small">
+            <Button size="small" type="primary" loading={imagesLoading} onClick={() => void handleGenerateImages()}>
+              {images.length ? 'Regenerate images' : 'Generate images'}
+            </Button>
             <Button size="small" onClick={() => void navigator.clipboard.writeText(draft)}>
               Copy Markdown
             </Button>
-            <Button size="small" onClick={() => setDraft('')}>
+            <Button size="small" onClick={() => { setDraft(''); setImages([]) }}>
               Clear
             </Button>
           </Space>
         ) : null}
       </div>
       <div className="draft-panel-body">
+        {imageError ? (
+          <Alert type="error" showIcon message="Images unavailable" description={imageError} style={{ marginBottom: 16 }} />
+        ) : null}
         {draft ? (
-          <MarkdownArticle markdown={draft} />
+          <MarkdownArticle markdown={draft} images={images} />
         ) : (
           <div className="draft-panel-empty">
             <Empty description="Ask for an article and the draft appears here." />

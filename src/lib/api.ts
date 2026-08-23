@@ -881,6 +881,25 @@ export type ContentIntegrationMap = Record<string, {
   status: 'connected' | 'not_configured' | 'partially_configured'
 }>
 
+// Artwork for a chat-authored draft. The draft has no run behind it, so the
+// article text goes up with the request and the images come straight back.
+export function generateContentOperationsDraftImages(payload: {
+  article: string
+  title?: string
+  primaryKeyword?: string
+}) {
+  return request<{ images: Array<{
+    role?: string
+    url?: string
+    altText?: string
+    caption?: string
+    placementAfterHeading?: string
+  }> }>('/content-operations/draft-images', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
 export function getContentOperationsIntegrations() {
   return request<ContentIntegrationMap>('/content-operations/integrations')
 }
