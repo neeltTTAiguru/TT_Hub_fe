@@ -120,6 +120,17 @@ export default function ArticleWorkspace({
     if (draft) setPanelOpen(true)
   }, [draft])
 
+  // The user asked for a new article, or deleted the one they were reading. This
+  // is the only path that clears the shared pipeline: an article survives phase
+  // changes and empty threads, but not this.
+  const handleNewArticle = () => {
+    pipeline.reset()
+    setPanelOpen(false)
+    setImageError('')
+    imagesStartedRef.current = false
+    liveTurnRef.current = false
+  }
+
   const handleThreadReset = () => {
     setImageError('')
     imagesStartedRef.current = false
@@ -278,6 +289,7 @@ export default function ArticleWorkspace({
       onAssistantMessage={handleAssistantMessage}
       onAssistantDelta={handleAssistantDelta}
       onThreadReset={handleThreadReset}
+      onNewThread={handleNewArticle}
       draftKey={draftKey}
     />
   )

@@ -207,6 +207,10 @@ type AgentChatWorkspaceProps = {
   // Fires when the thread holds no assistant turn at all — a new chat, or the
   // active one deleted. A side panel showing the last answer must clear.
   onThreadReset?: () => void
+  // Deliberate: the user asked for a new article, or deleted the one they were
+  // reading. Distinct from onThreadReset, which also fires whenever a phase
+  // simply has no assistant turn in its own thread.
+  onNewThread?: () => void
   // Lets a side panel write into the conversation — a background job reporting
   // what it did belongs in the thread, not only in a toolbar tag.
   registerChatApi?: (api: { appendAssistantMessage: (content: string) => void }) => void
@@ -420,6 +424,7 @@ export default function AgentChatWorkspace({
   onAssistantMessage,
   onAssistantDelta,
   onThreadReset,
+  onNewThread,
   registerChatApi,
   hideAssistantMessage,
   draftKey,
@@ -631,6 +636,7 @@ export default function AgentChatWorkspace({
         // Deleting the thread you are reading clears the workspace with it —
         // otherwise the conversation, and anything a side panel is showing from
         // it, outlives the article it belonged to.
+        onNewThread?.()
         setChatMessages(showInitialAssistantMessage ? [{ role: 'assistant', content: intro }] : [])
         setChatError('')
         clearChatDraft(draftStorageKey)
@@ -970,6 +976,7 @@ export default function AgentChatWorkspace({
   }
 
   const handleNewThread = () => {
+    onNewThread?.()
     setChatMessages(
       showInitialAssistantMessage
         ? [
