@@ -267,31 +267,24 @@ export default function ArticleWorkspace({
     </aside>
   )
 
-  if (generatesImages && writeStage) {
-    return (
-      <div className="page page-chat-full">
-        <PhaseNav />
-        <StageProgress
-          stages={WRITE_STAGES}
-          current={writeStage}
-          note="The article and the conversation come back as soon as it is written."
-        />
-      </div>
-    )
-  }
-
-  // While the pass runs the page is the progress view: the article is being
-  // rewritten and the conversation has nothing to act on until it returns.
-  if (showsSeoProgress && pass.running) {
-    return (
-      <div className="page page-chat-full">
-        <PhaseNav />
-        <SeoProgress stage={pass.stage} error={pass.error} onStop={() => void stopSeoPass()} />
-      </div>
-    )
-  }
+  // Progress is drawn OVER the workspace, never in place of it. Replacing the
+  // tree unmounts AgentChatWorkspace mid-turn, which owns the thread list, the
+  // autosave refs and the in-flight request — so the article being written was
+  // never saved to the Articles rail. The overlay hides the same things without
+  // tearing anything down.
+  const overlay = generatesImages && writeStage ? (
+    <StageProgress
+      stages={WRITE_STAGES}
+      current={writeStage}
+      note="The article and the conversation come back as soon as it is written."
+    />
+  ) : showsSeoProgress && pass.running ? (
+    <SeoProgress stage={pass.stage} error={pass.error} onStop={() => void stopSeoPass()} />
+  ) : null
 
   return (
+    <>
+    {overlay ? <div className="stage-overlay">{overlay}</div> : null}
     <AgentChatWorkspace
       agentId="content-operations-assistant"
       title="Content Generator"
@@ -327,5 +320,6 @@ export default function ArticleWorkspace({
       onNewThread={handleNewArticle}
       draftKey={draftKey}
     />
+    </>
   )
 }

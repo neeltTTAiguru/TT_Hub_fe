@@ -4147,3 +4147,15 @@
     animation: none;
   }
 }
+
+/* Progress is drawn over the workspace rather than replacing it: unmounting the
+   chat mid-turn would tear down the request and the thread autosave with it. */
+.stage-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--app-bg);
+}
