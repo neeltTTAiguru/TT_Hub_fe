@@ -143,6 +143,15 @@ export default function ArticleWorkspace({
 
   const handleAssistantMessage = (content: string) => {
     if (!looksLikeArticle(content)) return
+    // Each phase has its own chat thread, and mounting one replays its saved
+    // history through here. Without this guard, opening Write after an SEO pass
+    // replays the article as first written and overwrites the improved version —
+    // switching tabs silently undoes the rewrite. Restored history may seed an
+    // empty pipeline, never overwrite what is already in it.
+    if (!liveTurnRef.current && pipeline.draft) {
+      setPanelOpen(true)
+      return
+    }
     pipeline.update({ draft: content })
     setPanelOpen(true)
     if (generatesImages && liveTurnRef.current && !imagesStartedRef.current) {
