@@ -894,6 +894,24 @@ export type CompanyFile = {
   updatedAt: string
 }
 
+// Starts the Surfer pass on a chat-written article. Returns immediately with a
+// run id — guidelines take minutes — and the caller polls getContentOperationsRun.
+export function startContentOperationsSeoPass(payload: {
+  article: string
+  title?: string
+  primaryKeyword?: string
+  guidance?: string
+}) {
+  return request<{ runId: string; status: string }>('/content-operations/seo-pass', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function getContentOperationsRun(runId: string) {
+  return request<ContentOperationsRun>(`/content-operations/runs/${encodeURIComponent(runId)}`)
+}
+
 export function getCompanyFiles() {
   return request<CompanyFile[]>('/company-files')
 }

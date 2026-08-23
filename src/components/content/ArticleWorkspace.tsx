@@ -153,7 +153,6 @@ export default function ArticleWorkspace({
         <Space size={8}>
           {imagesLoading ? <Text type="secondary" style={{ fontSize: 12 }}>Generating images…</Text> : null}
           {panelActions}
-          <PhaseNav />
         </Space>
       </div>
       <div className="draft-panel-body">
@@ -223,6 +222,7 @@ export default function ArticleWorkspace({
       threadRailNewLabel="New article"
       threadRailEmptyText="No articles yet — start writing and they'll appear here."
       showHeaderControls={false}
+      renderBeforeChat={<PhaseNav />}
       chatSidePanel={draft && panelOpen ? draftPanel : undefined}
       chatSidePanelPosition="left"
       hideAssistantMessage={(content) => panelOpen && looksLikeArticle(content)}

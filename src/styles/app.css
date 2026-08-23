@@ -3963,19 +3963,25 @@
 
 /* Phase nav for the three content pages. Sits in the draft toolbar so it is
    present on all three without taking a band of its own. */
+/* Full width under the app header, the three phases sharing the row equally. */
 .phase-nav {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  width: 100%;
+  /* A flex child of .page-chat-full, so it must not absorb the chat's height. */
+  flex: none;
 }
 
 .phase-nav-item {
   display: inline-flex;
+  flex: 1;
   align-items: center;
-  gap: 7px;
-  padding: 5px 12px;
+  justify-content: center;
+  gap: 8px;
+  padding: 9px 12px;
   border-radius: 999px;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--app-text-muted);
   text-decoration: none;
@@ -3992,13 +3998,3 @@
   color: #fff;
 }
 
-.phase-nav-index {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 17px;
-  height: 17px;
-  border-radius: 50%;
-  background: color-mix(in srgb, currentColor 18%, transparent);
-  font-size: 10px;
-}

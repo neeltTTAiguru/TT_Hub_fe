@@ -2,7 +2,7 @@ import { NavLink } from 'react-router-dom'
 
 const PHASES = [
   ['/assistants/content-operations', 'Write'],
-  ['/assistants/content-operations/seo', 'SEO'],
+  ['/assistants/content-operations/seo', 'Ahref/SEO improvements'],
   ['/assistants/content-operations/publish', 'Publish'],
 ] as const
 
@@ -18,7 +18,6 @@ export default function PhaseNav() {
           end={index === 0}
           className={({ isActive }) => `phase-nav-item${isActive ? ' phase-nav-item-active' : ''}`}
         >
-          <span className="phase-nav-index">{index + 1}</span>
           {label}
         </NavLink>
       ))}
