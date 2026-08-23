@@ -624,6 +624,25 @@
   line-height: 1.65;
 }
 
+.rendered-article .article-figure {
+  margin: 28px 0;
+}
+
+.rendered-article .article-figure img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 14px;
+}
+
+.rendered-article .article-figure figcaption {
+  margin-top: 8px;
+  color: var(--app-text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: center;
+}
+
 .rendered-article code {
   padding: 2px 6px;
   border-radius: 5px;
@@ -1089,6 +1108,255 @@
   display: grid;
   place-items: center;
   min-height: 520px;
+}
+
+/* ---------------------------------------------------------------- *
+ * Content Generator wizard — one page shown at a time, five in order
+ * ---------------------------------------------------------------- */
+
+.content-generator-workspace {
+  gap: 12px;
+}
+
+.content-generator-steps .ant-card-body {
+  display: grid;
+  gap: 10px;
+  padding: 12px 16px;
+}
+
+.content-generator-context {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--app-border);
+}
+
+.content-generator-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 4px 2px;
+}
+
+.content-generator-page {
+  min-height: 560px;
+  margin: 0;
+}
+
+/* Page 1 keeps the request beside the library of everything generated so far. */
+.content-generator-page-request {
+  display: grid;
+  grid-template-columns: minmax(320px, 1fr) minmax(320px, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.content-generator-page-request > .ant-card {
+  min-width: 0;
+  margin: 0;
+}
+
+.content-run-list-tall {
+  max-height: 560px;
+}
+
+/* Page 3 — the book: the draft on the left, the fix conversation on the right.
+ * The draft page is as long as the article and scrolls with the window, exactly like
+ * reading it; the chat is sticky, so it stays beside whatever part of the article is
+ * on screen instead of scrolling away at the top of a very long page. */
+.content-generator-book {
+  display: grid;
+  grid-template-columns: minmax(400px, 1.3fr) minmax(340px, 0.85fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.content-generator-book > .ant-card {
+  min-width: 0;
+  margin: 0;
+}
+
+.content-generator-draft .ant-card-body {
+  padding: 14px 18px;
+}
+
+.content-generator-fixchat {
+  position: sticky;
+  top: 12px;
+  max-height: calc(100vh - 24px);
+  display: flex;
+  flex-direction: column;
+}
+
+.content-generator-fixchat .ant-card-head {
+  min-height: 42px;
+  padding: 0 14px;
+}
+
+.content-generator-fixchat .ant-card-head-title {
+  padding: 10px 0;
+}
+
+.content-generator-fixchat .ant-card-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 10px;
+  padding: 12px 14px 14px;
+}
+
+.content-fix-thread {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  overflow-y: auto;
+  padding: 2px;
+  scroll-behavior: smooth;
+}
+
+.content-fix-thread .chat-message {
+  padding: 10px 14px 12px;
+  border-radius: 14px;
+  font-size: 13.5px;
+}
+
+.content-fix-thread .ant-empty {
+  margin: 8px 0;
+}
+
+/* The draft reads as a page of a book, not a hero article — the generous marketing
+ * type of .rendered-article is scaled down so more of the piece is visible at once. */
+.content-generator-draft .rendered-article {
+  font-size: 15px;
+  line-height: 1.65;
+}
+
+.content-generator-draft .rendered-article h1 {
+  margin: 0 0 16px;
+  font-size: 26px;
+}
+
+.content-generator-draft .rendered-article h2 {
+  margin: 30px 0 10px;
+  font-size: 20px;
+}
+
+.content-generator-draft .rendered-article h3 {
+  margin: 20px 0 8px;
+  font-size: 16px;
+}
+
+.content-generator-draft .rendered-article p {
+  margin: 0 0 14px;
+}
+
+.content-generator-draft .rendered-article ul,
+.content-generator-draft .rendered-article ol {
+  margin: 0 0 16px;
+}
+
+.content-generator-draft .rendered-article li {
+  margin-bottom: 6px;
+}
+
+.content-generator-draft .rendered-article .article-figure {
+  margin: 18px 0;
+}
+
+.content-generator-draft .rendered-article .article-figure figcaption {
+  margin-top: 6px;
+  font-size: 12px;
+}
+
+.content-generator-draft .rendered-article blockquote {
+  margin: 20px 0;
+  padding: 16px 18px;
+  font-size: 15px;
+}
+
+/* Each applied patch, shown as the line it replaced and the line it became. */
+.content-fix-diffs {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.content-fix-diff {
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--app-surface-alt);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.content-fix-diff del {
+  color: #a4443c;
+  text-decoration: line-through;
+}
+
+.content-fix-diff ins {
+  color: #35704c;
+  text-decoration: none;
+}
+
+/* A patch you can click to go and see where it landed. */
+.content-fix-diff-clickable {
+  width: 100%;
+  border: 1px solid transparent;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  transition: border-color 140ms ease, background 140ms ease;
+}
+
+.content-fix-diff-clickable:hover,
+.content-fix-diff-clickable:focus-visible {
+  border-color: var(--app-primary);
+}
+
+.content-fix-diff-active {
+  border-color: var(--app-primary);
+  background: color-mix(in srgb, var(--app-primary) 12%, var(--app-surface));
+}
+
+.content-fix-diff-hint {
+  margin-top: 4px;
+  color: var(--app-text-muted);
+  font-size: 11px;
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+
+.content-fix-diff-clickable:hover .content-fix-diff-hint,
+.content-fix-diff-clickable:focus-visible .content-fix-diff-hint,
+.content-fix-diff-active .content-fix-diff-hint {
+  opacity: 1;
+}
+
+/* Painted by the Custom Highlight API on the located range — no DOM is touched,
+ * so the highlight can cross element boundaries without breaking the article. */
+::highlight(content-fix) {
+  background-color: color-mix(in srgb, var(--app-primary) 30%, transparent);
+  color: inherit;
+}
+
+.content-fix-skipped {
+  display: grid;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.content-generator-heavy .ant-card-body {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 14px;
 }
 
 .content-generator-grid {
@@ -2672,14 +2940,33 @@
     grid-template-columns: 1fr;
   }
 
-  .content-generator-grid {
+  .content-generator-grid,
+  .content-generator-page-request,
+  .content-generator-book {
     grid-template-columns: 1fr;
   }
 
   .content-generator-request,
   .content-generator-progress,
-  .content-generator-preview {
+  .content-generator-preview,
+  .content-generator-page,
+  .content-generator-book > .ant-card {
     min-height: auto;
+  }
+
+  /* Stacked on a narrow screen there is no column to sit beside, so the chat goes
+   * back to flowing under the draft rather than pinning over it. */
+  .content-generator-fixchat {
+    position: static;
+    max-height: none;
+  }
+
+  .content-fix-thread {
+    max-height: 50vh;
+  }
+
+  .content-generator-nav {
+    flex-wrap: wrap;
   }
 
   .content-editor-options {
@@ -2902,4 +3189,70 @@
 .email-builder-canvas .gjs-placeholder.horizontal {
   border-color: transparent var(--app-accent, #6b705c);
   border-width: 3px;
+}
+
+/* --- T500 3D viewer ------------------------------------------------------ */
+.product-viewer-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 20px;
+  align-items: start;
+}
+
+.product-viewer-stage {
+  position: relative;
+  overflow: hidden;
+  min-height: 560px;
+}
+
+.product-viewer-canvas {
+  display: block;
+  width: 100%;
+  height: 620px;
+  background:
+    radial-gradient(120% 90% at 50% 12%, color-mix(in srgb, var(--app-primary) 9%, var(--app-surface)), var(--app-surface-alt));
+  --poster-color: transparent;
+}
+
+.product-viewer-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.product-viewer-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.product-viewer-facts {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius);
+  background: var(--app-surface-alt);
+}
+
+.product-viewer-facts div {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  font-size: 13px;
+}
+
+.product-viewer-facts span { color: var(--app-text-muted); }
+.product-viewer-facts strong { text-align: right; font-weight: 600; }
+
+@media (max-width: 1100px) {
+  .product-viewer-grid { grid-template-columns: minmax(0, 1fr); }
+  .product-viewer-canvas { height: 460px; }
 }

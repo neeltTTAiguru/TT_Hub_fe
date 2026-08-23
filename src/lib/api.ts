@@ -777,6 +777,16 @@ export type ContentOperationsRun = {
     altText: string
     caption: string
   } | null
+  // The generated artwork. Kept out of `article`, which is prose only, and spliced into
+  // the post at WordPress-sync time — see insertGeneratedImages on the backend.
+  generatedImages?: Array<{
+    role?: string
+    url?: string
+    altText?: string
+    caption?: string
+    placementAfterHeading?: string
+    mediaId?: number
+  }>
   testPublication: {
     published: boolean
     slug: string
@@ -812,6 +822,31 @@ export type ContentOperationsRun = {
     revert?: boolean
     failed?: boolean
     scoreRejected?: boolean
+    createdAt: string
+  }>
+  // Little fixes: the surgical line-edit thread and its undo stack, separate from the
+  // heavy editorChat/revisions pair above.
+  quickFixChat?: Array<{
+    id: string
+    role: 'user' | 'assistant'
+    content: string
+    fixId?: string
+    edits?: Array<{ find: string; replace: string; why?: string }>
+    skipped?: Array<{ find: string; why?: string; reason: string }>
+    revert?: boolean
+    failed?: boolean
+    createdAt: string
+  }>
+  quickFixes?: Array<{
+    id: string
+    instruction: string
+    applied?: Array<{ find: string; replace: string; why?: string }>
+    skipped?: Array<{ find: string; why?: string; reason: string }>
+    wordCountBefore: number
+    wordCountAfter: number
+    wordpressSynced: boolean
+    appliedToLive: boolean
+    revertedAt: string | null
     createdAt: string
   }>
   revisions?: Array<{
@@ -907,6 +942,26 @@ export function reviseContentOperationsArticle(
 ) {
   return request<ContentOperationsRun>(
     `/content-operations/runs/${encodeURIComponent(runId)}/revise`,
+    { method: 'POST', body: JSON.stringify(payload) },
+  )
+}
+
+export function applyContentOperationsQuickFix(
+  runId: string,
+  payload: { instruction: string; applyToLive?: boolean },
+) {
+  return request<ContentOperationsRun>(
+    `/content-operations/runs/${encodeURIComponent(runId)}/quick-fix`,
+    { method: 'POST', body: JSON.stringify(payload) },
+  )
+}
+
+export function revertContentOperationsQuickFix(
+  runId: string,
+  payload: { fixId: string; applyToLive?: boolean },
+) {
+  return request<ContentOperationsRun>(
+    `/content-operations/runs/${encodeURIComponent(runId)}/quick-fix-revert`,
     { method: 'POST', body: JSON.stringify(payload) },
   )
 }
