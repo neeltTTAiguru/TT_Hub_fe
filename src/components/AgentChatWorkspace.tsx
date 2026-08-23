@@ -455,6 +455,8 @@ export default function AgentChatWorkspace({
   // Held so a stalled stream can be cancelled — the SSE path has no timeout by
   // design, which without this leaves a hung request spinning forever.
   const chatAbortRef = useRef<AbortController | null>(null)
+  const assistantMessageRef = useRef(onAssistantMessage)
+  assistantMessageRef.current = onAssistantMessage
   const [isSavingThread, setIsSavingThread] = useState(false)
   const [isThreadSidebarOpen, setIsThreadSidebarOpen] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
@@ -569,6 +571,21 @@ export default function AgentChatWorkspace({
     // Only re-attach on mount / when the section key changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draftStorageKey])
+
+  // A side panel has to reflect the conversation as it stands, not just what
+  // arrived while the tab was watching. Restoring the autosaved draft, opening a
+  // saved thread, or reloading all repopulate chatMessages without a turn ever
+  // running, and the panel would otherwise sit empty beside a visible answer.
+  useEffect(() => {
+    const emit = assistantMessageRef.current
+    if (!emit) return
+    for (let index = chatMessages.length - 1; index >= 0; index -= 1) {
+      const entry = chatMessages[index]
+      if (entry.role !== 'assistant') continue
+      if (typeof entry.content === 'string' && entry.content.trim()) emit(entry.content)
+      return
+    }
+  }, [chatMessages])
 
   const handleDeleteThread = async (threadId: string) => {
     try {
