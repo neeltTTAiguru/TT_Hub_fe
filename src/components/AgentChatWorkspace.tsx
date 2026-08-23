@@ -1257,7 +1257,9 @@ export default function AgentChatWorkspace({
                   >
                     {chatSidePanel && chatSidePanelPosition === 'left' ? chatSidePanel : null}
                     <div
-                      className={`chat-main${isDragActive ? ' chat-main-dragging' : ''}`}
+                      className={`chat-main${isDragActive ? ' chat-main-dragging' : ''}${
+                        chatMessages.length ? '' : ' chat-main-empty'
+                      }`}
                       onDragEnter={handleDragEnter}
                       onDragOver={handleDragOver}
                       onDragLeave={handleDragLeave}

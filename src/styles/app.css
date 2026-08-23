@@ -3594,3 +3594,28 @@
     max-height: 46vh;
   }
 }
+
+/* An unstarted conversation puts the composer in the middle of the page instead
+   of pinning it under an empty thread. Once messages exist it returns to the
+   bottom, where it has to be. */
+.chat-card-full .chat-main-empty {
+  grid-template-rows: auto auto;
+  align-content: center;
+}
+
+/* A more substantial composer on the full-height chat — the page's primary
+   input deserves more presence than a three-row box. Scoped to .chat-card-full
+   so the other agent chats keep theirs. */
+.chat-card-full .chat-composer textarea.ant-input {
+  min-height: 132px;
+  padding: 16px 18px;
+  font-size: 15px;
+  line-height: 1.6;
+  border-radius: 14px;
+}
+
+.chat-card-full .chat-composer-actions .ant-btn {
+  height: 38px;
+  padding-inline: 18px;
+  border-radius: 10px;
+}
