@@ -3565,33 +3565,6 @@
 
 /* Expanded reading mode: the draft floats over the workspace instead of
    fighting the chat for width. */
-.draft-panel-expanded {
-  position: fixed;
-  inset: 24px;
-  z-index: 60;
-  /* The split view's full-bleed pull-out must not survive here — on a fixed
-     element it drags the panel off the left of the viewport. */
-  margin: 0;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.28);
-}
-
-/* Expanded is a reading mode, so the conversation behind it is covered rather
-   than left showing around the edges. */
-.draft-panel-expanded::before {
-  content: '';
-  position: fixed;
-  inset: -24px;
-  z-index: -1;
-  background: rgba(20, 20, 18, 0.45);
-}
-
-.draft-panel-expanded .draft-panel-body {
-  /* Long-form measure, so an expanded article doesn't run the full monitor. */
-  max-width: 820px;
-  margin: 0 auto;
-  width: 100%;
-}
-
 .draft-panel-body {
   flex: 1;
   min-height: 0;
@@ -3670,23 +3643,6 @@
   margin-bottom: 8px;
   font-size: 14.4px;
   line-height: 21.6px;
-}
-
-/* Expanded, the column approaches the published measure, so the headings take
-   their live sizes. */
-.draft-panel-expanded .draft-panel-body h1 {
-  font-size: 60px;
-  line-height: 72px;
-}
-
-.draft-panel-expanded .draft-panel-body h2 {
-  font-size: 37.6px;
-  line-height: 45.12px;
-}
-
-.draft-panel-expanded .draft-panel-body h3 {
-  font-size: 25.6px;
-  line-height: 33.28px;
 }
 
 .draft-panel-body > :first-child {

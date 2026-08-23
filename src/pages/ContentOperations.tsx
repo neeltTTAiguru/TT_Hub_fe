@@ -55,7 +55,6 @@ function splitDraft(value: string) {
 export default function ContentOperations() {
   const [draft, setDraft] = useState('')
   const [panelOpen, setPanelOpen] = useState(false)
-  const [expanded, setExpanded] = useState(false)
   const [images, setImages] = useState<ArticleImage[]>([])
   const [imagesLoading, setImagesLoading] = useState(false)
   const [imageError, setImageError] = useState('')
@@ -72,7 +71,6 @@ export default function ContentOperations() {
   const handleThreadReset = () => {
     setDraft('')
     setPanelOpen(false)
-    setExpanded(false)
     setImages([])
     setImageError('')
     imagesStartedRef.current = false
@@ -121,10 +119,7 @@ export default function ContentOperations() {
   const guide = useMemo(() => parseFieldGuide(article), [article])
 
   const draftPanel = (
-    <aside
-      className={`draft-panel${expanded ? ' draft-panel-expanded' : ''}`}
-      aria-label="Article draft"
-    >
+    <aside className="draft-panel" aria-label="Article draft">
       <div className="draft-panel-toolbar">
         <span className="draft-panel-title">
           <Text strong ellipsis>{title}</Text>
@@ -135,22 +130,12 @@ export default function ContentOperations() {
           <Button size="small" onClick={() => void navigator.clipboard.writeText(draft)}>
             Copy
           </Button>
-          <Tooltip title={expanded ? 'Collapse' : 'Expand'}>
-            <Button
-              size="small"
-              type="text"
-              aria-label={expanded ? 'Collapse draft' : 'Expand draft'}
-              onClick={() => setExpanded((current) => !current)}
-            >
-              {expanded ? '⤡' : '⤢'}
-            </Button>
-          </Tooltip>
           <Tooltip title="Close">
             <Button
               size="small"
               type="text"
               aria-label="Close draft"
-              onClick={() => { setPanelOpen(false); setExpanded(false) }}
+              onClick={() => setPanelOpen(false)}
             >
               ✕
             </Button>
