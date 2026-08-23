@@ -1,20 +1,11 @@
-import { Button, Typography } from 'antd'
-
-const { Text } = Typography
+import StageProgress from './StageProgress'
 
 const STAGES = [
-  ['opportunity_research', 'Ahrefs', 'Search volume and difficulty'],
-  ['surfer_setup', 'SurferSEO', 'Building SERP guidelines'],
-  ['content_optimization', 'Rewrite', 'Scoring and revising'],
-] as const
+  { key: 'opportunity_research', label: 'Ahrefs', detail: 'Search volume and difficulty' },
+  { key: 'surfer_setup', label: 'SurferSEO', detail: 'Building SERP guidelines' },
+  { key: 'content_optimization', label: 'Rewrite', detail: 'Scoring and revising to the word target' },
+]
 
-function positionOf(stage: string) {
-  const index = STAGES.findIndex(([key]) => key === stage)
-  return index < 0 ? 0 : index
-}
-
-// Takes the whole page while the pass runs: the article is being rewritten and
-// the chat has nothing to act on until it comes back.
 export default function SeoProgress({
   stage,
   error,
@@ -24,37 +15,14 @@ export default function SeoProgress({
   error?: string
   onStop: () => void
 }) {
-  const current = positionOf(stage)
   return (
-    <div className="seo-progress">
-      <div className="seo-progress-track">
-        {STAGES.map(([key, label, detail], index) => {
-          const state = error && index === current
-            ? 'error'
-            : index < current ? 'done' : index === current ? 'active' : 'waiting'
-          return (
-            <div className="seo-progress-node" key={key}>
-              {index > 0 ? <span className="seo-progress-arrow" aria-hidden="true" /> : null}
-              <div
-                className={`seo-progress-step seo-progress-${state}`}
-                // Staggered so the three boxes lift in turn rather than together.
-                style={{ animationDelay: `${index * 0.8}s` }}
-              >
-                <span className="seo-progress-circle" aria-hidden="true">
-                  {state === 'done' ? '✓' : state === 'error' ? '!' : index + 1}
-                </span>
-                <Text strong className="seo-progress-label">{label}</Text>
-                <span className="seo-progress-detail">{state === 'error' ? error : detail}</span>
-              </div>
-            </div>
-          )
-        })}
-      </div>
-      <p className="seo-progress-note">
-        The article and the conversation come back when the pass finishes. It keeps running if you
-        leave this page.
-      </p>
-      <Button danger onClick={onStop}>Stop the pass</Button>
-    </div>
+    <StageProgress
+      stages={STAGES}
+      current={stage}
+      error={error}
+      note="The article and the conversation come back when the pass finishes. It keeps running if you leave this page."
+      onStop={onStop}
+      stopLabel="Stop the pass"
+    />
   )
 }

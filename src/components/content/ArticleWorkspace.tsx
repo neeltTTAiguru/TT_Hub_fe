@@ -56,9 +56,18 @@ function splitDraft(value: string) {
 import { useContentPipeline } from '../../lib/contentPipeline'
 import PhaseNav from './PhaseNav'
 import SeoProgress from './SeoProgress'
+import StageProgress from './StageProgress'
 import { getSeoPassState, stopSeoPass, subscribeSeoPass } from '../../lib/seoPassRunner'
 
 export type ChatApi = { appendAssistantMessage: (content: string) => void }
+
+// What Hermes is doing while it writes. The first box covers the gap between
+// sending and the first token, which is memory and knowledge retrieval.
+const WRITE_STAGES = [
+  { key: 'memory', label: 'Checking memory', detail: 'Reading the brain and the knowledge base' },
+  { key: 'writing', label: 'Writing article', detail: 'Drafting to the Field Guide shape' },
+  { key: 'images', label: 'Generating images', detail: 'Creating and uploading the artwork' },
+]
 
 type Props = {
   // Phase-specific wiring. The layout, the field-guide rendering and the
@@ -105,6 +114,8 @@ export default function ArticleWorkspace({
     appendAssistantMessage: (content: string) => chatApiRef.current.appendAssistantMessage(content),
   })
 
+  // '' | 'memory' | 'writing' | 'images' — what Hermes is doing on this turn.
+  const [writeStage, setWriteStage] = useState('')
   const [pass, setPass] = useState(getSeoPassState)
   useEffect(() => {
     const unsubscribe = subscribeSeoPass(() => setPass(getSeoPassState()))
@@ -163,13 +174,20 @@ export default function ArticleWorkspace({
 
   const handleAssistantDelta = (content: string) => {
     liveTurnRef.current = true
+    // First token: retrieval is done and the article is being written.
+    setWriteStage('writing')
     if (!looksLikeArticle(content)) return
     pipeline.update({ draft: content })
     setPanelOpen(true)
   }
 
   const handleAssistantMessage = (content: string) => {
-    if (!looksLikeArticle(content)) return
+    if (!looksLikeArticle(content)) {
+      // A plain reply still ends the turn — otherwise asking a question leaves
+      // the page stuck on the progress view with nothing coming.
+      setWriteStage('')
+      return
+    }
     // Each phase has its own chat thread, and mounting one replays its saved
     // history through here. Without this guard, opening Write after an SEO pass
     // replays the article as first written and overwrites the improved version —
@@ -183,8 +201,11 @@ export default function ArticleWorkspace({
     setPanelOpen(true)
     if (generatesImages && liveTurnRef.current && !imagesStartedRef.current) {
       imagesStartedRef.current = true
-      void generateImagesFor(content)
+      setWriteStage('images')
+      void generateImagesFor(content).finally(() => setWriteStage(''))
+      return
     }
+    setWriteStage('')
   }
 
   const title = useMemo(() => (draft ? draftTitle(draft) : ''), [draft])
@@ -246,6 +267,19 @@ export default function ArticleWorkspace({
     </aside>
   )
 
+  if (generatesImages && writeStage) {
+    return (
+      <div className="page page-chat-full">
+        <PhaseNav />
+        <StageProgress
+          stages={WRITE_STAGES}
+          current={writeStage}
+          note="The article and the conversation come back as soon as it is written."
+        />
+      </div>
+    )
+  }
+
   // While the pass runs the page is the progress view: the article is being
   // rewritten and the conversation has nothing to act on until it returns.
   if (showsSeoProgress && pass.running) {
@@ -288,6 +322,7 @@ export default function ArticleWorkspace({
       hideAssistantMessage={(content) => panelOpen && looksLikeArticle(content)}
       onAssistantMessage={handleAssistantMessage}
       onAssistantDelta={handleAssistantDelta}
+      onTurnStart={() => setWriteStage('memory')}
       onThreadReset={handleThreadReset}
       onNewThread={handleNewArticle}
       draftKey={draftKey}

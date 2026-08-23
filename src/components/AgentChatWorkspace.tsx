@@ -211,6 +211,10 @@ type AgentChatWorkspaceProps = {
   // reading. Distinct from onThreadReset, which also fires whenever a phase
   // simply has no assistant turn in its own thread.
   onNewThread?: () => void
+  // Fired the moment a turn is sent, before any token arrives. The gap between
+  // sending and the first token is memory and knowledge retrieval, which is
+  // otherwise invisible.
+  onTurnStart?: () => void
   // Lets a side panel write into the conversation — a background job reporting
   // what it did belongs in the thread, not only in a toolbar tag.
   registerChatApi?: (api: { appendAssistantMessage: (content: string) => void }) => void
@@ -425,6 +429,7 @@ export default function AgentChatWorkspace({
   onAssistantDelta,
   onThreadReset,
   onNewThread,
+  onTurnStart,
   registerChatApi,
   hideAssistantMessage,
   draftKey,
@@ -872,6 +877,7 @@ export default function AgentChatWorkspace({
     const backendText = context ? `${context}\n\nUser request:\n${baseText}` : baseText
     const messagesForBackend = [...chatMessages, { role: 'user' as const, content: backendText }]
 
+    onTurnStart?.()
     setChatInput('')
     setAttachments([])
     setChatError('')
