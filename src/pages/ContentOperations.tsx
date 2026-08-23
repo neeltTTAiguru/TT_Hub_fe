@@ -39,6 +39,18 @@ export default function ContentOperations() {
   // credits or upload to WordPress on a page load.
   const liveTurnRef = useRef(false)
 
+  // The thread lost its last article — deleted from the rail, or a new one
+  // started. The panel has nothing left to show.
+  const handleThreadReset = () => {
+    setDraft('')
+    setPanelOpen(false)
+    setExpanded(false)
+    setImages([])
+    setImageError('')
+    imagesStartedRef.current = false
+    liveTurnRef.current = false
+  }
+
   const handleAssistantDelta = (content: string) => {
     liveTurnRef.current = true
     if (!looksLikeArticle(content)) return
@@ -159,6 +171,7 @@ export default function ContentOperations() {
       hideAssistantMessage={(content) => panelOpen && looksLikeArticle(content)}
       onAssistantMessage={handleAssistantMessage}
       onAssistantDelta={handleAssistantDelta}
+      onThreadReset={handleThreadReset}
       draftKey="content-operations"
     />
   )

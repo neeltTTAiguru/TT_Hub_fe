@@ -204,6 +204,9 @@ type AgentChatWorkspaceProps = {
   // Fires on every streamed token with the text so far, so a side panel can open
   // while the answer is still arriving instead of only once it lands.
   onAssistantDelta?: (content: string) => void
+  // Fires when the thread holds no assistant turn at all — a new chat, or the
+  // active one deleted. A side panel showing the last answer must clear.
+  onThreadReset?: () => void
   // Suppress an assistant message in the thread — for a host that is already
   // showing that exact text somewhere better, e.g. in a side panel.
   hideAssistantMessage?: (content: string) => boolean
@@ -413,6 +416,7 @@ export default function AgentChatWorkspace({
   onChatResponse,
   onAssistantMessage,
   onAssistantDelta,
+  onThreadReset,
   hideAssistantMessage,
   draftKey,
   competitor,
@@ -461,6 +465,8 @@ export default function AgentChatWorkspace({
   const chatAbortRef = useRef<AbortController | null>(null)
   const assistantMessageRef = useRef(onAssistantMessage)
   assistantMessageRef.current = onAssistantMessage
+  const threadResetRef = useRef(onThreadReset)
+  threadResetRef.current = onThreadReset
   const [isSavingThread, setIsSavingThread] = useState(false)
   const [isThreadSidebarOpen, setIsThreadSidebarOpen] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
@@ -587,10 +593,15 @@ export default function AgentChatWorkspace({
     // what it cares about, and replaying in order leaves it holding the most
     // recent match. Reading only the last message meant a thread ending in a
     // short conversational reply restored nothing at all.
+    let seen = false
     for (const entry of chatMessages) {
       if (entry.role !== 'assistant') continue
-      if (typeof entry.content === 'string' && entry.content.trim()) emit(entry.content)
+      if (typeof entry.content === 'string' && entry.content.trim()) {
+        emit(entry.content)
+        seen = true
+      }
     }
+    if (!seen) threadResetRef.current?.()
   }, [chatMessages])
 
   const handleDeleteThread = async (threadId: string) => {
@@ -600,6 +611,12 @@ export default function AgentChatWorkspace({
       if (activeThreadIdRef.current === threadId) {
         activeThreadIdRef.current = null
         setActiveThreadId(null)
+        // Deleting the thread you are reading clears the workspace with it —
+        // otherwise the conversation, and anything a side panel is showing from
+        // it, outlives the article it belonged to.
+        setChatMessages(showInitialAssistantMessage ? [{ role: 'assistant', content: intro }] : [])
+        setChatError('')
+        clearChatDraft(draftStorageKey)
       }
       message.success('Chat deleted')
     } catch {
