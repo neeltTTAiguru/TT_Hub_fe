@@ -3601,6 +3601,9 @@
 .chat-card-full .chat-main-empty {
   grid-template-rows: auto auto;
   align-content: center;
+  /* Sits above the true centre — a composer on the exact midline reads as low
+     once the action row beneath it is counted. */
+  padding-bottom: 16vh;
 }
 
 /* A more substantial composer on the full-height chat — the page's primary
@@ -3612,6 +3615,16 @@
   font-size: 15px;
   line-height: 1.6;
   border-radius: 14px;
+  /* --app-text is near-black on the light theme and near-white on the dark one,
+     so the outline stays visible either way instead of vanishing in dark mode. */
+  border: 1.5px solid var(--app-text);
+}
+
+.chat-card-full .chat-composer textarea.ant-input:hover,
+.chat-card-full .chat-composer textarea.ant-input:focus {
+  /* Ant repaints the border on hover/focus; keep the outline it was given. */
+  border-color: var(--app-text);
+  box-shadow: none;
 }
 
 .chat-card-full .chat-composer-actions .ant-btn {
