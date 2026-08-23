@@ -3756,9 +3756,10 @@
   background: rgb(247, 246, 242);
 }
 
-/* Doubled up: the panel's own `p` rule is more specific than a lone class and
-   would otherwise reset the size and colour. */
-.draft-panel-body p.draft-panel-eyebrow {
+/* The published field-guide furniture: hero with its olive side panel, the
+   In This Article list, and the Article Overview card. Selectors are doubled up
+   where the panel's own element rules would otherwise win on specificity. */
+.draft-panel-body p.tt-eyebrow {
   margin: 0 0 18px;
   font-family: Ubuntu, Roboto, Arial, sans-serif;
   font-size: 11.52px;
@@ -3766,6 +3767,113 @@
   letter-spacing: 1.6px;
   text-transform: uppercase;
   color: rgb(105, 106, 93);
+}
+
+.draft-panel-body p.tt-eyebrow-quiet {
+  margin: 0;
+  color: rgb(115, 116, 103);
+  letter-spacing: 1.38px;
+}
+
+.tt-hero {
+  display: grid;
+  /* The olive panel needs enough width to hold "guidance." on one line; below
+     about 190px the word breaks and strands its full stop. */
+  grid-template-columns: minmax(0, 1fr) minmax(190px, 26%);
+  margin: -24px -28px 36px;
+  background: rgb(247, 246, 242);
+}
+
+.tt-hero-main {
+  padding: 40px 32px 28px;
+  min-width: 0;
+}
+
+.draft-panel-body h1.tt-hero-title {
+  margin: 0 0 24px;
+  font-size: 44px;
+  line-height: 50px;
+  font-weight: 400;
+  color: rgb(55, 55, 47);
+}
+
+.draft-panel-body p.tt-hero-lead {
+  margin: 0 0 28px;
+  font-size: 17px;
+  line-height: 29px;
+  color: rgb(74, 73, 65);
+}
+
+.tt-hero-rule {
+  margin: 0 0 16px;
+  border: 0;
+  border-top: 1px solid rgb(214, 212, 202);
+}
+
+.tt-hero-side {
+  display: flex;
+  align-items: flex-end;
+  padding: 32px 20px;
+  background: rgb(85, 87, 72);
+}
+
+.draft-panel-body .tt-hero-side p {
+  margin: 0;
+  color: rgb(244, 242, 236);
+  font-size: 22px;
+  line-height: 27px;
+  font-weight: 700;
+  /* Never hyphenate or split the strapline. */
+  overflow-wrap: normal;
+  word-break: keep-all;
+}
+
+/* Both cards: cream block, tan rule down the left. */
+.tt-card {
+  margin: 0 0 28px;
+  padding: 22px 26px;
+  background: rgb(240, 239, 233);
+  border-left: 5px solid rgb(168, 164, 143);
+}
+
+.draft-panel-body p.tt-card-label {
+  margin: 0 0 14px;
+  font-family: Ubuntu, Roboto, Arial, sans-serif;
+  font-size: 11.2px;
+  font-weight: 900;
+  letter-spacing: 1.57px;
+  text-transform: uppercase;
+  color: rgb(0, 0, 0);
+}
+
+.draft-panel-body .tt-card ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.draft-panel-body .tt-card li {
+  margin-bottom: 10px;
+  font-size: 16px;
+  line-height: 24px;
+  color: rgb(74, 73, 65);
+}
+
+.draft-panel-body p.tt-card-body {
+  margin: 0;
+  font-size: 16px;
+  line-height: 27.2px;
+  color: rgb(0, 0, 0);
+}
+
+@media (max-width: 1200px) {
+  /* The olive panel needs real width to hold its line; below that it stacks. */
+  .tt-hero {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .tt-hero-side {
+    padding: 20px 32px;
+  }
 }
 
 /* The opening paragraph runs lighter than the body on the live page. */
