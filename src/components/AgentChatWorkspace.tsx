@@ -616,6 +616,12 @@ export default function AgentChatWorkspace({
   useEffect(() => {
     const emit = assistantMessageRef.current
     if (!emit) return
+    // Never during a live turn. Streaming calls setChatMessages on every token,
+    // so this effect would re-run per token and replay the whole thread — which
+    // reports each partial as a completed answer. The host then flips its state
+    // hundreds of times a second: progress off, on, off. The send path already
+    // reports deltas and completion; this exists for restores alone.
+    if (isChatting) return
     // Every assistant turn, oldest first — not just the newest. The host decides
     // what it cares about, and replaying in order leaves it holding the most
     // recent match. Reading only the last message meant a thread ending in a
@@ -629,7 +635,7 @@ export default function AgentChatWorkspace({
       }
     }
     if (!seen) threadResetRef.current?.()
-  }, [chatMessages])
+  }, [chatMessages, isChatting])
 
   const handleDeleteThread = async (threadId: string) => {
     try {
