@@ -3569,7 +3569,20 @@
   position: fixed;
   inset: 24px;
   z-index: 60;
+  /* The split view's full-bleed pull-out must not survive here — on a fixed
+     element it drags the panel off the left of the viewport. */
+  margin: 0;
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.28);
+}
+
+/* Expanded is a reading mode, so the conversation behind it is covered rather
+   than left showing around the edges. */
+.draft-panel-expanded::before {
+  content: '';
+  position: fixed;
+  inset: -24px;
+  z-index: -1;
+  background: rgba(20, 20, 18, 0.45);
 }
 
 .draft-panel-expanded .draft-panel-body {
