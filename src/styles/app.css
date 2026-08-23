@@ -3493,7 +3493,7 @@
 /* A rule between the article and the conversation. It sits on the chat column so
    it spans the full height of the split rather than only the panel's own box. */
 .chat-workspace-grid-flipped > .chat-main {
-  border-left: 1px solid var(--app-border);
+  border-left: 3px solid #000;
   padding-left: 28px;
   margin-left: 28px;
 }
@@ -3504,7 +3504,7 @@
     border-left: 0;
     padding-left: 0;
     margin-left: 0;
-    border-top: 1px solid var(--app-border);
+    border-top: 3px solid #000;
     padding-top: 20px;
     margin-top: 20px;
   }
@@ -3583,7 +3583,9 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 24px 28px 32px;
+  /* No side padding: every block below sets its own, so the hero and the cards
+     run edge to edge rather than sitting inside a margin that reads as a box. */
+  padding: 0 0 40px;
   /* A long unbreakable token (slug, URL) must wrap rather than widen the column
      and push the panel out of view. */
   overflow-wrap: anywhere;
@@ -3601,6 +3603,7 @@
    body rhythm. Body and list sizes are the live values; headings are scaled to
    the panel, which is roughly half the width of the published column. */
 .draft-panel-body .rendered-article {
+  padding: 0 40px;
   font-family: Ubuntu, Roboto, Arial, sans-serif;
   color: #000;
   font-size: 16px;
@@ -3729,7 +3732,7 @@
 /* Publishing metadata trails the article behind a rule. It belongs to the editor,
    not the piece, so it is folded away rather than read as part of the prose. */
 .draft-panel-meta {
-  margin-top: 32px;
+  margin: 32px 40px 0;
   padding-top: 16px;
   border-top: 1px solid var(--app-border);
 }
@@ -3784,7 +3787,7 @@
   /* The olive panel needs enough width to hold "guidance." on one line; below
      about 190px the word breaks and strands its full stop. */
   grid-template-columns: minmax(0, 1fr) minmax(190px, 26%);
-  margin: -24px -28px 36px;
+  margin: 0 0 36px;
   background: rgb(247, 246, 242);
 }
 
@@ -3836,7 +3839,7 @@
 /* Both cards: cream block, tan rule down the left. */
 .tt-card {
   margin: 0 0 28px;
-  padding: 22px 26px;
+  padding: 24px 40px;
   background: rgb(240, 239, 233);
   border-left: 5px solid rgb(168, 164, 143);
 }
@@ -3933,4 +3936,15 @@
   .draft-panel {
     margin-left: 0;
   }
+}
+
+/* The scrolling article would otherwise gain a gutter only when it overflows,
+   shifting the layout as content grows. */
+.draft-panel-body {
+  scrollbar-gutter: stable;
+}
+
+:root[data-theme='dark'] .chat-workspace-grid-flipped > .chat-main {
+  /* Black on the dark shell is invisible. */
+  border-left-color: var(--app-text);
 }
