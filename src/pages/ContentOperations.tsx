@@ -34,11 +34,17 @@ export default function ContentOperations() {
 
   const handleAssistantMessage = (content: string) => {
     if (!looksLikeArticle(content)) return
-    setDraft(content)
+    setDraft((current) => {
+      // Streaming calls this on every token. Artwork is planned from a draft's
+      // headings, so it only resets when a genuinely new article starts — not on
+      // each token of the one being written.
+      if (!content.startsWith(current.slice(0, 120))) {
+        setImages([])
+        setImageError('')
+      }
+      return content
+    })
     setPanelOpen(true)
-    // A new draft invalidates artwork planned from the previous draft's headings.
-    setImages([])
-    setImageError('')
   }
 
   const handleGenerateImages = async () => {
@@ -134,6 +140,7 @@ export default function ContentOperations() {
       showHeaderControls={false}
       chatSidePanel={draft && panelOpen ? draftPanel : undefined}
       onAssistantMessage={handleAssistantMessage}
+      onAssistantDelta={handleAssistantMessage}
       draftKey="content-operations"
     />
   )

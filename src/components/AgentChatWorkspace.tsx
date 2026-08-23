@@ -201,6 +201,9 @@ type AgentChatWorkspaceProps = {
   // event (the accumulated text is the answer), so onChatResponse alone is not a
   // reliable way to see what was said.
   onAssistantMessage?: (content: string) => void
+  // Fires on every streamed token with the text so far, so a side panel can open
+  // while the answer is still arriving instead of only once it lands.
+  onAssistantDelta?: (content: string) => void
   // Storage key for autosaving the in-progress conversation to the browser so a
   // refresh/freeze doesn't lose it. Defaults to the agentId; pass a more specific
   // key (e.g. per competitor) to keep separate drafts.
@@ -406,6 +409,7 @@ export default function AgentChatWorkspace({
   fullHeight = false,
   onChatResponse,
   onAssistantMessage,
+  onAssistantDelta,
   draftKey,
   competitor,
 }: AgentChatWorkspaceProps) {
@@ -448,6 +452,9 @@ export default function AgentChatWorkspace({
   // True once the streamed reply has started arriving, so the separate "thinking"
   // indicator is hidden while the answer itself is growing.
   const [streamingActive, setStreamingActive] = useState(false)
+  // Held so a stalled stream can be cancelled — the SSE path has no timeout by
+  // design, which without this leaves a hung request spinning forever.
+  const chatAbortRef = useRef<AbortController | null>(null)
   const [isSavingThread, setIsSavingThread] = useState(false)
   const [isThreadSidebarOpen, setIsThreadSidebarOpen] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
@@ -816,16 +823,20 @@ export default function AgentChatWorkspace({
       let response: AgentChatResponse
       if (streaming) {
         let accumulated = ''
+        const controller = new AbortController()
+        chatAbortRef.current = controller
         response = await streamAgentChat(
           agentId,
           messagesForBackend,
           {
+            signal: controller.signal,
             onDelta: (text) => {
               accumulated += text
               setStreamingActive(true)
               // Rebuild from the stable nextMessages so the growing reply replaces
               // (not appends to) the previous partial on every token.
               setChatMessages([...nextMessages, { role: 'assistant', content: accumulated }])
+              onAssistantDelta?.(accumulated)
             },
           },
           competitor,
@@ -875,6 +886,7 @@ export default function AgentChatWorkspace({
         setChatError(submitError instanceof Error ? submitError.message : `${assistantLabel} could not respond right now.`)
       }
     } finally {
+      chatAbortRef.current = null
       setIsChatting(false)
       setStreamingActive(false)
     }
@@ -1436,6 +1448,17 @@ export default function AgentChatWorkspace({
                         >
                           📎 Attach
                         </Button>
+                        {isChatting ? (
+                          <Button
+                            danger
+                            onClick={() => {
+                              chatAbortRef.current?.abort()
+                              chatAbortRef.current = null
+                            }}
+                          >
+                            Stop
+                          </Button>
+                        ) : null}
                         <Button type="primary" onClick={() => void handleSendChat()} loading={isChatting}>
                           Send
                         </Button>
