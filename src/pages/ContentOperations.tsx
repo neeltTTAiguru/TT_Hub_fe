@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react'
-import { Alert, Button, Space, Tooltip, Typography } from 'antd'
+import { Alert, Space, Typography } from 'antd'
 import AgentChatWorkspace from '../components/AgentChatWorkspace'
 import MarkdownArticle, { type ArticleImage } from '../components/MarkdownArticle'
 import surferLogo from '../assets/agent-logos/surfer.svg'
@@ -127,16 +127,6 @@ export default function ContentOperations() {
         </span>
         <Space size={4}>
           {imagesLoading ? <Text type="secondary" style={{ fontSize: 12 }}>Generating images…</Text> : null}
-          <Tooltip title="Close">
-            <Button
-              size="small"
-              type="text"
-              aria-label="Close draft"
-              onClick={() => setPanelOpen(false)}
-            >
-              ✕
-            </Button>
-          </Tooltip>
         </Space>
       </div>
       <div className="draft-panel-body">
