@@ -180,6 +180,9 @@ type AgentChatWorkspaceProps = {
   // Called after a memory is saved/updated so the caller can refresh its section list.
   onMemorySaved?: () => void
   chatSidePanel?: ReactNode
+  // Which side the panel sits on. 'left' puts it ahead of the conversation,
+  // which is what a draft-and-chat split wants.
+  chatSidePanelPosition?: 'left' | 'right'
   // Persistent left rail listing saved threads, instead of the header dropdown.
   threadRail?: boolean
   threadRailTitle?: string
@@ -389,6 +392,7 @@ export default function AgentChatWorkspace({
   sectionMemories,
   onMemorySaved,
   chatSidePanel,
+  chatSidePanelPosition = 'right',
   threadRail = false,
   threadRailTitle = 'Chats',
   threadRailNewLabel = 'New chat',
@@ -1235,7 +1239,14 @@ export default function AgentChatWorkspace({
                     </aside>
                   ) : null}
 
-                  <div className={chatSidePanel ? 'chat-workspace-grid' : 'chat-workspace-single'}>
+                  <div
+                    className={
+                      chatSidePanel
+                        ? `chat-workspace-grid${chatSidePanelPosition === 'left' ? ' chat-workspace-grid-flipped' : ''}`
+                        : 'chat-workspace-single'
+                    }
+                  >
+                    {chatSidePanel && chatSidePanelPosition === 'left' ? chatSidePanel : null}
                     <div
                       className={`chat-main${isDragActive ? ' chat-main-dragging' : ''}`}
                       onDragEnter={handleDragEnter}
@@ -1420,7 +1431,7 @@ export default function AgentChatWorkspace({
                       </div>
                     </div>
                     </div>
-                    {chatSidePanel}
+                    {chatSidePanel && chatSidePanelPosition === 'right' ? chatSidePanel : null}
                   </div>
                   {threadRail ? (
                     <aside className="chat-rail" aria-label={threadRailTitle} aria-hidden={!isThreadSidebarOpen}>
