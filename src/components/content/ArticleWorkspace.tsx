@@ -91,6 +91,13 @@ export default function ArticleWorkspace({
   // credits or upload to WordPress on a page load.
   const liveTurnRef = useRef(false)
   const chatApiRef = useRef<ChatApi>({ appendAssistantMessage: () => {} })
+  // Handed to the panel instead of the ref's current value. Reading the ref
+  // during render captures whatever is there at mount — the placeholder, since
+  // registration happens in an effect afterwards — and a panel that never
+  // re-renders keeps calling it. This indirection always reaches the live api.
+  const chatApi = useRef<ChatApi>({
+    appendAssistantMessage: (content: string) => chatApiRef.current.appendAssistantMessage(content),
+  })
 
   const draft = pipeline.draft
   const images = pipeline.images
@@ -156,7 +163,7 @@ export default function ArticleWorkspace({
         </span>
         <Space size={8}>
           {imagesLoading ? <Text type="secondary" style={{ fontSize: 12 }}>Generating images…</Text> : null}
-          {panelActions?.(chatApiRef.current)}
+          {panelActions?.(chatApi.current)}
         </Space>
       </div>
       <div className="draft-panel-body">
