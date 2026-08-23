@@ -225,7 +225,11 @@ export default function ArticleWorkspace({
       void generateImagesFor(content).finally(() => setWriteStage(''))
       return
     }
-    setWriteStage('')
+    // Never clear the images stage from here. Once a turn ends, the restored
+    // thread replays this message; images have already started by then, so it
+    // falls through — and clearing would drop the overlay while artwork is
+    // still generating. Only generateImagesFor ends that stage.
+    setWriteStage((current) => (current === 'images' ? current : ''))
   }
 
   const title = useMemo(() => (draft ? draftTitle(draft) : ''), [draft])
