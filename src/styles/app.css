@@ -4432,3 +4432,49 @@
     animation: none;
   }
 }
+
+/* The approved product photography library. A grid rather than a list because
+   the decision being made here is visual — which photo represents the device. */
+.product-image-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.product-image {
+  margin: 0;
+  border: 1px solid var(--app-border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--app-surface);
+}
+
+/* The reference is the one that matters, so it is marked rather than left to be
+   found by reading captions. */
+.product-image-reference {
+  border-color: var(--app-primary);
+  box-shadow: 0 0 0 1px var(--app-primary);
+}
+
+.product-image img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 3 / 2;
+  object-fit: contain;
+  background: color-mix(in srgb, var(--app-primary) 5%, transparent);
+}
+
+.product-image figcaption {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-top: 1px solid var(--app-border);
+}
+
+.product-image-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}

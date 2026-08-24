@@ -956,6 +956,51 @@ export function deleteCompanyFile(id: string) {
   })
 }
 
+export type ProductImage = {
+  name: string
+  sizeBytes: number
+  updatedAt: string
+  isReference: boolean
+}
+
+export function listProductImages() {
+  return request<{ images: ProductImage[]; reference: string }>('/product-images')
+}
+
+// The thumbnail source. Cache-busted on the caller's side because replacing an
+// image keeps its name, and the browser would otherwise keep showing the old one.
+export function productImageUrl(name: string, version = '') {
+  const suffix = version ? `?v=${encodeURIComponent(version)}` : ''
+  return `${API_BASE_URL}/product-images/${encodeURIComponent(name)}/raw${suffix}`
+}
+
+export async function uploadProductImage(file: File) {
+  const headers = new Headers({
+    'Content-Type': 'application/octet-stream',
+    'x-file-name': encodeURIComponent(file.name).replace(/%20/g, ' '),
+  })
+  if (accessTokenProvider) {
+    const token = await accessTokenProvider()
+    if (token) headers.set('Authorization', `Bearer ${token}`)
+  }
+  const response = await fetch(`${API_BASE_URL}/product-images`, {
+    method: 'POST',
+    headers,
+    body: await file.arrayBuffer(),
+  })
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) throw new Error(payload?.message || `Upload failed (${response.status}).`)
+  return payload as { name: string; replaced: boolean; sizeBytes: number }
+}
+
+export function setProductImageReference(name: string) {
+  return request<{ reference: string }>(`/product-images/${encodeURIComponent(name)}/reference`, { method: 'POST' })
+}
+
+export function deleteProductImage(name: string) {
+  return request<{ name: string; deleted: boolean }>(`/product-images/${encodeURIComponent(name)}`, { method: 'DELETE' })
+}
+
 // Artwork for a chat-authored draft. The draft has no run behind it, so the
 // article text goes up with the request and the images come straight back.
 export function generateContentOperationsDraftImages(payload: {

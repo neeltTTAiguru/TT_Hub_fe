@@ -21,6 +21,7 @@ import TrustedTechYouTrackAssistant from './pages/TrustedTechYouTrackAssistant'
 import EmailCampaignBuilder from './pages/EmailCampaignBuilder'
 import TrustedTechAhrefsAssistant from './pages/TrustedTechAhrefsAssistant'
 import CompanyFiles from './pages/CompanyFiles'
+import ProductImages from './pages/ProductImages'
 import ContentOperations from './pages/ContentOperations'
 import ContentOperationsPublish from './pages/ContentOperationsPublish'
 import ContentOperationsSeo from './pages/ContentOperationsSeo'
@@ -87,6 +88,10 @@ const baseNavItems = [
       {
         key: '/company-files',
         label: <Link to="/company-files">Company Files</Link>,
+      },
+      {
+        key: '/product-images',
+        label: <Link to="/product-images">Product Images</Link>,
       },
     ],
   },
@@ -219,6 +224,7 @@ function AppShell({ isDark, onToggle }: { isDark: boolean; onToggle: () => void 
             <Route path="/email-builder" element={<EmailCampaignBuilder />} />
             <Route path="/ahrefs-assistant" element={<TrustedTechAhrefsAssistant />} />
             <Route path="/company-files" element={<CompanyFiles />} />
+            <Route path="/product-images" element={<ProductImages />} />
             <Route path="/assistants/content-operations" element={<ContentOperations />} />
             <Route path="/assistants/content-operations/seo" element={<ContentOperationsSeo />} />
             <Route path="/assistants/content-operations/publish" element={<ContentOperationsPublish />} />
