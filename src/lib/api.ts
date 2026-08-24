@@ -1096,6 +1096,35 @@ export function deleteContentOperationsWordPressDraft(runId: string) {
   )
 }
 
+// Phase 3 publishing for a chat-authored article. The draft is held in the browser,
+// so it is sent up with the call rather than read from a run the backend already has.
+export type ContentPublishState = {
+  runId: string
+  postId: number | null
+  status: string
+  published: boolean
+  title: string
+  slug: string
+  url: string
+  editorUrl: string
+}
+
+export function createContentPublishWordPressDraft(payload: {
+  article: string
+  images?: unknown[]
+  runId?: string
+  title?: string
+}) {
+  return request<ContentPublishState>('/content-operations/publish/wordpress-draft', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function getContentPublishState(runId: string) {
+  return request<ContentPublishState>(`/content-operations/publish/state/${encodeURIComponent(runId)}`)
+}
+
 export function deleteContentOperationsRun(runId: string) {
   return request<{ runId: string; wordpressAction: 'none' | 'trashed_draft' | 'left_published' }>(
     `/content-operations/runs/${encodeURIComponent(runId)}`,

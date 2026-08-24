@@ -3998,6 +3998,19 @@
   color: #fff;
 }
 
+/* Phase 3 has no chat: the article IS the page. It reuses the draft panel's
+   surface and typography untouched, and only takes the bleed it was missing —
+   beside a chat it needed the left edge, here it needs both. */
+.publish-page-article {
+  flex: 1;
+  min-height: 0;
+  margin-right: -28px;
+}
+
+.publish-page .draft-panel-empty {
+  flex: 1;
+}
+
 
 /* SEO pass progress: three rectangular stage boxes filling the panel, joined by
    thick arrows, each carrying a circular step marker. Replaces the article while

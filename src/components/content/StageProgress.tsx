@@ -1,4 +1,5 @@
 import { Button, Typography } from 'antd'
+import type { ReactNode } from 'react'
 
 const { Text } = Typography
 
@@ -14,6 +15,7 @@ export default function StageProgress({
   note,
   onStop,
   stopLabel = 'Stop',
+  action,
 }: {
   stages: Stage[]
   current: string
@@ -21,6 +23,9 @@ export default function StageProgress({
   note: string
   onStop?: () => void
   stopLabel?: string
+  // What to do now the run has finished — publishing ends on a link out to
+  // WordPress rather than on a dead progress track.
+  action?: ReactNode
 }) {
   const index = Math.max(0, stages.findIndex((stage) => stage.key === current))
   return (
@@ -49,6 +54,7 @@ export default function StageProgress({
       </div>
       <p className="seo-progress-note">{note}</p>
       {onStop ? <Button danger onClick={onStop}>{stopLabel}</Button> : null}
+      {action}
     </div>
   )
 }
