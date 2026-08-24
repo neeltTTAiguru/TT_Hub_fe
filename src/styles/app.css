@@ -3401,6 +3401,215 @@
   background: color-mix(in srgb, var(--app-primary) 8%, transparent);
 }
 
+/* The article tools hang below the rail toggle rather than sitting inside the
+   card header row, which would grow the header by three button heights and push
+   the conversation down. Absolute keeps the header exactly as tall as it was. */
+.chat-tool-anchor {
+  position: relative;
+  display: inline-flex;
+}
+
+.chat-tool-stack {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.chat-tool-stack .chat-rail-toggle:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.chat-tool-stack img {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+
+/* A proposed edit, sitting in the article against the passage it rewrites. It is
+   deliberately not styled as an error: nothing is wrong with the article, this is
+   an option the editor takes or leaves. */
+.article-fix-slot {
+  margin: 12px 0 20px;
+}
+
+.article-fix {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--app-border);
+  border-left: 3px solid var(--app-primary);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--app-primary) 4%, transparent);
+}
+
+.article-fix-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.article-fix-source {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.article-fix-why {
+  font-size: 13px;
+}
+
+/* The replacement reads as the prose it would become, not as a diff — the editor
+   is judging whether the new sentence is good, not reading a patch. */
+.article-fix-replace {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--app-surface);
+  border: 1px solid var(--app-border);
+}
+
+.article-fix-target {
+  background: color-mix(in srgb, var(--app-primary) 18%, transparent);
+  color: inherit;
+  padding: 0 2px;
+  border-radius: 3px;
+}
+
+/* The tool column is absolutely positioned, so without a lane of its own it sits
+   on top of whatever is beneath it — message bubbles with the rail shut, and the
+   Articles rail's delete buttons with it open, which made saved articles
+   impossible to delete. Reserving the width once keeps it clear of both. */
+.chat-shell-tooled {
+  padding-right: 42px;
+}
+
+/* Each tool's results live in its own popover. Width is capped so a long keyword
+   list scrolls inside the panel rather than stretching it across the article. */
+.article-tool-panel {
+  width: 320px;
+  max-height: 380px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.article-tool-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 4px 0;
+}
+
+.article-tool-note {
+  font-size: 12px;
+}
+
+.article-tool-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.article-tool-list li {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--app-border);
+}
+
+.article-tool-list li:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.article-tool-term {
+  font-weight: 600;
+  word-break: break-word;
+}
+
+.article-tool-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.article-tool-sub {
+  font-size: 12px;
+  color: var(--app-text-muted);
+}
+
+/* The rating breakdown. Each component carries its own number so the overall is
+   auditable rather than a figure the panel simply asserts. */
+.article-tool-rating {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.article-tool-rating li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.article-tool-rating-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.article-tool-rating-score {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.article-tool-score {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 18px;
+}
+
+/* The last Surfer score, carried on the icon so it is readable without opening
+   the panel. */
+.chat-tool-stack .chat-rail-toggle {
+  position: relative;
+}
+
+.article-tool-badge {
+  position: absolute;
+  bottom: -5px;
+  right: -5px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 3px;
+  border-radius: 8px;
+  background: var(--app-primary);
+  color: #fff;
+  font-size: 10px;
+  line-height: 16px;
+  text-align: center;
+}
+
 .chat-head-row {
   display: inline-flex;
   align-items: center;

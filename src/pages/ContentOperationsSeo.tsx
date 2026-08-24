@@ -1,9 +1,10 @@
 import ArticleWorkspace from '../components/content/ArticleWorkspace'
 import SeoPassAction from '../components/content/SeoPassAction'
 
-// Phase 2 — SEO. Works on the article carried over from Write: Ahrefs settles
-// the primary keyword, Surfer scores the draft against the SERP, and the
-// rewrite is held to the score it already had.
+// Surfer SEO. Works on whatever article is in the pipeline, wherever it came
+// from: Surfer scores the draft against the SERP and the rewrite is held to the
+// score it already had. Reachable on its own — a draft does not have to have
+// been written here.
 export default function ContentOperationsSeo() {
   return (
     <ArticleWorkspace

@@ -765,6 +765,18 @@ export type ContentOperationsRun = {
     notes: string
     optimizedAt: string
   } | null
+  // What Surfer says the SERP rewards: priority terms with the frequency range
+  // they want, and whether each one works as a heading. Already returned with
+  // every run — the report just never read it.
+  surferGuidelines?: {
+    targetWordCount?: number | null
+    terms?: Array<{ term: string; min: number | null; max: number | null; heading: boolean }>
+    // Counts the ranking pages average — images, headings, paragraphs. A factor
+    // Surfer has no data for is omitted rather than reported as zero.
+    structure?: Record<string, { min: number | null; max: number | null; avg: number | null }>
+    // People Also Ask for the keyword. The honest way to add length.
+    questions?: string[]
+  } | null
   currentStage: string
   status: 'ready' | 'running' | 'waiting_for_approval' | 'completed' | 'error' | 'stopped'
   researchOnly: boolean
@@ -965,6 +977,37 @@ export function generateContentOperationsDraftImages(payload: {
 
 export function getContentOperationsIntegrations() {
   return request<ContentIntegrationMap>('/content-operations/integrations')
+}
+
+export type ArticleKeywordFix = {
+  id: string
+  keyword: string
+  find: string
+  replace: string
+  why: string
+}
+
+// Proposals only — the server applies nothing. The editor accepts each edit in
+// the article panel, and that is the only thing that changes the draft.
+export function proposeArticleKeywordFixes(payload: {
+  article: string
+  keywords: Array<{ keyword: string; volume: number | null; difficulty: number | null; position: number | null }>
+}) {
+  return request<{ fixes: ArticleKeywordFix[] }>('/content-operations/article/keyword-fixes', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function proposeArticleSurferFixes(payload: {
+  article: string
+  guidelines: { targetWordCount?: number | null; questions?: string[] }
+  gaps: Array<{ term: string; used: number; target: number; heading: boolean }>
+}) {
+  return request<{ fixes: ArticleKeywordFix[]; words: number; targetWords: number | null }>(
+    '/content-operations/article/surfer-fixes',
+    { method: 'POST', body: JSON.stringify(payload) },
+  )
 }
 
 export function getContentOperationsRuns() {

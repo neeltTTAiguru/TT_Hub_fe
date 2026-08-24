@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react'
 import { Alert, Button, Space, Typography } from 'antd'
 import { Link } from 'react-router-dom'
 import FieldGuideArticle, { draftTitle } from '../components/content/FieldGuideArticle'
-import PhaseNav from '../components/content/PhaseNav'
 import StageProgress from '../components/content/StageProgress'
 import { useContentPipeline } from '../lib/contentPipeline'
 import {
@@ -28,9 +27,9 @@ const PUBLISH_STAGES = [
   },
 ]
 
-// Phase 3 — publish. No chat here: by this point the article is written and
-// scored, and the only thing left is to send it to WordPress and go finish it
-// there. A human publishes; the Hub never puts anything on the blog itself.
+// WordPress. No chat here — the only thing this does is send the article in the
+// pipeline to the site and get out of the way. A human publishes; the Hub never
+// puts anything on the blog itself.
 export default function ContentOperationsPublish() {
   const pipeline = useContentPipeline()
   const [state, setState] = useState<ContentPublishState | null>(null)
@@ -77,11 +76,10 @@ export default function ContentOperationsPublish() {
   if (!draft) {
     return (
       <div className="page page-chat-full publish-page">
-        <PhaseNav />
         <div className="draft-panel-empty">
           <Space direction="vertical" align="center" size={8}>
             <Text type="secondary">There is no article to publish yet.</Text>
-            <Link to="/assistants/content-operations">Go back to Write</Link>
+            <Link to="/assistants/content-operations">Write one</Link>
           </Space>
         </div>
       </div>
@@ -93,7 +91,6 @@ export default function ContentOperationsPublish() {
   if (stage) {
     return (
       <div className="page page-chat-full publish-page">
-        <PhaseNav />
         <StageProgress
           stages={PUBLISH_STAGES}
           current={stage}
@@ -122,7 +119,6 @@ export default function ContentOperationsPublish() {
 
   return (
     <div className="page page-chat-full publish-page">
-      <PhaseNav />
       <article className="draft-panel publish-page-article" aria-label="Article to publish">
         <div className="draft-panel-toolbar">
           <span className="draft-panel-title">

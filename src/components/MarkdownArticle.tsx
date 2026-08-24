@@ -1,5 +1,17 @@
 import type { ReactNode } from 'react'
 
+// A proposed edit, anchored to the passage it rewrites. The renderer walks the
+// article in blocks anyway, so a fix is shown against the block its `find`
+// actually falls in rather than collected into a list somewhere else — the point
+// of an inline fix is that you can see what it is talking about.
+export type ArticleFix = {
+  id: string
+  keyword: string
+  find: string
+  replace: string
+  why: string
+}
+
 function inlineMarkdown(value: string): ReactNode[] {
   const tokens = value.split(/(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\(https?:\/\/[^)]+\))/g)
 
@@ -16,6 +28,18 @@ function inlineMarkdown(value: string): ReactNode[] {
     }
     return token
   })
+}
+
+// Splits a block's text around the fix anchor so the passage being changed is
+// visibly marked, instead of the card pointing at prose the reader has to find.
+function markFind(value: string, find: string): ReactNode[] {
+  const at = value.indexOf(find)
+  if (at < 0) return inlineMarkdown(value)
+  return [
+    ...inlineMarkdown(value.slice(0, at)),
+    <mark className="article-fix-target" key="fix-target">{inlineMarkdown(find)}</mark>,
+    ...inlineMarkdown(value.slice(at + find.length)),
+  ]
 }
 
 function headingId(value: string) {
@@ -66,6 +90,8 @@ export default function MarkdownArticle({
   markdown,
   hideFirstHeading = false,
   images = [],
+  fixes = [],
+  renderFix,
 }: {
   markdown: string
   hideFirstHeading?: boolean
@@ -74,6 +100,11 @@ export default function MarkdownArticle({
   // top, each inline image after the heading its anchor names, anything unmatched at
   // the end. Display only — the images are not part of the text being edited.
   images?: ArticleImage[]
+  // Proposed edits and how to draw one. The renderer owns placement — it is the
+  // only thing that knows which block a `find` landed in — and the caller owns
+  // what the card looks like and what accept/decline do.
+  fixes?: ArticleFix[]
+  renderFix?: (fix: ArticleFix) => ReactNode
 }) {
   const lines = markdown.replace(/\r\n/g, '\n').split('\n')
   const blocks: ReactNode[] = []
@@ -95,6 +126,22 @@ export default function MarkdownArticle({
   slots.forEach((slot, position) => imageBySection.set(slot, ordered[position]))
   const leftovers = ordered.slice(slots.length)
   let sectionsSeen = 0
+
+  // Only fixes whose anchor is still present; one whose passage has been edited
+  // away is silently gone rather than shown against the wrong paragraph.
+  const pending = fixes.filter((fix) => fix.find && markdown.includes(fix.find))
+  const shown = new Set<string>()
+  // Runs after each block with the block's own source text. A fix whose anchor
+  // starts inside this block belongs here.
+  const fixesFor = (source: string) => {
+    if (!renderFix) return
+    for (const fix of pending) {
+      if (shown.has(fix.id) || !source.includes(fix.find)) continue
+      shown.add(fix.id)
+      blocks.push(<div className="article-fix-slot" key={`fix-${fix.id}`}>{renderFix(fix)}</div>)
+    }
+  }
+  const anchorIn = (source: string) => pending.find((fix) => !shown.has(fix.id) && source.includes(fix.find))
 
   while (index < lines.length) {
     const line = lines[index].trim()
@@ -118,7 +165,10 @@ export default function MarkdownArticle({
     const heading = line.match(/^(#{1,4})\s+(.+)$/)
     if (heading) {
       const level = heading[1].length
-      const content = inlineMarkdown(heading[2])
+      const headingAnchor = anchorIn(line)
+      const content = headingAnchor
+        ? markFind(heading[2], headingAnchor.find.replace(/^#{1,4}\s+/, ''))
+        : inlineMarkdown(heading[2])
       const id = headingId(heading[2])
       if (level === 1 && hideFirstHeading && !firstHeadingHidden) {
         firstHeadingHidden = true
@@ -129,6 +179,7 @@ export default function MarkdownArticle({
       if (level === 2) blocks.push(<h2 id={id} key={blocks.length}>{content}</h2>)
       if (level === 3) blocks.push(<h3 id={id} key={blocks.length}>{content}</h3>)
       if (level === 4) blocks.push(<h4 id={id} key={blocks.length}>{content}</h4>)
+      fixesFor(line)
       // No photo under the title: the first one waits for the opening section, so the
       // intro is read before the article shows a picture.
       if (level === 2) {
@@ -187,12 +238,26 @@ export default function MarkdownArticle({
       paragraph.push(lines[index].trim())
       index += 1
     }
-    blocks.push(<p key={blocks.length}>{inlineMarkdown(paragraph.join(' '))}</p>)
+    const text = paragraph.join(' ')
+    const anchor = anchorIn(text)
+    blocks.push(<p key={blocks.length}>{anchor ? markFind(text, anchor.find) : inlineMarkdown(text)}</p>)
+    fixesFor(text)
   }
 
   // Same fallback as the WordPress renderer: an article with fewer sections than
   // images still shows them all, at the end.
   for (const image of leftovers) blocks.push(figure(image, blocks.length))
+  // A fix whose anchor spans blocks — a `find` covering a heading and the line
+  // under it — matches no single block. It goes at the end rather than being
+  // dropped, because a proposal the editor never sees is worse than one shown
+  // slightly out of place.
+  if (renderFix) {
+    for (const fix of pending) {
+      if (shown.has(fix.id)) continue
+      shown.add(fix.id)
+      blocks.push(<div className="article-fix-slot" key={`fix-${fix.id}`}>{renderFix(fix)}</div>)
+    }
+  }
 
   return <article className="rendered-article">{blocks}</article>
 }

@@ -217,10 +217,20 @@ type AgentChatWorkspaceProps = {
   onTurnStart?: () => void
   // Lets a side panel write into the conversation — a background job reporting
   // what it did belongs in the thread, not only in a toolbar tag.
-  registerChatApi?: (api: { appendAssistantMessage: (content: string) => void }) => void
+  registerChatApi?: (api: {
+    appendAssistantMessage: (content: string) => void
+    sendMessage: (content: string) => void
+  }) => void
+  // Icon controls stacked under the thread-rail toggle, top right of the chat.
+  railTools?: ReactNode
   // Suppress an assistant message in the thread — for a host that is already
   // showing that exact text somewhere better, e.g. in a side panel.
   hideAssistantMessage?: (content: string) => boolean
+  // Rewrites what an assistant message SHOWS without touching what is stored.
+  // The article workspace uses it to lift the article out of the reply and into
+  // the panel, leaving the writer's actual remarks in the conversation. A
+  // message left empty by the rewrite is dropped.
+  transformAssistantMessage?: (content: string) => string
   // Storage key for autosaving the in-progress conversation to the browser so a
   // refresh/freeze doesn't lose it. Defaults to the agentId; pass a more specific
   // key (e.g. per competitor) to keep separate drafts.
@@ -431,7 +441,9 @@ export default function AgentChatWorkspace({
   onNewThread,
   onTurnStart,
   registerChatApi,
+  railTools,
   hideAssistantMessage,
+  transformAssistantMessage,
   draftKey,
   competitor,
 }: AgentChatWorkspaceProps) {
@@ -482,8 +494,11 @@ export default function AgentChatWorkspace({
   const threadResetRef = useRef(onThreadReset)
   threadResetRef.current = onThreadReset
 
-  // Registered once. The callback closes over setChatMessages only, so it stays
-  // valid without re-registering on every render.
+  // Registered once, so anything it calls must be reached through a ref.
+  // appendAssistantMessage is safe because it only uses the setState updater
+  // form; sendMessage is not — it reads chatInput, chatMessages and isChatting,
+  // and a once-registered closure would send against the state as it was at
+  // mount. The ref is reassigned every render and always points at the live one.
   useEffect(() => {
     registerChatApi?.({
       appendAssistantMessage: (content: string) => {
@@ -491,9 +506,14 @@ export default function AgentChatWorkspace({
         if (!text) return
         setChatMessages((current) => [...current, { role: 'assistant', content: text }])
       },
+      sendMessage: (content: string) => {
+        const text = String(content || '').trim()
+        if (text) void sendChatRef.current(text)
+      },
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+  const sendChatRef = useRef<(text?: string) => Promise<void>>(async () => {})
   const [isSavingThread, setIsSavingThread] = useState(false)
   const [isThreadSidebarOpen, setIsThreadSidebarOpen] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
@@ -855,8 +875,12 @@ export default function AgentChatWorkspace({
     }
   }
 
-  const handleSendChat = async () => {
-    const trimmedInput = chatInput.trim()
+  // overrideText lets a toolbar button run a request the user did not type — the
+  // Ahrefs control asks the writer for keyword research in words, through the
+  // same path a typed message takes, so the turn, the thread and the autosave
+  // all behave identically.
+  const handleSendChat = async (overrideText?: string) => {
+    const trimmedInput = (overrideText ?? chatInput).trim()
 
     if ((!trimmedInput && attachments.length === 0) || isChatting) {
       return
@@ -1148,6 +1172,8 @@ export default function AgentChatWorkspace({
     }
   }
 
+  sendChatRef.current = handleSendChat
+
   const railToggle = (
     <button
       type="button"
@@ -1285,7 +1311,14 @@ export default function AgentChatWorkspace({
                   ) : null}
                 </Space>
                 ) : null}
-                {threadRail ? railToggle : null}
+                {threadRail ? (
+                  railTools ? (
+                    <span className="chat-tool-anchor">
+                      {railToggle}
+                      <span className="chat-tool-stack">{railTools}</span>
+                    </span>
+                  ) : railToggle
+                ) : null}
                 </Space>
               }
             >
@@ -1299,7 +1332,7 @@ export default function AgentChatWorkspace({
                 <div
                   className={`chat-shell${threadRail ? ' chat-shell-railed' : ''}${
                     threadRail && isThreadSidebarOpen ? ' chat-shell-railed-open' : ''
-                  }`}
+                  }${railTools ? ' chat-shell-tooled' : ''}`}
                 >
                   {showThreadControls ? (
                     <aside className={`chat-sidebar ${isThreadSidebarOpen ? 'chat-sidebar-open' : ''}`}>
@@ -1377,10 +1410,15 @@ export default function AgentChatWorkspace({
 
                     <div className="chat-thread">
                       {chatMessages
+                        .map((entry) => (
+                          entry.role === 'assistant' && typeof entry.content === 'string' && transformAssistantMessage
+                            ? { ...entry, content: transformAssistantMessage(entry.content) }
+                            : entry
+                        ))
                         .filter((entry) => !(
                           entry.role === 'assistant'
                           && typeof entry.content === 'string'
-                          && hideAssistantMessage?.(entry.content)
+                          && (hideAssistantMessage?.(entry.content) || !entry.content.trim())
                         ))
                         .map((entry, index) => (
                         <div

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { ArticleImage } from '../components/MarkdownArticle'
+import { stripChatPreamble } from '../components/content/FieldGuideArticle'
 
 // The three phase pages are separate routes, so React state dies on every
 // navigation. The working article is held here instead: written to storage and
@@ -24,7 +25,7 @@ function read(): ContentPipelineState {
     if (!raw) return EMPTY
     const parsed = JSON.parse(raw) as Partial<ContentPipelineState>
     return {
-      draft: typeof parsed.draft === 'string' ? parsed.draft : '',
+      draft: typeof parsed.draft === 'string' ? stripChatPreamble(parsed.draft) : '',
       images: Array.isArray(parsed.images) ? parsed.images : [],
       runId: typeof parsed.runId === 'string' ? parsed.runId : '',
       seoStage: typeof parsed.seoStage === 'string' ? parsed.seoStage : '',
@@ -59,7 +60,11 @@ export function useContentPipeline() {
   }, [])
 
   const update = useCallback((patch: Partial<ContentPipelineState>) => {
+    // Every path that produces an article lands here — the chat, the streaming
+    // partials and the SEO pass — so the chat-preamble strip belongs at this
+    // single choke point rather than in each of them.
     const next = { ...read(), ...patch }
+    if (typeof next.draft === 'string') next.draft = stripChatPreamble(next.draft)
     write(next)
     setState(next)
   }, [])

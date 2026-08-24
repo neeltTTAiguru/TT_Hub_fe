@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
+import type { ReactNode } from 'react'
 import MarkdownArticle from '../MarkdownArticle'
-import type { ArticleImage } from '../MarkdownArticle'
+import type { ArticleFix, ArticleImage } from '../MarkdownArticle'
 
 // The H1 names the panel and the uploaded media; without one the backend falls
 // back to a generic filename slug.
@@ -42,9 +43,13 @@ export function splitDraft(value: string) {
 export default function FieldGuideArticle({
   markdown,
   images,
+  fixes = [],
+  renderFix,
 }: {
   markdown: string
   images: ArticleImage[]
+  fixes?: ArticleFix[]
+  renderFix?: (fix: ArticleFix) => ReactNode
 }) {
   const { article, meta } = useMemo(() => splitDraft(markdown), [markdown])
   const guide = useMemo(() => parseFieldGuide(article), [article])
@@ -79,7 +84,7 @@ export default function FieldGuideArticle({
         </section>
       ) : null}
 
-      <MarkdownArticle markdown={guide.body} images={images} />
+      <MarkdownArticle markdown={guide.body} images={images} fixes={fixes} renderFix={renderFix} />
 
       {meta ? (
         <details className="draft-panel-meta">
@@ -89,4 +94,17 @@ export default function FieldGuideArticle({
       ) : null}
     </>
   )
+}
+
+// Hermes answers the editor and writes the article in the same message — "Yes,
+// I understand, I won't mention RFPs" arrives glued to the front of the draft.
+// Everything before the H1 is conversation, not copy. Left in, the H1 still
+// parses as the title but the chat line becomes the hero deck, the Article
+// Overview card, and the lead that ships to WordPress. The article starts at
+// its title; anything ahead of it is stripped.
+export function stripChatPreamble(value: string) {
+  const heading = value.match(/^#\s+\S/m)
+  if (!heading || heading.index === undefined || heading.index === 0) return value
+  if (!value.slice(0, heading.index).trim()) return value
+  return value.slice(heading.index)
 }

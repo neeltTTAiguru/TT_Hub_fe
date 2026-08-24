@@ -76,6 +76,58 @@ function poll(runId: string) {
   }, POLL_MS)
 }
 
+// How many times a term actually appears, matched whole-word and case-insensitively
+// so "camera" does not score itself inside "cameras" the way a bare substring
+// search would.
+function countTerm(article: string, term: string) {
+  const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return (article.match(new RegExp(`(?<![\\w-])${escaped}(?![\\w-])`, 'gi')) || []).length
+}
+
+// Surfer returns the terms the top-ranking pages use and how often. Comparing
+// that against the article gives a concrete worklist — "say this three more
+// times, and once in a heading" — instead of a bare score with nothing to act on.
+const SUGGESTION_LIMIT = 12
+
+export type TermGap = {
+  term: string
+  used: number
+  target: number
+  max: number | null
+  heading: boolean
+  shortfall: number
+}
+
+// Shared by the Surfer panel and the chat report so the two can never disagree
+// about what still needs work.
+export function termGaps(run: ContentOperationsRun): TermGap[] {
+  const article = String(run.article || '')
+  const terms = run.surferGuidelines?.terms || []
+  if (!article || !terms.length) return []
+  return terms
+    .map((entry) => {
+      const target = entry.min ?? entry.max ?? 0
+      const used = countTerm(article, entry.term)
+      return { term: entry.term, used, target, max: entry.max, heading: entry.heading, shortfall: target - used }
+    })
+    .filter((entry) => entry.shortfall > 0)
+    .sort((a, b) => b.shortfall - a.shortfall)
+}
+
+function suggestions(run: ContentOperationsRun) {
+  const short = termGaps(run)
+  if (!short.length) return []
+  const lines = short.slice(0, SUGGESTION_LIMIT).map((entry) => {
+    const range = entry.max != null && entry.max !== entry.target ? `${entry.target}-${entry.max}` : `${entry.target}`
+    return `- **${entry.term}** — used ${entry.used}${entry.used ? '' : ' (not in the article)'}, Surfer wants ${range}${entry.heading ? ' · works as a heading' : ''}`
+  })
+  // Never quietly cut the list off — a short list reads as "that is everything".
+  if (short.length > SUGGESTION_LIMIT) {
+    lines.push(`- …and ${short.length - SUGGESTION_LIMIT} more term(s) below target.`)
+  }
+  return lines
+}
+
 export function summarise(run: ContentOperationsRun) {
   const o = run.surferOptimization
   const lines: string[] = ['**SurferSEO pass complete**', '']
@@ -98,14 +150,25 @@ export function summarise(run: ContentOperationsRun) {
     }
     if (stage.stage === 'content_optimization' && stage.explanation) lines.push('', `_${stage.explanation}_`)
   }
+  const improvements = suggestions(run)
+  if (improvements.length) {
+    lines.push('', '**Still worth improving**', ...improvements)
+  } else if (run.surferGuidelines?.terms?.length) {
+    lines.push('', '**Every Surfer priority term is at or above its target.**')
+  }
   if (o?.editorUrl) lines.push('', `[Open the Surfer editor](${o.editorUrl})`)
-  lines.push('', 'The article on the left is the revised version. Tell me what to change if any of it reads wrong.')
+  lines.push('', 'The article on the left is the revised version. Tell me which of these to work in and I will do it.')
   return lines.join('\n')
 }
 
 export async function startSeoPass(options: {
   article: string
   title: string
+  // The keyword Ahrefs already settled on. Passing it makes this a pure Surfer
+  // pass — the server skips its own Ahrefs check, which is a duplicate of what
+  // the Ahrefs control just did and costs a Hermes round trip before Surfer even
+  // starts. Left empty, the server guesses from the title and checks it.
+  primaryKeyword?: string
   onReport: Report
   onArticle: (article: string, runId: string) => void
 }) {
@@ -116,6 +179,7 @@ export async function startSeoPass(options: {
     const { runId } = await startContentOperationsSeoPass({
       article: options.article,
       title: options.title,
+      primaryKeyword: options.primaryKeyword || '',
     })
     activeRunId = runId
     poll(runId)

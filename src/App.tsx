@@ -33,7 +33,7 @@ import hubspotLogo from './assets/agent-logos/hubspot.svg'
 import youtrackLogo from './assets/agent-logos/youtrack.svg'
 import brevoLogo from './assets/agent-logos/brevo.svg'
 import competitorAnalystLogo from './assets/agent-logos/competitor-analyst.svg'
-import surferLogo from './assets/agent-logos/surfer.svg'
+import articlesLogo from './assets/agent-logos/articles.svg'
 import './styles/app.css'
 
 const brainIcon = (
@@ -57,8 +57,11 @@ const competitorAnalystIcon = (
 )
 
 const contentGeneratorIcon = (
-  <img src={surferLogo} alt="" aria-hidden="true" className="agent-icon" />
+  <img src={articlesLogo} alt="" aria-hidden="true" className="agent-icon" />
 )
+
+
+
 
 const { Header, Sider, Content } = Layout
 const { Text, Title } = Typography
@@ -124,9 +127,19 @@ function AppShell({ isDark, onToggle }: { isDark: boolean; onToggle: () => void 
     const children = (item as { children?: Array<{ key: string }> }).children
     return Array.isArray(children) ? children.map((child) => child.key) : [item.key]
   })
-  const selectedNavKey = navKeys.find((key) =>
-    location.pathname === key || location.pathname.startsWith(`${key}/`),
-  )
+  // Longest match wins. The article tools are nested under one another
+  // (/assistants/content-operations and /assistants/content-operations/seo), so
+  // a first-match search highlights Write while you are standing on Surfer SEO.
+  const selectedNavKey = navKeys
+    .filter((key) => location.pathname === key || location.pathname.startsWith(`${key}/`))
+    .sort((a, b) => b.length - a.length)[0]
+  // Landing on one of the article tools with its section shut means the other
+  // three are invisible until you think to open it. The section holding the
+  // current page starts open.
+  const openNavKey = baseNavItems.find((item) => {
+    const children = (item as { children?: Array<{ key: string }> }).children
+    return Array.isArray(children) && children.some((child) => child.key === selectedNavKey)
+  })?.key
 
   return (
     <Layout className="app-shell">
@@ -156,6 +169,7 @@ function AppShell({ isDark, onToggle }: { isDark: boolean; onToggle: () => void 
           mode="inline"
           items={baseNavItems}
           selectedKeys={selectedNavKey ? [selectedNavKey] : []}
+          defaultOpenKeys={openNavKey ? [openNavKey] : undefined}
         />
       </Sider>
 
