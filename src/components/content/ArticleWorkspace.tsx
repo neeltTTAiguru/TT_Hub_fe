@@ -257,6 +257,25 @@ export default function ArticleWorkspace({
 
   const title = useMemo(() => (draft ? draftTitle(draft) : ''), [draft])
 
+  // The panel already calls the draft MD, and markdown is what every downstream
+  // step takes — WordPress, Surfer, the editor's own notes. Saving it as anything
+  // else would be converting the article on the way out for no one's benefit.
+  const downloadArticle = () => {
+    const slug = title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
+      .slice(0, 80) || 'article'
+    const url = URL.createObjectURL(new Blob([draft], { type: 'text/markdown;charset=utf-8' }))
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `${slug}.md`
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+  }
+
   // Accepting is the only thing that edits the article, and it edits exactly the
   // passage the card is sitting against — no batch apply, no silent rewrite.
   const renderFix = (fix: ArticleFix) => (
@@ -292,6 +311,7 @@ export default function ArticleWorkspace({
         </span>
         <Space size={8}>
           {imagesLoading ? <Text type="secondary" style={{ fontSize: 12 }}>Generating images…</Text> : null}
+          <Button size="small" onClick={downloadArticle}>Download</Button>
           {panelActions?.(chatApi.current)}
         </Space>
       </div>

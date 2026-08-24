@@ -24,7 +24,7 @@ let state: SeoPassState = { running: false, stage: '', run: null, error: '' }
 let timer: number | null = null
 let activeRunId = ''
 let report: Report = () => {}
-let onArticle: (article: string, runId: string) => void = () => {}
+let onArticle: (article: string, runId: string, run: ContentOperationsRun) => void = () => {}
 const listeners = new Set<Listener>()
 
 function set(patch: Partial<SeoPassState>) {
@@ -65,7 +65,7 @@ function poll(runId: string) {
         report(`**SurferSEO pass failed**\n\n${why}\n\nThe article on the left is unchanged.`)
         return
       }
-      if (next.article) onArticle(next.article, runId)
+      if (next.article) onArticle(next.article, runId, next)
       report(summarise(next))
     } catch (cause) {
       clearTimer()
@@ -170,7 +170,7 @@ export async function startSeoPass(options: {
   // starts. Left empty, the server guesses from the title and checks it.
   primaryKeyword?: string
   onReport: Report
-  onArticle: (article: string, runId: string) => void
+  onArticle: (article: string, runId: string, run: ContentOperationsRun) => void
 }) {
   report = options.onReport
   onArticle = options.onArticle

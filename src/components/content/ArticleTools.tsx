@@ -23,6 +23,12 @@ type Tool = '' | 'ahrefs' | 'surfer' | 'wordpress'
 
 const POLL_MS = 4000
 
+// An article scoring at or under this is not good enough to leave alone, so the
+// pass's rewrite is applied rather than offered. Above it, the draft is already
+// competitive and is left exactly as written — a rewrite that gains a point or
+// two is not worth losing the author's phrasing over.
+const REWRITE_AT_OR_BELOW = 85
+
 // Each tool reports into its own popover rather than into the conversation. The
 // chat is for writing and editing the article; keyword tables, score breakdowns
 // and publish confirmations are reference material you glance at and dismiss,
@@ -40,7 +46,6 @@ export default function ArticleTools() {
   const researchedFor = useRef('')
 
   const [published, setPublished] = useState<ContentPublishState | null>(null)
-  const [rewrite, setRewrite] = useState('')
   const [publishing, setPublishing] = useState(false)
   const [publishError, setPublishError] = useState('')
 
@@ -124,11 +129,14 @@ export default function ArticleTools() {
       primaryKeyword: keywords[0]?.primaryKeyword || '',
       // Nothing to the chat — the panel is the report.
       onReport: () => {},
-      // Deliberately does NOT write the rewrite into the panel. The pass used to
-      // replace the whole article the moment it finished, so the piece you were
-      // reading was silently swapped for Hermes' version. The rewrite is kept
-      // and offered below; the draft only changes if you take it.
-      onArticle: (article, id) => { setRewrite(article); pipeline.update({ runId: id }) },
+      // Below the threshold the rewrite is applied on the spot — being asked to
+      // approve a rewrite you already asked for is a click for nothing. Above it
+      // the draft is kept as written and only the run id is recorded.
+      onArticle: (article, id, finished) => {
+        const scored = finished.surferOptimization?.seoScoreBefore ?? null
+        const rewrite = scored === null || scored <= REWRITE_AT_OR_BELOW
+        pipeline.update(rewrite ? { draft: article, runId: id } : { runId: id })
+      },
     })
     if (runId) pipeline.update({ runId })
   }
@@ -295,20 +303,11 @@ export default function ArticleTools() {
           ) : (
             <Text type="secondary" className="article-tool-note">Every priority term is at or above its target.</Text>
           )}
-          {rewrite ? (
-            <Alert
-              type="info"
-              showIcon
-              message="Surfer also rewrote the article"
-              description={`Hermes' rewrite scores ${optimisation.seoScoreAfter ?? '—'} against your ${optimisation.seoScoreBefore ?? '—'}. Taking it replaces the whole article.`}
-              action={(
-                <Space size={6}>
-                  <Button size="small" onClick={() => { pipeline.update({ draft: rewrite }); setRewrite('') }}>Use it</Button>
-                  <Button size="small" type="text" onClick={() => setRewrite('')}>Keep mine</Button>
-                </Space>
-              )}
-            />
-          ) : null}
+          <Text type="secondary" className="article-tool-note">
+            {optimisation.seoScoreBefore != null && optimisation.seoScoreBefore > REWRITE_AT_OR_BELOW
+              ? `Your draft scored ${optimisation.seoScoreBefore} — above ${REWRITE_AT_OR_BELOW}, so it was left as written.`
+              : `Scored ${optimisation.seoScoreBefore ?? '—'} and rewritten to ${optimisation.seoScoreAfter ?? '—'}. The article in the panel is the rewrite.`}
+          </Text>
           <Space size={8}>
             <Button
               size="small"

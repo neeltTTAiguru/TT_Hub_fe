@@ -108,13 +108,6 @@ function displayNameForUser(user?: { given_name?: string; name?: string; nicknam
     .join(' ')
 }
 
-function initialsForName(name: string) {
-  const parts = name.trim().split(/\s+/).filter(Boolean)
-  if (!parts.length) return 'YOU'
-  const letters = parts.length > 1 ? `${parts[0][0]}${parts[parts.length - 1][0]}` : parts[0].slice(0, 2)
-  return letters.toUpperCase()
-}
-
 const RAW_PROVIDER_ERROR = /api call failed|rate\s*limit|tokens per min|\bTPM\b|platform\.openai\.com\/account\/rate-limits/i
 
 function QueryingIndicator({ label, logo }: { label: string; logo: string }) {
@@ -449,7 +442,6 @@ export default function AgentChatWorkspace({
 }: AgentChatWorkspaceProps) {
   const { isAuthenticated, user: authUser } = useAuth0()
   const userDisplayName = displayNameForUser(authUser)
-  const userInitials = initialsForName(userDisplayName)
   const draftStorageKey = draftKey ?? agentId
   const [agent, setAgent] = useState<AgentDetail | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -1427,9 +1419,10 @@ export default function AgentChatWorkspace({
                         >
                           <div className="chat-message-label">
                             <span className="chat-message-who">
-                              {entry.role === 'user' ? (
-                                <span className="chat-message-avatar-you" aria-hidden="true">{userInitials}</span>
-                              ) : (
+                              {/* The assistant keeps its logo — it tells you which
+                                  agent answered. Your own initials next to your own
+                                  name say nothing you do not already know. */}
+                              {entry.role === 'user' ? null : (
                                 <img className="chat-message-avatar" src={agentLogo} alt="" aria-hidden="true" />
                               )}
                               <span>{entry.role === 'user' ? userDisplayName : assistantLabel}</span>
