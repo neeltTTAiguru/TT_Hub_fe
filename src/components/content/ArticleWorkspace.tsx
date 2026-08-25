@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { Alert, Button, Space, Typography } from 'antd'
+import { Alert, Button, Space, Typography, message } from 'antd'
 import AgentChatWorkspace from '../AgentChatWorkspace'
 import FieldGuideArticle, { draftTitle } from './FieldGuideArticle'
 import type { ArticleFix } from '../MarkdownArticle'
@@ -257,23 +257,60 @@ export default function ArticleWorkspace({
 
   const title = useMemo(() => (draft ? draftTitle(draft) : ''), [draft])
 
-  // The panel already calls the draft MD, and markdown is what every downstream
-  // step takes — WordPress, Surfer, the editor's own notes. Saving it as anything
-  // else would be converting the article on the way out for no one's benefit.
-  const downloadArticle = () => {
+  // The article as it is laid out, not as markdown — this is the copy that gets
+  // sent to someone who is not going to open a text editor.
+  //
+  // Rasterised from a CLONE placed off-screen with absolute positioning:
+  // html2canvas renders a `fixed` or zero-height element blank, and the live
+  // panel is a scrolling box whose captured height would be one screen. The
+  // editing furniture is stripped from the clone — suggestion cards and status
+  // banners are things to act on, not part of the article.
+  const [downloading, setDownloading] = useState(false)
+  const panelBodyRef = useRef<HTMLDivElement>(null)
+
+  const downloadArticle = async () => {
+    const source = panelBodyRef.current
+    if (!source || downloading) return
     const slug = title
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-|-$/g, '')
       .slice(0, 80) || 'article'
-    const url = URL.createObjectURL(new Blob([draft], { type: 'text/markdown;charset=utf-8' }))
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `${slug}.md`
-    document.body.appendChild(link)
-    link.click()
-    link.remove()
-    URL.revokeObjectURL(url)
+
+    setDownloading(true)
+    const holder = document.createElement('div')
+    holder.style.cssText = 'position:absolute; left:-9999px; top:0; width:820px; background:#ffffff;'
+    const clone = source.cloneNode(true) as HTMLElement
+    clone.querySelectorAll('.article-fix-slot, .ant-alert').forEach((node) => node.remove())
+    clone.querySelectorAll('mark.article-fix-target').forEach((node) => {
+      node.replaceWith(document.createTextNode(node.textContent || ''))
+    })
+    clone.style.cssText = 'height:auto; max-height:none; overflow:visible; background:#ffffff;'
+    holder.appendChild(clone)
+    document.body.appendChild(holder)
+    try {
+      // Let layout and fonts settle, or the canvas can come out empty.
+      await new Promise((resolve) => { window.setTimeout(resolve, 80) })
+      const html2pdf = (await import('html2pdf.js')).default
+      await html2pdf()
+        .set({
+          margin: [12, 12, 14, 12],
+          filename: `${slug}.pdf`,
+          image: { type: 'jpeg', quality: 0.98 },
+          // useCORS matters: the artwork is served from WordPress, and without it
+          // every image rasterises blank.
+          html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff', scrollX: 0, scrollY: 0 },
+          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+          pagebreak: { mode: ['css', 'legacy'], avoid: ['figure', 'h2', 'h3'] },
+        })
+        .from(clone)
+        .save()
+    } catch {
+      message.error('Could not build the PDF.')
+    } finally {
+      document.body.removeChild(holder)
+      setDownloading(false)
+    }
   }
 
   // Accepting is the only thing that edits the article, and it edits exactly the
@@ -311,11 +348,11 @@ export default function ArticleWorkspace({
         </span>
         <Space size={8}>
           {imagesLoading ? <Text type="secondary" style={{ fontSize: 12 }}>Generating images…</Text> : null}
-          <Button size="small" onClick={downloadArticle}>Download</Button>
+          <Button size="small" loading={downloading} onClick={() => void downloadArticle()}>Download</Button>
           {panelActions?.(chatApi.current)}
         </Space>
       </div>
-      <div className="draft-panel-body">
+      <div className="draft-panel-body" ref={panelBodyRef}>
         {unchanged ? (
           <Alert
             type="warning"
