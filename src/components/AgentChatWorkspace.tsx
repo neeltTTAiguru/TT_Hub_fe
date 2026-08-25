@@ -208,6 +208,10 @@ type AgentChatWorkspaceProps = {
   // sending and the first token is memory and knowledge retrieval, which is
   // otherwise invisible.
   onTurnStart?: () => void
+  // Fired whenever the chat starts or stops working. onTurnStart only marks the
+  // beginning, so a host that wants to show progress of its own had no way to
+  // learn the turn had ended.
+  onBusyChange?: (busy: boolean) => void
   // Lets a side panel write into the conversation — a background job reporting
   // what it did belongs in the thread, not only in a toolbar tag.
   registerChatApi?: (api: {
@@ -433,6 +437,7 @@ export default function AgentChatWorkspace({
   onThreadReset,
   onNewThread,
   onTurnStart,
+  onBusyChange,
   registerChatApi,
   railTools,
   hideAssistantMessage,
@@ -475,6 +480,13 @@ export default function AgentChatWorkspace({
   const messageRefs = useRef(new Map<number, HTMLDivElement>())
   const [chatError, setChatError] = useState('')
   const [isChatting, setIsChatting] = useState(false)
+
+  // Mirror the in-flight flag out to the host. Effect rather than a call inside
+  // the send path so it also fires on failure and abort, which return through
+  // different branches.
+  useEffect(() => {
+    onBusyChange?.(isChatting)
+  }, [isChatting, onBusyChange])
   // True once the streamed reply has started arriving, so the separate "thinking"
   // indicator is hidden while the answer itself is growing.
   const [streamingActive, setStreamingActive] = useState(false)

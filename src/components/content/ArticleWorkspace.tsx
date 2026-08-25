@@ -266,6 +266,10 @@ export default function ArticleWorkspace({
   // editing furniture is stripped from the clone — suggestion cards and status
   // banners are things to act on, not part of the article.
   const [downloading, setDownloading] = useState(false)
+  // True while the writer is mid-turn. Drives the floating badge over the
+  // article so the panel says something is coming, instead of sitting on the
+  // previous draft looking finished.
+  const [writing, setWriting] = useState(false)
   const panelBodyRef = useRef<HTMLDivElement>(null)
 
   const downloadArticle = async () => {
@@ -352,6 +356,12 @@ export default function ArticleWorkspace({
           {panelActions?.(chatApi.current)}
         </Space>
       </div>
+      {writing ? (
+        <div className="draft-panel-generating" role="status" aria-live="polite">
+          <span className="draft-panel-generating-dot" aria-hidden="true" />
+          Generating article…
+        </div>
+      ) : null}
       <div className="draft-panel-body" ref={panelBodyRef}>
         {unchanged ? (
           <Alert
@@ -422,6 +432,7 @@ export default function ArticleWorkspace({
       agentLogo={surferLogo}
       backendLabel="Hermes + Content Operations"
       queryingLabel={queryingLabel}
+      onBusyChange={setWriting}
       streaming
       fullHeight
       threadRail
