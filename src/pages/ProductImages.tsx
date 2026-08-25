@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { Alert, Button, Card, Space, Tag, Typography, message } from 'antd'
+import { Alert, Button, Card, Input, Space, Tag, Typography, message } from 'antd'
 import {
   deleteProductImage,
+  describeProductImage,
   listProductImages,
   productImageUrl,
   setProductImageReference,
@@ -10,6 +11,7 @@ import {
 } from '../lib/api'
 
 const { Text, Title } = Typography
+const { TextArea } = Input
 
 // The approved product photography every generated article image is built from.
 // One of these is the reference: the generator hands it to the image API as the
@@ -142,6 +144,23 @@ export default function ProductImages() {
                   <Text type="secondary" style={{ fontSize: 12 }}>
                     {(image.sizeBytes / 1024).toFixed(0)} KB
                   </Text>
+                  <TextArea
+                    defaultValue={image.description}
+                    placeholder="What does this photo show? The writer picks images by this."
+                    autoSize={{ minRows: 2, maxRows: 4 }}
+                    onBlur={(event) => {
+                      const next = event.target.value.trim()
+                      if (next === image.description) return
+                      void describeProductImage(image.name, next)
+                        .then(() => { message.success(next ? 'Description saved' : 'Description cleared'); void load() })
+                        .catch((cause) => message.error(cause instanceof Error ? cause.message : 'Could not save that description.'))
+                    }}
+                  />
+                  {image.description ? null : (
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      Without a description this photo is never offered to the writer.
+                    </Text>
+                  )}
                   <Space size={8}>
                     {image.isReference ? null : (
                       <Button size="small" onClick={() => void makeReference(image.name)}>Make reference</Button>

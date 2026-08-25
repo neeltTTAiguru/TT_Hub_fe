@@ -121,10 +121,21 @@ export default function MarkdownArticle({
   const sectionTitles = [...markdown.matchAll(/^##\s+(.+)$/gm)]
     .map((match) => match[1].replace(/[*_`]/g, '').trim())
     .filter((title) => title && !NON_CONTENT_HEADING.test(title))
-  const slots = imageSlots(ordered.length, sectionTitles.length)
+  // Mirrors insertGeneratedImages on the backend: an image naming its section is
+  // placed there, and only the rest are spread. Without this the panel previews a
+  // different layout from the one that publishes.
   const imageBySection = new Map<number, ArticleImage>()
-  slots.forEach((slot, position) => imageBySection.set(slot, ordered[position]))
-  const leftovers = ordered.slice(slots.length)
+  const floating: ArticleImage[] = []
+  for (const image of ordered) {
+    const wanted = String(image.placementAfterHeading || '').trim().toLowerCase()
+    const section = wanted ? sectionTitles.findIndex((title) => title.toLowerCase() === wanted) : -1
+    if (section >= 0 && !imageBySection.has(section)) imageBySection.set(section, image)
+    else floating.push(image)
+  }
+  const free = sectionTitles.map((_, index) => index).filter((index) => !imageBySection.has(index))
+  const slots = imageSlots(floating.length, free.length)
+  slots.forEach((slot, position) => imageBySection.set(free[slot], floating[position]))
+  const leftovers = floating.slice(slots.length)
   let sectionsSeen = 0
 
   // Only fixes whose anchor is still present; one whose passage has been edited

@@ -961,6 +961,7 @@ export type ProductImage = {
   sizeBytes: number
   updatedAt: string
   isReference: boolean
+  description: string
 }
 
 export function listProductImages() {
@@ -991,6 +992,15 @@ export async function uploadProductImage(file: File) {
   const payload = await response.json().catch(() => ({}))
   if (!response.ok) throw new Error(payload?.message || `Upload failed (${response.status}).`)
   return payload as { name: string; replaced: boolean; sizeBytes: number }
+}
+
+// The writer picks images by what they show, so an undescribed image is never
+// offered to it. This is the field that puts one on the shelf.
+export function describeProductImage(name: string, description: string) {
+  return request<{ name: string; description: string }>(
+    `/product-images/${encodeURIComponent(name)}/description`,
+    { method: 'POST', body: JSON.stringify({ description }) },
+  )
 }
 
 export function setProductImageReference(name: string) {
