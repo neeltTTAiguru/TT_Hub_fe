@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>T500 in 3D — Hub preview</title>
+<style>
+  :root{
+    --surface:#fff; --alt:#f6f7f9; --border:#e5e7eb;
+    --text:#1f2328; --muted:#6b7280; --primary:#6b6a4a; --radius:14px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:#eef0f2;color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Ubuntu,sans-serif}
+  .shell{display:grid;grid-template-columns:220px 1fr;min-height:100vh}
+  .sider{background:var(--surface);border-right:1px solid var(--border);padding:20px 0}
+  .brand{padding:0 20px 18px}
+  .brand-mark{font-weight:700;font-size:15px;letter-spacing:.02em}
+  .brand-sub{color:var(--muted);font-size:12px;margin-top:2px}
+  .nav{display:flex;flex-direction:column;gap:2px;padding:0 10px}
+  .nav a{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:9px;
+    text-decoration:none;color:var(--text);font-size:13.5px}
+  .nav a .dot{width:16px;height:16px;border-radius:4px;background:#d8d9d0;flex:none}
+  .nav a.active{background:color-mix(in srgb, var(--primary) 14%, #fff);font-weight:600}
+  .nav a.active .dot{background:var(--primary)}
+  .header{height:56px;border-bottom:1px solid var(--border);background:var(--surface);
+    display:flex;align-items:center;justify-content:space-between;padding:0 24px;font-size:13.5px}
+  .header .right{display:flex;align-items:center;gap:14px;color:var(--muted)}
+  .btn{border:1px solid var(--border);background:#fff;border-radius:8px;padding:5px 12px;font-size:13px;cursor:pointer}
+  .btn.primary{background:var(--primary);border-color:var(--primary);color:#fff}
+  .page{padding:24px 28px}
+  .page-header{display:flex;justify-content:space-between;align-items:flex-start;gap:24px;margin-bottom:18px;flex-wrap:wrap}
+  .page-title{font-size:28px;font-weight:650;margin:0}
+  .page-subtitle{color:var(--muted);margin:6px 0 0;font-size:13.5px}
+  .row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .tag{font-size:12px;padding:2px 9px;border-radius:6px;border:1px solid;line-height:20px}
+  .tag.gold{color:#a17b16;border-color:#f0dda4;background:#fdf7e3}
+  .tag.blue{color:#1d63b8;border-color:#b6d4f7;background:#eaf3fe}
+  .tag.green{color:#2a7a41;border-color:#b3e0c2;background:#eaf8ef}
+  .grid{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:18px;align-items:start}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+    box-shadow:0 1px 2px rgba(16,24,40,.04);overflow:hidden}
+  .card-head{padding:13px 17px;border-bottom:1px solid var(--border);font-weight:600;font-size:14px}
+  .card-body{padding:17px}
+  #stage{display:block;width:100%;height:560px;
+    background:radial-gradient(120% 90% at 50% 10%, #edeee7, #f7f8f9)}
+  .seg{display:flex;background:var(--alt);border-radius:10px;padding:3px;gap:3px}
+  .seg button{flex:1;border:0;background:transparent;padding:6px 0;border-radius:8px;
+    font-size:13px;cursor:pointer;color:var(--muted);font-weight:500}
+  .seg button[aria-pressed="true"]{background:#fff;color:var(--text);
+    box-shadow:0 1px 3px rgba(16,24,40,.12);font-weight:600}
+  .toggle{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:14px;font-size:13px}
+  .facts{display:grid;gap:8px;padding:12px 14px;border:1px solid var(--border);
+    border-radius:var(--radius);background:var(--alt);margin-top:16px}
+  .facts div{display:flex;justify-content:space-between;gap:14px;font-size:12.5px}
+  .facts span{color:var(--muted)}
+  .facts strong{text-align:right;font-weight:600}
+  .warn{margin-top:16px;border:1px solid #f3e0b0;background:#fdf8ea;border-radius:10px;
+    padding:12px 14px;font-size:12.5px;line-height:1.55}
+  .warn b{display:block;margin-bottom:4px}
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="sider">
+    <div class="brand">
+      <div class="brand-mark">TRUSTED TECHNOLOGY</div>
+      <div class="brand-sub">Smart Hub</div>
+    </div>
+    <nav class="nav">
+      <a href="#"><span class="dot"></span>Brain</a>
+      <a href="#"><span class="dot"></span>Competitor Analyst</a>
+      <a href="#"><span class="dot"></span>Hubspot</a>
+      <a href="#"><span class="dot"></span>YouTrack</a>
+      <a href="#"><span class="dot"></span>Brevo</a>
+      <a href="#"><span class="dot"></span>Content Generator</a>
+      <a href="#" class="active"><span class="dot"></span>T500 in 3D</a>
+    </nav>
+  </aside>
+
+  <div>
+    <div class="header">
+      <strong>Trusted Tech Smart Hub</strong>
+      <div class="right"><span>Light mode</span><button class="btn primary">Settings</button><button class="btn">Log out</button></div>
+    </div>
+
+    <div class="page">
+      <div class="page-header">
+        <div>
+          <div class="row"><h1 class="page-title">T500 in 3D</h1><span class="tag gold">Photogrammetry</span></div>
+          <p class="page-subtitle">Reconstructed from the 48-frame studio turntable set. Drag to rotate, scroll to zoom.</p>
+        </div>
+        <div class="row">
+          <span class="tag blue">48 source frames</span>
+          <span class="tag green">Silhouette match 98.6%</span>
+        </div>
+      </div>
+
+      <div class="grid">
+        <div class="card"><canvas id="stage"></canvas></div>
+        <div class="card">
+          <div class="card-head">View</div>
+          <div class="card-body">
+            <div class="seg" id="seg">
+              <button aria-pressed="true" data-a="0">Front</button>
+              <button aria-pressed="false" data-a="90">Side</button>
+              <button aria-pressed="false" data-a="180">Back</button>
+              <button aria-pressed="false" data-a="270">Other side</button>
+            </div>
+            <div class="toggle"><span>Auto-rotate</span><button class="btn" id="spin">On</button></div>
+            <div class="facts">
+              <div><span>Source</span><strong>48 photos, Canon R5, 90mm</strong></div>
+              <div><span>Method</span><strong>Silhouette carving (visual hull)</strong></div>
+              <div><span>Geometry</span><strong>90,000 triangles</strong></div>
+              <div><span>Texture</span><strong>2048px, projected from the photos</strong></div>
+            </div>
+            <div class="warn">
+              <b>⚠ Approximate model</b>
+              Built from silhouettes, so the outer shape is accurate but recessed detail —
+              the lens dish, the screen well, the gap under the belt clip — is filled in
+              solid. Surface features are photographic texture, not modelled geometry.
+              Scale is a placeholder until the unit is measured.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import * as THREE from '/node_modules/three/build/three.module.js'
+import { GLTFLoader } from '/node_modules/three/examples/jsm/loaders/GLTFLoader.js'
+import { OrbitControls } from '/node_modules/three/examples/jsm/controls/OrbitControls.js'
+import { RoomEnvironment } from '/node_modules/three/examples/jsm/environments/RoomEnvironment.js'
+
+const canvas = document.getElementById('stage')
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, preserveDrawingBuffer: true })
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
+renderer.toneMapping = THREE.ACESFilmicToneMapping
+renderer.toneMappingExposure = 1.15
+renderer.shadowMap.enabled = true
+renderer.shadowMap.type = THREE.PCFSoftShadowMap
+
+const scene = new THREE.Scene()
+scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture
+
+const key = new THREE.DirectionalLight(0xffffff, 2.6)
+key.position.set(0.09, 0.16, 0.12); key.castShadow = true
+key.shadow.mapSize.set(2048, 2048)
+key.shadow.camera.near = 0.01; key.shadow.camera.far = 1
+key.shadow.camera.left = -0.1; key.shadow.camera.right = 0.1
+key.shadow.camera.top = 0.1; key.shadow.camera.bottom = -0.1
+key.shadow.bias = -0.0008
+scene.add(key, new THREE.AmbientLight(0xffffff, 0.4))
+
+const camera = new THREE.PerspectiveCamera(30, 1, 0.01, 10)
+const controls = new OrbitControls(camera, canvas)
+controls.enableDamping = true
+controls.enablePan = false
+
+const gltf = await new GLTFLoader().loadAsync('/models/t500.glb')
+const model = gltf.scene
+model.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true } })
+scene.add(model)
+
+const box = new THREE.Box3().setFromObject(model)
+const centre = box.getCenter(new THREE.Vector3())
+const size = box.getSize(new THREE.Vector3())
+const dist = (size.length() / 2) / Math.sin((30 * Math.PI / 180) / 2) * 1.05
+
+// Catch the shadow on a ground plane so the unit sits in the scene rather than floating.
+const ground = new THREE.Mesh(
+  new THREE.PlaneGeometry(1, 1),
+  new THREE.ShadowMaterial({ opacity: 0.22 }),
+)
+ground.rotation.x = -Math.PI / 2
+ground.position.y = box.min.y - 0.001
+ground.receiveShadow = true
+scene.add(ground)
+
+let azimuth = 0, elevation = 12 * Math.PI / 180, spinning = true
+
+function place() {
+  camera.position.set(
+    centre.x + dist * Math.cos(elevation) * Math.sin(azimuth),
+    centre.y + dist * Math.sin(elevation),
+    centre.z + dist * Math.cos(elevation) * Math.cos(azimuth),
+  )
+  controls.target.copy(centre)
+  controls.update()
+}
+
+function resize() {
+  const w = canvas.clientWidth, h = canvas.clientHeight
+  renderer.setSize(w, h, false)
+  camera.aspect = w / h
+  camera.updateProjectionMatrix()
+}
+
+function draw() {
+  if (spinning) { azimuth += 0.004; place() }
+  controls.update()
+  renderer.render(scene, camera)
+}
+
+resize(); place(); draw()          // synchronous first frame, so a still capture is not blank
+addEventListener('resize', () => { resize(); draw() })
+renderer.setAnimationLoop(draw)
+
+document.getElementById('seg').addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (!b) return
+  for (const x of e.currentTarget.children) x.setAttribute('aria-pressed', String(x === b))
+  azimuth = Number(b.dataset.a) * Math.PI / 180
+  place(); draw()
+})
+const spinBtn = document.getElementById('spin')
+spinBtn.addEventListener('click', () => {
+  spinning = !spinning
+  spinBtn.textContent = spinning ? 'On' : 'Off'
+})
+</script>
+</body>
+</html>
