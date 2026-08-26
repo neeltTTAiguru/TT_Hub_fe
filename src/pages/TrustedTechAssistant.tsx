@@ -146,7 +146,15 @@ export default function TrustedTechAssistant() {
   }
 
   const status = health ? HEALTH_LABEL[health.status] : null
-  const pageCount = health?.pageCount ?? (pages.length || null)
+  // Show ONE number, and make it the one the user can act on: the pages they can
+  // actually see and delete. get_stats counts every page in GBrain including
+  // those filtered out by sensitivity, department or agent scope, so showing the
+  // raw total next to a shorter list just reads as a bug. The total is kept in
+  // the tooltip -- a gap between the two is still worth being able to check,
+  // since that gap is exactly what hid 20 of 25 pages before 2026-08-26.
+  const visibleCount = pages.length
+  const storedCount = health?.pageCount ?? null
+  const hiddenCount = storedCount === null ? 0 : Math.max(0, storedCount - visibleCount)
 
   const monitor = (
     <div
@@ -166,7 +174,14 @@ export default function TrustedTechAssistant() {
       </Space>
       <Space size={6}>
         <Text type="secondary" style={{ fontSize: 12 }}>Pages</Text>
-        <Text strong>{pageCount ?? '—'}</Text>
+        <Text
+          strong
+          title={hiddenCount
+            ? `${visibleCount} readable by you · ${hiddenCount} filtered out by sensitivity, department or agent scope`
+            : undefined}
+        >
+          {loading && !visibleCount ? '—' : visibleCount}
+        </Text>
       </Space>
       <Space size={6}>
         <Text type="secondary" style={{ fontSize: 12 }}>Transport</Text>
