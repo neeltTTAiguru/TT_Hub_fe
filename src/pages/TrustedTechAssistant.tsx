@@ -1,163 +1,328 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useAuth0 } from '@auth0/auth0-react'
-import { Card, Space, Tag, Typography } from 'antd'
+import { Badge, Button, Card, Collapse, Input, Modal, Popconfirm, Select, Space, Typography, message } from 'antd'
 import AgentChatWorkspace from '../components/AgentChatWorkspace'
 import brainLogo from '../assets/agent-logos/brain.svg'
-import { getAgents, getBrainSectionMemories, type AgentSummary, type BrainSectionMemory } from '../lib/api'
+import {
+  deleteBrainPage,
+  getBrainPages,
+  getGbrainHealth,
+  saveBrainMemory,
+  type BrainPage,
+  type GbrainHealth,
+} from '../lib/api'
 
 const { Text } = Typography
 
-const COMPANY_SECTION = { id: 'company', name: 'Trusted Tech Company' }
+// One brain. Sections were removed on 2026-08-26: `allowed_agents` scoping meant
+// every company-wide page (20 of the 25 then stored, including the whole T500
+// specification and the RFP baseline) was dropped before any agent chat saw it.
+const EMPTY_DRAFT = { title: '', content: '', sensitivity: 'internal' as 'internal' | 'public' }
 
-// Agents that get their own brain section. "Trusted Tech Company" already covers
-// the all-agents view and this page IS the Brain (trusted-tech-assistant), so the
-// Brain gets no self-section — only the other agents do.
-const OFFERED_AGENT_IDS = new Set([
-  'competitor-analyst',
-  'trusted-tech-hubspot-assistant',
-  'trusted-tech-youtrack-assistant',
-  'content-operations-assistant',
-])
+type BadgeStatus = 'success' | 'error' | 'warning' | 'default'
 
-type Section = { id: string; name: string }
+const HEALTH_LABEL: Record<GbrainHealth['status'], { text: string; badge: BadgeStatus }> = {
+  ok: { text: 'Connected', badge: 'success' },
+  unauthorized: { text: 'Token rejected', badge: 'error' },
+  down: { text: 'Unreachable', badge: 'error' },
+  disabled: { text: 'Disabled', badge: 'default' },
+}
 
 export default function TrustedTechAssistant() {
   const { isAuthenticated } = useAuth0()
-  const [agents, setAgents] = useState<AgentSummary[]>([])
-  const [selected, setSelected] = useState<string>(COMPANY_SECTION.id)
-  const [memories, setMemories] = useState<BrainSectionMemory[]>([])
+  const [pages, setPages] = useState<BrainPage[]>([])
+  const [health, setHealth] = useState<GbrainHealth | null>(null)
   const [loading, setLoading] = useState(false)
+  const [addOpen, setAddOpen] = useState(false)
+  const [draft, setDraft] = useState(EMPTY_DRAFT)
+  const [saving, setSaving] = useState(false)
+  // Slug of the page being edited. Set => the save updates that page in place
+  // instead of minting a new one.
+  const [editingSlug, setEditingSlug] = useState('')
 
-  useEffect(() => {
-    getAgents()
-      .then(setAgents)
-      .catch(() => setAgents([]))
+  const loadHealth = useCallback(() => {
+    getGbrainHealth()
+      .then(setHealth)
+      .catch(() => setHealth(null))
   }, [])
 
-  const sections: Section[] = useMemo(() => {
-    const agentSections = agents
-      .filter((entry) => OFFERED_AGENT_IDS.has(entry.id))
-      .map((entry) => ({ id: entry.id, name: entry.name }))
-    return [COMPANY_SECTION, ...agentSections]
-  }, [agents])
-
-  const selectedSection = sections.find((entry) => entry.id === selected) ?? COMPANY_SECTION
-  const isCompany = selected === COMPANY_SECTION.id
-
-  // Loads the selected section's memory from GBrain so the chat can be primed
-  // with (and held to) exactly that section's saved rules, and so "Save to Brain"
-  // can offer those memories as update targets.
-  const loadSectionMemories = useCallback(() => {
-    if (!isAuthenticated || !selected) {
-      setMemories([])
+  const loadPages = useCallback(() => {
+    if (!isAuthenticated) {
+      setPages([])
       return
     }
     setLoading(true)
-    getBrainSectionMemories(selected)
-      .then((result) => setMemories(result.memories))
-      .catch(() => setMemories([]))
+    getBrainPages()
+      .then((result) => setPages(result.memories))
+      .catch(() => setPages([]))
       .finally(() => setLoading(false))
-  }, [selected, isAuthenticated])
+  }, [isAuthenticated])
 
   useEffect(() => {
-    loadSectionMemories()
-  }, [loadSectionMemories])
+    loadHealth()
+    loadPages()
+  }, [loadHealth, loadPages])
 
-  // Scopes every chat message to the selected section and injects its loaded
-  // GBrain memory so Brain answers as that section — and treats its saved rules
-  // as authoritative (this is what makes "talk to a section" actually apply the
-  // section's rules, even ones scoped away from the company-wide brain).
+  // Memory retrieval fails soft, so a dead brain looks identical to a healthy one
+  // from the chat. Re-probe on a timer rather than only on page load.
+  useEffect(() => {
+    const timer = setInterval(loadHealth, 30000)
+    return () => clearInterval(timer)
+  }, [loadHealth])
+
+  const refresh = useCallback(() => {
+    loadHealth()
+    loadPages()
+  }, [loadHealth, loadPages])
+
+  const openAdd = () => {
+    setEditingSlug('')
+    setDraft(EMPTY_DRAFT)
+    setAddOpen(true)
+  }
+
+  const openEdit = (page: BrainPage) => {
+    setEditingSlug(page.slug)
+    setDraft({
+      title: page.title,
+      content: page.content,
+      sensitivity: page.sensitivity === 'public' ? 'public' : 'internal',
+    })
+    setAddOpen(true)
+  }
+
+  const addPage = async () => {
+    if (!draft.title.trim() || !draft.content.trim()) {
+      message.warning('A page needs a title and content.')
+      return
+    }
+    setSaving(true)
+    try {
+      const saved = await saveBrainMemory({
+        title: draft.title.trim(),
+        content: draft.content.trim(),
+        // One brain: every page is readable by every agent unless a future
+        // scope is set deliberately.
+        section: 'company',
+        sensitivity: draft.sensitivity,
+        // Overwrites the same GBrain page rather than creating a near-duplicate.
+        ...(editingSlug ? { targetSlug: editingSlug } : {}),
+      })
+      message.success(editingSlug ? `Updated ${saved.slug}` : `Saved ${saved.slug}`)
+      setDraft(EMPTY_DRAFT)
+      setEditingSlug('')
+      setAddOpen(false)
+      refresh()
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : 'Could not save that page.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const removePage = async (page: BrainPage) => {
+    try {
+      const result = await deleteBrainPage(page.slug)
+      message.success(`Deleted ${result.title} — recoverable for ${result.recoverableHours}h`)
+      refresh()
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : 'Could not delete that page.')
+    }
+  }
+
+  // Primes the chat with what is actually in the brain, so Brain answers from
+  // the same pages the list shows.
   const buildChatContext = () => {
     const lines = [
-      isCompany
-        ? "You are Brain, answering from Trusted Technology's company-wide approved memory (readable by every agent)."
-        : `You are Brain, answering strictly for the "${selectedSection.name}" section of the brain. Treat this section's saved rules and knowledge as authoritative; if they conflict with your general knowledge, the section's rules win.`,
+      "You are Brain, answering from Trusted Technology's approved GBrain memory. Every page is one brain, readable by every agent.",
     ]
-    if (memories.length) {
-      lines.push(`Approved ${selectedSection.name} memory loaded from GBrain (authoritative rules / evidence):`)
-      for (const memory of memories.slice(0, 12)) {
-        lines.push(`- ${memory.title}: ${memory.summary}`)
-      }
+    if (pages.length) {
+      lines.push('Pages currently stored:')
+      for (const page of pages.slice(0, 40)) lines.push(`- ${page.title}: ${page.summary}`)
     } else {
-      lines.push(`No memory is stored in the ${selectedSection.name} section yet.`)
+      lines.push('No pages are stored in the brain yet.')
     }
     return lines.join('\n').slice(0, 8000)
   }
 
-  const sectionsGrid = (
-    <Card
-      className="section-card"
-      title="Brain sections"
-      extra={<Tag color="gold">{sections.length} sections</Tag>}
+  const status = health ? HEALTH_LABEL[health.status] : null
+  const pageCount = health?.pageCount ?? (pages.length || null)
+
+  const monitor = (
+    <div
+      style={{
+        display: 'flex',
+        flexWrap: 'wrap',
+        gap: '12px 28px',
+        alignItems: 'center',
+        padding: '12px 16px',
+        border: '1px solid var(--app-border)',
+        borderRadius: 8,
+      }}
     >
-      <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-        <Text type="secondary">
-          Each section is a scoped slice of the brain. “Trusted Tech Company” is readable by every agent; each
-          agent section holds knowledge only that agent uses. Select a section to talk to it — Brain will apply
-          exactly that section's saved rules. Save into a section with “Save to Brain”.
-        </Text>
-        <div
-          style={{
-            display: 'grid',
-            gap: 12,
-            gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
-          }}
-        >
-          {sections.map((entry, index) => (
-            <Card
-              key={entry.id}
-              size="small"
-              hoverable
-              onClick={() => setSelected(entry.id)}
-              style={{
-                borderColor: selected === entry.id ? 'var(--app-primary)' : undefined,
-                borderWidth: selected === entry.id ? 2 : 1,
-              }}
-            >
-              <Space direction="vertical" size={4} style={{ width: '100%' }}>
-                <Text strong>
-                  {index + 1}. {entry.name}
-                </Text>
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  {entry.id === COMPANY_SECTION.id ? 'Company-wide · all agents' : `Agent section · ${entry.id}`}
-                </Text>
-              </Space>
-            </Card>
-          ))}
-        </div>
+      <Space size={8}>
+        <Badge status={status?.badge ?? 'processing'} />
+        <Text strong>{status?.text ?? 'Checking…'}</Text>
       </Space>
+      <Space size={6}>
+        <Text type="secondary" style={{ fontSize: 12 }}>Pages</Text>
+        <Text strong>{pageCount ?? '—'}</Text>
+      </Space>
+      <Space size={6}>
+        <Text type="secondary" style={{ fontSize: 12 }}>Transport</Text>
+        <Text>{health?.transport ?? '—'}</Text>
+      </Space>
+      <Space size={6}>
+        <Text type="secondary" style={{ fontSize: 12 }}>Checked</Text>
+        <Text>{health?.checkedAt ? new Date(health.checkedAt).toLocaleTimeString() : '—'}</Text>
+      </Space>
+      <Space size={8} style={{ marginLeft: 'auto' }}>
+        <Button size="small" onClick={refresh} loading={loading}>Refresh</Button>
+        <Button size="small" type="primary" onClick={openAdd}>Add page</Button>
+      </Space>
+    </div>
+  )
+
+  const library = (
+    <div
+      style={{
+        maxHeight: 460,
+        overflowY: 'auto',
+        display: 'grid',
+        gap: 12,
+        gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+        paddingRight: 4,
+      }}
+    >
+      {pages.map((page) => (
+        <Card
+          key={page.slug}
+          size="small"
+          hoverable
+          onClick={() => openEdit(page)}
+          style={{ cursor: 'pointer' }}
+        >
+          <Space direction="vertical" size={4} style={{ width: '100%' }}>
+            <Space align="start" style={{ width: '100%', justifyContent: 'space-between' }}>
+              <Text strong>{page.title}</Text>
+              <Popconfirm
+                title="Delete this page?"
+                description="Recoverable for 72 hours."
+                okText="Delete"
+                cancelText="Cancel"
+                onConfirm={() => removePage(page)}
+              >
+                <Button
+                  size="small"
+                  danger
+                  type="text"
+                  // The card opens the editor, so the delete control must not
+                  // bubble up into it.
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  Delete
+                </Button>
+              </Popconfirm>
+            </Space>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {page.slug}
+              {page.sensitivity !== 'internal' ? ` · ${page.sensitivity}` : ''}
+            </Text>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {page.summary.slice(0, 160)}
+              {page.summary.length > 160 ? '…' : ''}
+            </Text>
+          </Space>
+        </Card>
+      ))}
+      {!pages.length && !loading ? <Text type="secondary">No pages stored yet.</Text> : null}
+    </div>
+  )
+
+  const brainPanel = (
+    <Card className="section-card" title="The Brain">
+      <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+        {monitor}
+
+        {health && health.status !== 'ok' && health.status !== 'disabled' ? (
+          <Text type="danger">
+            {health.error || 'The brain is not reachable — agents will answer with no memory.'}
+          </Text>
+        ) : null}
+
+        <Text type="secondary">
+          One brain. Every page is readable by every agent, subject to its sensitivity. Deleting is a soft
+          delete — GBrain keeps the page recoverable for 72 hours.
+        </Text>
+
+        <Collapse
+          items={[{
+            key: 'library',
+            label: <Text strong>Library · {pages.length} page{pages.length === 1 ? '' : 's'}</Text>,
+            children: library,
+          }]}
+        />
+      </Space>
+
+      <Modal
+        title={editingSlug ? 'Edit page' : 'Add a page to the Brain'}
+        open={addOpen}
+        onCancel={() => { setAddOpen(false); setEditingSlug('') }}
+        onOk={addPage}
+        okText={editingSlug ? 'Save changes' : 'Save page'}
+        confirmLoading={saving}
+        width={720}
+      >
+        <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+          {editingSlug ? (
+            <Text type="secondary" style={{ fontSize: 12 }}>{editingSlug}</Text>
+          ) : null}
+          <Input
+            placeholder="Title — phrase it like the question someone would ask"
+            value={draft.title}
+            onChange={(event) => setDraft({ ...draft, title: event.target.value })}
+          />
+          <Input.TextArea
+            rows={14}
+            placeholder="One fact per page. Say when it was true."
+            value={draft.content}
+            onChange={(event) => setDraft({ ...draft, content: event.target.value })}
+          />
+          <Select
+            value={draft.sensitivity}
+            onChange={(value) => setDraft({ ...draft, sensitivity: value })}
+            options={[
+              { value: 'internal', label: 'Internal' },
+              { value: 'public', label: 'Public' },
+            ]}
+            style={{ width: 160 }}
+          />
+        </Space>
+      </Modal>
     </Card>
   )
 
   return (
     <AgentChatWorkspace
-      key={selected}
       agentId="trusted-tech-assistant"
       title="Brain"
-      subtitle="Search Trusted Tech’s approved GBrain memory, reason with company context, and explicitly save knowledge worth remembering."
-      intro={
-        loading
-          ? `Loading the ${selectedSection.name} section…`
-          : isCompany
-            ? "You're talking to the company-wide brain (readable by every agent)."
-            : `You're talking to the ${selectedSection.name} section — I'll apply its saved rules.`
-      }
-      emptyPrompt={isCompany ? 'Ask Brain about company-wide memory…' : `Ask the ${selectedSection.name} section…`}
+      subtitle="Search Trusted Tech’s approved GBrain memory, reason with company context, and save knowledge worth remembering."
+      intro={loading ? 'Loading the brain…' : "You're talking to the whole brain."}
+      emptyPrompt="Ask Brain anything about Trusted Technology…"
       showAgentOverview={false}
       showThreadControls={false}
       showChatIntro={false}
       showBackendTag
-      chatTitle={isCompany ? 'Talk to Brain (Company)' : `Talk to ${selectedSection.name} section`}
+      chatTitle="Talk to Brain"
       assistantLabel="Brain"
       agentLogo={brainLogo}
       backendLabel="Hermes + GBrain"
       enableBrainMemorySave
-      memorySection={selected}
-      sectionMemories={memories}
-      onMemorySaved={loadSectionMemories}
-      renderBeforeChat={sectionsGrid}
+      memorySection="company"
+      onMemorySaved={refresh}
+      renderBeforeChat={brainPanel}
       buildMessageContext={buildChatContext}
-      draftKey={`brain:${selected}`}
+      draftKey="brain"
     />
   )
 }

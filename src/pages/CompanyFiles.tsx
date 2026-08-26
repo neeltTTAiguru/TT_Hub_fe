@@ -3,6 +3,7 @@ import { Alert, Button, Card, Empty, Space, Table, Tag, Typography, message } fr
 import {
   deleteCompanyFile,
   getCompanyFiles,
+  ingestCompanyFileToBrain,
   uploadCompanyFile,
   type CompanyFile,
 } from '../lib/api'
@@ -22,8 +23,26 @@ export default function CompanyFiles() {
   const [dragActive, setDragActive] = useState(false)
   const [error, setError] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
+  // Slug of the file currently being split into brain pages.
+  const [ingesting, setIngesting] = useState('')
   // Drag events fire for every child element, so a plain boolean flickers.
   const dragDepth = useRef(0)
+
+  // Splits the document into brain pages. Re-running overwrites the same pages
+  // rather than duplicating them, so a corrected file can simply be re-ingested.
+  const addToBrain = async (row: CompanyFile) => {
+    setIngesting(row.id)
+    try {
+      const result = await ingestCompanyFileToBrain(row.id)
+      const skipped = result.skipped.length ? `, ${result.skipped.length} skipped` : ''
+      message.success(`${result.title}: ${result.written.length} pages added to the Brain${skipped}`)
+      load()
+    } catch (cause) {
+      message.error(cause instanceof Error ? cause.message : 'Could not add that document to the Brain.')
+    } finally {
+      setIngesting('')
+    }
+  }
 
   const load = useCallback(() => {
     setLoading(true)
@@ -115,8 +134,8 @@ export default function CompanyFiles() {
       <div>
         <h1 className="page-title">Company Files</h1>
         <p className="page-subtitle">
-          Documents Hermes reads when it needs to know how Trusted Technology writes, sells, and
-          describes its products. Text is extracted on upload; the original is kept.
+          Company documents Hermes can draw on. Uploading stores and extracts the text; “Add to Brain”
+          splits it into pages every agent can retrieve. The original file is always kept.
         </p>
       </div>
 
@@ -157,13 +176,32 @@ export default function CompanyFiles() {
               render: (value: number) => value || '—',
             },
             {
-              title: 'Knowledge records',
-              dataIndex: 'recordCount',
-              width: 170,
-              render: (value: number) => (
-                value
-                  ? <Tag color="green">{value} in every prompt</Tag>
-                  : <Tag>Text stored, not distilled</Tag>
+              title: 'In the Brain',
+              dataIndex: 'brainPageCount',
+              width: 210,
+              render: (_: number, row: CompanyFile) => (
+                row.brainPageCount
+                  ? (
+                      <Tag
+                        color="green"
+                        title={row.brainIngestedAt
+                          ? `Added ${new Date(row.brainIngestedAt).toLocaleDateString()}`
+                          : undefined}
+                      >
+                        Added · {row.brainPageCount} pages
+                      </Tag>
+                    )
+                  : (
+                      <Button
+                        size="small"
+                        type="primary"
+                        loading={ingesting === row.id}
+                        disabled={Boolean(ingesting)}
+                        onClick={() => void addToBrain(row)}
+                      >
+                        Add to Brain
+                      </Button>
+                    )
               ),
             },
             {

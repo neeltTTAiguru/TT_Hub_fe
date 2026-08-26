@@ -904,6 +904,8 @@ export type CompanyFile = {
   recordCount: number
   createdAt: string
   updatedAt: string
+  brainPageCount: number
+  brainIngestedAt: string | null
 }
 
 // Starts the Surfer pass on a chat-written article. Returns immediately with a
@@ -948,6 +950,21 @@ export async function uploadCompanyFile(file: File) {
   const payload = await response.json().catch(() => ({}))
   if (!response.ok) throw new Error(payload?.message || `Upload failed (${response.status}).`)
   return payload as { id: string; title: string; pageCount: number; sizeBytes: number; replaced: boolean }
+}
+
+export type BrainIngestResult = {
+  documentId: string
+  title: string
+  written: { slug: string; title: string }[]
+  skipped: { title: string; reason: string }[]
+}
+
+// Splits an uploaded document into brain pages that every agent can retrieve.
+export function ingestCompanyFileToBrain(id: string, sensitivity: 'internal' | 'public' = 'internal') {
+  return request<BrainIngestResult>(`/company-files/${encodeURIComponent(id)}/ingest`, {
+    method: 'POST',
+    body: JSON.stringify({ sensitivity }),
+  })
 }
 
 export function deleteCompanyFile(id: string) {
@@ -1538,6 +1555,49 @@ export type BrainSectionMemories = {
 
 // Loads a Brain "section": 'company' (memories readable by every agent) or an
 // agent id (memories scoped to just that agent's section).
+export type BrainPage = {
+  slug: string
+  title: string
+  sensitivity: string
+  updatedAt: string
+  summary: string
+  content: string
+}
+
+export type BrainPages = {
+  status: 'ok' | 'disabled' | 'unavailable'
+  memories: BrainPage[]
+}
+
+// Every page in the brain the signed-in user is allowed to see. One brain — no
+// section filter.
+export function getBrainPages() {
+  return request<BrainPages>('/agents/trusted-tech-assistant/brain/pages')
+}
+
+// Soft delete. GBrain keeps the page recoverable for 72 hours.
+export function deleteBrainPage(slug: string) {
+  return request<{ slug: string; title: string; recoverableHours: number }>(
+    '/agents/trusted-tech-assistant/brain/pages',
+    { method: 'DELETE', body: JSON.stringify({ slug }) },
+  )
+}
+
+export type GbrainHealth = {
+  status: 'ok' | 'unauthorized' | 'down' | 'disabled'
+  transport: string
+  pageCount: number | null
+  error: string
+  checkedAt: string
+}
+
+// Unauthenticated liveness probe. Retrieval fails soft, so this is the only way
+// to tell a connected brain from one that is quietly returning nothing.
+export async function getGbrainHealth() {
+  const response = await fetch(`${API_BASE_URL}/health/gbrain`)
+  return (await response.json()) as GbrainHealth
+}
+
 export function getBrainSectionMemories(section: string) {
   return request<BrainSectionMemories>(
     `/agents/trusted-tech-assistant/brain-sections/${encodeURIComponent(section)}/memories`,
