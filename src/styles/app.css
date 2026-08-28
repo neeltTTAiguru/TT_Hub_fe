@@ -4533,3 +4533,180 @@
   gap: 8px;
   min-width: 0;
 }
+
+/* Sidebar drag-to-reorder.
+   The whole row is the drag surface. The grip only appears on hover so the
+   nav reads as a plain menu until you reach for it. */
+.app-nav-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  position: relative;
+  transition: opacity 140ms ease, transform 140ms ease;
+}
+
+.app-nav-row.is-reordering {
+  cursor: grab;
+}
+
+.app-nav-row.is-reordering:active {
+  cursor: grabbing;
+}
+
+/* In reorder mode the rows are handles, not links. */
+.app-nav-row.is-reordering .app-nav-label {
+  pointer-events: none;
+}
+
+.app-nav-row.is-dragging {
+  opacity: 0.4;
+  transform: scale(0.98);
+}
+
+.app-nav-grip {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  margin-left: -14px;
+  width: 8px;
+  color: var(--app-text-muted);
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+
+.app-nav-row.is-reordering .app-nav-grip {
+  opacity: 0.4;
+}
+
+.app-nav-row.is-reordering:hover .app-nav-grip,
+.app-nav-row.is-dragging .app-nav-grip {
+  opacity: 0.7;
+}
+
+.app-nav-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Drop indicator: a single accent rule showing exactly where the row will land. */
+.app-nav-row.drop-before::before,
+.app-nav-row.drop-after::after {
+  content: '';
+  position: absolute;
+  left: -8px;
+  right: -8px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--app-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--app-primary) 18%, transparent);
+}
+
+.app-nav-row.drop-before::before {
+  top: -6px;
+}
+
+.app-nav-row.drop-after::after {
+  bottom: -6px;
+}
+
+/* The row supplies its own gap now that the icon lives inside the label. */
+.app-sider .ant-menu-item .app-nav-row .agent-icon,
+.app-sider .ant-menu-submenu-title .app-nav-row .agent-icon {
+  flex: 0 0 auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-nav-row,
+  .app-nav-grip {
+    transition: none;
+  }
+  .app-nav-row.is-dragging {
+    transform: none;
+  }
+}
+
+.app-nav-tools {
+  display: flex;
+  gap: 14px;
+  padding: 10px 24px 16px;
+}
+
+.app-nav-tool {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-size: 12px;
+  color: var(--app-text-muted);
+  cursor: pointer;
+  transition: color 140ms ease;
+}
+
+.app-nav-tool:hover {
+  color: var(--app-primary-strong);
+}
+
+.app-nav-tool.is-active {
+  color: var(--app-primary-strong);
+  font-weight: 600;
+}
+
+.app-nav-reorder {
+  padding: 4px 0;
+}
+
+.app-nav-reorder-item {
+  margin: 2px 8px;
+  padding: 9px 16px;
+  border-radius: 8px;
+  color: var(--app-text);
+  user-select: none;
+}
+
+.app-nav-reorder-item:hover {
+  background: color-mix(in srgb, var(--app-primary) 8%, transparent);
+}
+
+.app-nav-reorder-item .agent-icon {
+  flex: 0 0 auto;
+}
+
+.app-nav-nudge {
+  display: inline-flex;
+  gap: 2px;
+  flex: 0 0 auto;
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+
+.app-nav-reorder-item:hover .app-nav-nudge,
+.app-nav-nudge:focus-within {
+  opacity: 1;
+}
+
+.app-nav-nudge button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid var(--app-border);
+  border-radius: 5px;
+  background: var(--app-surface);
+  color: var(--app-text-muted);
+  cursor: pointer;
+}
+
+.app-nav-nudge button:hover:not(:disabled) {
+  color: var(--app-primary-strong);
+  border-color: var(--app-primary-soft);
+}
+
+.app-nav-nudge button:disabled {
+  opacity: 0.3;
+  cursor: default;
+}

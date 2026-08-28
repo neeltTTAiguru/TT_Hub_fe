@@ -21,6 +21,7 @@ import TrustedTechYouTrackAssistant from './pages/TrustedTechYouTrackAssistant'
 import EmailCampaignBuilder from './pages/EmailCampaignBuilder'
 import TrustedTechAhrefsAssistant from './pages/TrustedTechAhrefsAssistant'
 import CompanyFiles from './pages/CompanyFiles'
+import AgencyMap from './pages/AgencyMap'
 import ContentOperations from './pages/ContentOperations'
 import ContentOperationsPublish from './pages/ContentOperationsPublish'
 import ContentOperationsSeo from './pages/ContentOperationsSeo'
@@ -33,7 +34,8 @@ import hubspotLogo from './assets/agent-logos/hubspot.svg'
 import youtrackLogo from './assets/agent-logos/youtrack.svg'
 import brevoLogo from './assets/agent-logos/brevo.svg'
 import competitorAnalystLogo from './assets/agent-logos/competitor-analyst.svg'
-import articlesLogo from './assets/agent-logos/articles.svg'
+import contentGeneratorLogo from './assets/agent-logos/content-generator.svg'
+import agencyMapLogo from './assets/agent-logos/agency-map.svg'
 import './styles/app.css'
 
 const brainIcon = (
@@ -57,7 +59,11 @@ const competitorAnalystIcon = (
 )
 
 const contentGeneratorIcon = (
-  <img src={articlesLogo} alt="" aria-hidden="true" className="agent-icon" />
+  <img src={contentGeneratorLogo} alt="" aria-hidden="true" className="agent-icon" />
+)
+
+const agencyMapIcon = (
+  <img src={agencyMapLogo} alt="" aria-hidden="true" className="agent-icon" />
 )
 
 
@@ -77,6 +83,7 @@ function getAuthAuthorizationParams(extra?: Record<string, string>) {
 const baseNavItems = [
   {
     key: 'brain',
+    title: 'Brain',
     icon: brainIcon,
     label: 'Brain',
     children: [
@@ -92,38 +99,126 @@ const baseNavItems = [
   },
   {
     key: '/competitor-analyst',
+    title: 'Competitor Analyst',
     icon: competitorAnalystIcon,
     label: <Link to="/competitor-analyst">Competitor Analyst</Link>,
   },
   {
     key: '/hubspot-assistant',
+    title: 'Hubspot',
     icon: hubspotIcon,
     label: <Link to="/hubspot-assistant">Hubspot</Link>,
   },
   {
     key: '/youtrack-assistant',
+    title: 'YouTrack',
     icon: youtrackIcon,
     label: <Link to="/youtrack-assistant">YouTrack</Link>,
   },
   {
     key: '/email-builder',
+    title: 'Brevo',
     icon: brevoIcon,
     label: <Link to="/email-builder">Brevo</Link>,
   },
   {
     key: '/assistants/content-operations',
+    title: 'Content Generator',
     icon: contentGeneratorIcon,
     label: <Link to="/assistants/content-operations">Content Generator</Link>,
   },
+  {
+    key: '/agency-map',
+    title: 'Agency Map',
+    icon: agencyMapIcon,
+    label: <Link to="/agency-map">Agency Map</Link>,
+  },
 ]
+
+
+const NAV_ORDER_STORAGE_KEY = 'smarthub.navOrder'
+
+/**
+ * Sidebar order is a personal preference, so it lives in this browser rather
+ * than on the account. Reads are guarded because storage throws outright in
+ * some contexts (private windows, blocked site data).
+ */
+function loadNavOrder(): string[] {
+  try {
+    const raw = window.localStorage.getItem(NAV_ORDER_STORAGE_KEY)
+    const parsed = raw ? JSON.parse(raw) : null
+    return Array.isArray(parsed) ? parsed.filter((key) => typeof key === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+function saveNavOrder(order: string[]) {
+  try {
+    window.localStorage.setItem(NAV_ORDER_STORAGE_KEY, JSON.stringify(order))
+  } catch {
+    // Storage unavailable; the order simply will not persist.
+  }
+}
+
+/**
+ * Applies a saved order to the nav.
+ *
+ * Anything not in the saved order keeps its natural position at the end, so a
+ * nav item added in a later release still appears for someone who reordered
+ * their sidebar months ago.
+ */
+function applyNavOrder<T extends { key: string }>(items: T[], order: string[]): T[] {
+  const byKey = new Map(items.map((item) => [item.key, item]))
+  const ordered = order.map((key) => byKey.get(key)).filter((item): item is T => Boolean(item))
+  const seen = new Set(ordered.map((item) => item.key))
+  return [...ordered, ...items.filter((item) => !seen.has(item.key))]
+}
 
 function AppShell({ isDark, onToggle }: { isDark: boolean; onToggle: () => void }) {
   const location = useLocation()
   const { user, logout } = useAuth0()
   const [navCollapsed, setNavCollapsed] = useState(false)
+  const [navOrder, setNavOrder] = useState<string[]>(() => loadNavOrder())
+  const [reordering, setReordering] = useState(false)
+  const [dragKey, setDragKey] = useState<string | null>(null)
+  const [dropTarget, setDropTarget] = useState<{ key: string; after: boolean } | null>(null)
+
+  const navItems = applyNavOrder(baseNavItems, navOrder)
+
+  /** Reorders `from` to sit before or after `to`, then persists the result. */
+  const moveNavItem = (from: string, to: string, after: boolean) => {
+    if (!from || from === to) return
+    const keys = navItems.map((item) => item.key)
+    const fromIndex = keys.indexOf(from)
+    if (fromIndex < 0) return
+    keys.splice(fromIndex, 1)
+    const targetIndex = keys.indexOf(to)
+    if (targetIndex < 0) return
+    keys.splice(after ? targetIndex + 1 : targetIndex, 0, from)
+    setNavOrder(keys)
+    saveNavOrder(keys)
+  }
+
+  /** Keyboard/click fallback: HTML5 drag is easy to break, arrows are not. */
+  const nudgeNavItem = (key: string, delta: number) => {
+    const keys = navItems.map((item) => item.key)
+    const index = keys.indexOf(key)
+    const next = index + delta
+    if (index < 0 || next < 0 || next >= keys.length) return
+    ;[keys[index], keys[next]] = [keys[next], keys[index]]
+    setNavOrder(keys)
+    saveNavOrder(keys)
+  }
+
+  const endDrag = () => {
+    setDragKey(null)
+    setDropTarget(null)
+  }
+
   // Brain is a submenu now, so its children have to be considered too or a
   // route under it never highlights.
-  const navKeys: string[] = baseNavItems.flatMap((item) => {
+  const navKeys: string[] = navItems.flatMap((item) => {
     const children = (item as { children?: Array<{ key: string }> }).children
     return Array.isArray(children) ? children.map((child) => child.key) : [item.key]
   })
@@ -136,7 +231,7 @@ function AppShell({ isDark, onToggle }: { isDark: boolean; onToggle: () => void 
   // Landing on one of the article tools with its section shut means the other
   // three are invisible until you think to open it. The section holding the
   // current page starts open.
-  const openNavKey = baseNavItems.find((item) => {
+  const openNavKey = navItems.find((item) => {
     const children = (item as { children?: Array<{ key: string }> }).children
     return Array.isArray(children) && children.some((child) => child.key === selectedNavKey)
   })?.key
@@ -165,12 +260,133 @@ function AppShell({ isDark, onToggle }: { isDark: boolean; onToggle: () => void 
             <div className="brand-subtitle">Smart Hub</div>
           </div>
         </div>
-        <Menu
-          mode="inline"
-          items={baseNavItems}
-          selectedKeys={selectedNavKey ? [selectedNavKey] : []}
-          defaultOpenKeys={openNavKey ? [openNavKey] : undefined}
-        />
+        {reordering ? (
+          // Drag lives outside AntD's Menu on purpose: rc-menu preventDefaults
+          // mousedown to manage focus, which cancels dragstart, so handlers
+          // attached inside a menu item never fire.
+          <div className="app-nav-reorder" role="list">
+            {navItems.map((item) => {
+              const isDragging = dragKey === item.key
+              const isTarget = dropTarget?.key === item.key
+              return (
+                <div
+                  key={item.key}
+                  role="listitem"
+                  className={[
+                    'app-nav-row',
+                    'app-nav-reorder-item',
+                    'is-reordering',
+                    isDragging ? 'is-dragging' : '',
+                    isTarget && !dropTarget?.after ? 'drop-before' : '',
+                    isTarget && dropTarget?.after ? 'drop-after' : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
+                  draggable
+                  onDragStart={(event) => {
+                    setDragKey(item.key)
+                    event.dataTransfer.effectAllowed = 'move'
+                    // Firefox refuses to start a drag with no data set.
+                    event.dataTransfer.setData('text/plain', item.key)
+                  }}
+                  onDragEnd={endDrag}
+                  onDragOver={(event) => {
+                    event.preventDefault()
+                    event.dataTransfer.dropEffect = 'move'
+                    if (!dragKey || dragKey === item.key) return
+                    const box = event.currentTarget.getBoundingClientRect()
+                    const after = event.clientY > box.top + box.height / 2
+                    setDropTarget((current) =>
+                      current?.key === item.key && current.after === after
+                        ? current
+                        : { key: item.key, after },
+                    )
+                  }}
+                  onDragLeave={(event) => {
+                    if (event.currentTarget.contains(event.relatedTarget as Node)) return
+                    setDropTarget((current) => (current?.key === item.key ? null : current))
+                  }}
+                  onDrop={(event) => {
+                    event.preventDefault()
+                    const source = dragKey || event.dataTransfer.getData('text/plain')
+                    if (source) {
+                      const box = event.currentTarget.getBoundingClientRect()
+                      moveNavItem(source, item.key, event.clientY > box.top + box.height / 2)
+                    }
+                    endDrag()
+                  }}
+                >
+                  <span className="app-nav-grip" aria-hidden="true">
+                    <svg width="8" height="14" viewBox="0 0 8 14">
+                      <circle cx="2" cy="3" r="1.1" fill="currentColor" />
+                      <circle cx="6" cy="3" r="1.1" fill="currentColor" />
+                      <circle cx="2" cy="7" r="1.1" fill="currentColor" />
+                      <circle cx="6" cy="7" r="1.1" fill="currentColor" />
+                      <circle cx="2" cy="11" r="1.1" fill="currentColor" />
+                      <circle cx="6" cy="11" r="1.1" fill="currentColor" />
+                    </svg>
+                  </span>
+                  {item.icon}
+                  <span className="app-nav-label">{item.title}</span>
+                  <span className="app-nav-nudge">
+                    <button
+                      type="button"
+                      aria-label={`Move ${item.title} up`}
+                      disabled={navItems[0]?.key === item.key}
+                      onClick={() => nudgeNavItem(item.key, -1)}
+                    >
+                      <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+                        <path d="M2 6.5 L5 3.5 L8 6.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`Move ${item.title} down`}
+                      disabled={navItems[navItems.length - 1]?.key === item.key}
+                      onClick={() => nudgeNavItem(item.key, 1)}
+                    >
+                      <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+                        <path d="M2 3.5 L5 6.5 L8 3.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </button>
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        ) : (
+          <Menu
+            mode="inline"
+            items={navItems}
+            selectedKeys={selectedNavKey ? [selectedNavKey] : []}
+            defaultOpenKeys={openNavKey ? [openNavKey] : undefined}
+          />
+        )}
+
+        <div className="app-nav-tools">
+          <button
+            type="button"
+            className={`app-nav-tool${reordering ? ' is-active' : ''}`}
+            onClick={() => {
+              setReordering((on) => !on)
+              endDrag()
+            }}
+          >
+            {reordering ? 'Done' : 'Reorder'}
+          </button>
+          {reordering && navOrder.length ? (
+            <button
+              type="button"
+              className="app-nav-tool"
+              onClick={() => {
+                setNavOrder([])
+                saveNavOrder([])
+              }}
+            >
+              Reset
+            </button>
+          ) : null}
+        </div>
       </Sider>
 
       <Layout>
@@ -219,6 +435,7 @@ function AppShell({ isDark, onToggle }: { isDark: boolean; onToggle: () => void 
             <Route path="/email-builder" element={<EmailCampaignBuilder />} />
             <Route path="/ahrefs-assistant" element={<TrustedTechAhrefsAssistant />} />
             <Route path="/company-files" element={<CompanyFiles />} />
+            <Route path="/agency-map" element={<AgencyMap />} />
             <Route path="/assistants/content-operations" element={<ContentOperations />} />
             <Route path="/assistants/content-operations/seo" element={<ContentOperationsSeo />} />
             <Route path="/assistants/content-operations/publish" element={<ContentOperationsPublish />} />

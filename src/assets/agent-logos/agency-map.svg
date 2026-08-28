@@ -1,0 +1,32 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Agency Map">
+  <defs>
+    <clipPath id="am-clip"><rect x="4" y="4" width="56" height="56" rx="15"/></clipPath>
+  </defs>
+  <rect x="4" y="4" width="56" height="56" rx="15" fill="#f7f6f1"/>
+  <g clip-path="url(#am-clip)">
+    <!-- Folded map: light water base, alternating panel fold. -->
+    <path d="M8 27 L24 21 L40 27 L56 21 V47 L40 53 L24 47 L8 53 Z" fill="#cfe2f7"/>
+
+    <!-- Green landmasses, organic blobs straddling the folds. -->
+    <path d="M11 33 C15 30 18 33 17 36 C21 37 21 42 17 43 C14 44 11 42 11 39 Z" fill="#8ed35c"/>
+    <path d="M27 25 C32 24 35 28 34 32 C38 33 39 39 35 41 C31 43 27 40 28 36 C25 34 24 28 27 25 Z" fill="#8ed35c"/>
+    <path d="M44 30 C49 28 53 31 52 35 C51 39 46 39 45 36 C43 34 42 31 44 30 Z" fill="#8ed35c"/>
+    <path d="M43 44 C47 43 50 46 49 49 C48 52 44 52 43 49 Z" fill="#8ed35c"/>
+
+    <!-- Outlines drawn last so nothing paints over them. -->
+    <g stroke="#1b1b1b" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round" fill="none">
+      <path d="M11 33 C15 30 18 33 17 36 C21 37 21 42 17 43 C14 44 11 42 11 39"/>
+      <path d="M27 25 C32 24 35 28 34 32 C38 33 39 39 35 41 C31 43 27 40 28 36 C25 34 24 28 27 25 Z"/>
+      <path d="M44 30 C49 28 53 31 52 35 C51 39 46 39 45 36 C43 34 42 31 44 30 Z"/>
+      <path d="M43 44 C47 43 50 46 49 49 C48 52 44 52 43 49 Z"/>
+      <path d="M8 27 L24 21 L40 27 L56 21 V47 L40 53 L24 47 L8 53 Z"/>
+      <path d="M24 21 V47"/>
+      <path d="M40 27 V53"/>
+    </g>
+
+    <!-- Pin breaks above the map, as in the reference. -->
+    <path d="M32 4 C25.4 4 20 9.4 20 16 C20 24.5 32 36 32 36 C32 36 44 24.5 44 16 C44 9.4 38.6 4 32 4 Z"
+          fill="#ef5a28" stroke="#1b1b1b" stroke-width="2.8" stroke-linejoin="round"/>
+    <circle cx="32" cy="15.6" r="5" fill="#f7f6f1" stroke="#1b1b1b" stroke-width="2.6"/>
+  </g>
+</svg>

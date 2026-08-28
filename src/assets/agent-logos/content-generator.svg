@@ -1,0 +1,38 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Content Generator">
+  <defs>
+    <linearGradient id="cg-body" x1="14" y1="8" x2="50" y2="58" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#4a525e"/>
+      <stop offset="1" stop-color="#252a33"/>
+    </linearGradient>
+    <radialGradient id="cg-lens" cx="0.5" cy="0.42" r="0.62">
+      <stop offset="0" stop-color="#4aa8ff"/>
+      <stop offset="0.55" stop-color="#1c4f9c"/>
+      <stop offset="1" stop-color="#101a2c"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Camera body. Chunky silhouette so it still reads at 18px. -->
+  <rect x="13" y="11" width="38" height="44" rx="9" fill="url(#cg-body)"/>
+  <rect x="26" y="6" width="12" height="7" rx="2.5" fill="#39414d"/>
+
+  <!-- Lens with its blue halo. -->
+  <circle cx="32" cy="27" r="13.5" fill="none" stroke="#2f8bff" stroke-width="2.6" opacity="0.55"/>
+  <circle cx="32" cy="27" r="10.5" fill="#1b2230"/>
+  <circle cx="32" cy="27" r="7.6" fill="url(#cg-lens)"/>
+  <circle cx="29.4" cy="24.2" r="2.1" fill="#bfe0ff" opacity="0.85"/>
+
+  <!-- Status lights, the only small detail kept. -->
+  <rect x="17.5" y="24" width="3" height="7" rx="1.5" fill="#2f8bff"/>
+  <circle cx="45.5" cy="26" r="2" fill="#e8503a"/>
+
+  <!-- Document, overlapping the body like the reference. -->
+  <path d="M32 36 H49 A3 3 0 0 1 52 39 V56 A3 3 0 0 1 49 59 H32 A3 3 0 0 1 29 56 V39 A3 3 0 0 1 32 36 Z" fill="#eaf3ff" stroke="#ffffff" stroke-width="1.6"/>
+  <g stroke="#2f8bff" stroke-width="3" stroke-linecap="round">
+    <path d="M34 43 H47"/>
+    <path d="M34 48 H47"/>
+    <path d="M34 53 H42"/>
+  </g>
+
+  <!-- Sparkle: the "generate" cue. -->
+  <path d="M47 28 L48.9 33.1 L54 35 L48.9 36.9 L47 42 L45.1 36.9 L40 35 L45.1 33.1 Z" fill="#5cb8ff"/>
+</svg>

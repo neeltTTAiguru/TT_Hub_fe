@@ -1996,3 +1996,215 @@ export function sendBrevoDirect(payload: {
     body: JSON.stringify(payload),
   })
 }
+
+export type LeAgencyEmployment = {
+  swornOfficers: number | null
+  civilians: number | null
+  totalEmployees: number | null
+  dataYear: number | null
+}
+
+export type LeAgency = {
+  _id: string
+  ori: string
+  agencyName: string
+  agencyType: string
+  state: string
+  stateName: string
+  county: string
+  latitude: number | null
+  longitude: number | null
+  employment?: LeAgencyEmployment
+  contacts?: {
+    chiefName: string
+    phone: string
+    email: string
+    website: string
+  }
+}
+
+export type LeAgencyFeature = {
+  type: 'Feature'
+  geometry: { type: 'Point'; coordinates: [number, number] }
+  properties: {
+    ori: string
+    name: string
+    agencyType: string
+    state: string
+    county: string
+    swornOfficers: number | null
+    dataYear: number | null
+    website: string
+    phone: string
+    inPipeline: boolean
+    stage: string
+    stageRank: number | null
+    dealCount: number
+    dealOwner: string
+  }
+}
+
+export type LeAgencyStats = {
+  totals: {
+    agencies: number
+    withCounts: number
+    withCoords: number
+    totalOfficers: number
+    inPipeline: number
+  }
+  byState: Array<{ _id: string; agencies: number; under100: number }>
+  bySizeBand: Array<{ _id: number | string; agencies: number }>
+  byStage: Array<{ _id: string; agencies: number; rank: number | null }>
+}
+
+export type LeAgencyQuery = {
+  state?: string
+  agencyType?: string
+  minOfficers?: number
+  maxOfficers?: number
+  hasOfficerCount?: boolean
+  search?: string
+  limit?: number
+  page?: number
+  crm?: 'matched' | 'unmatched'
+  stage?: string
+}
+
+function buildLeAgencyParams(query: LeAgencyQuery = {}) {
+  const params = new URLSearchParams()
+  if (query.state) params.set('state', query.state)
+  if (query.agencyType) params.set('agencyType', query.agencyType)
+  if (typeof query.minOfficers === 'number') params.set('minOfficers', String(query.minOfficers))
+  if (typeof query.maxOfficers === 'number') params.set('maxOfficers', String(query.maxOfficers))
+  if (query.hasOfficerCount) params.set('hasOfficerCount', 'true')
+  if (query.crm) params.set('crm', query.crm)
+  if (query.stage) params.set('stage', query.stage)
+  if (query.search) params.set('search', query.search)
+  if (typeof query.limit === 'number') params.set('limit', String(query.limit))
+  if (typeof query.page === 'number') params.set('page', String(query.page))
+  return params
+}
+
+export function getLeAgencies(query: LeAgencyQuery = {}) {
+  const params = buildLeAgencyParams(query)
+  return request<{ total: number; page: number; limit: number; agencies: LeAgency[] }>(
+    `/le-agencies?${params.toString()}`,
+    undefined,
+    { timeoutMs: 60000 },
+  )
+}
+
+export function getLeAgencyGeojson(query: LeAgencyQuery = {}) {
+  const params = buildLeAgencyParams(query)
+  return request<{ type: 'FeatureCollection'; features: LeAgencyFeature[] }>(
+    `/le-agencies/geojson?${params.toString()}`,
+    undefined,
+    // The full national pull is a large payload, so allow it real time to land.
+    { timeoutMs: 120000 },
+  )
+}
+
+export function getLeAgencyStats(query: LeAgencyQuery = {}) {
+  const params = buildLeAgencyParams(query)
+  return request<LeAgencyStats>(`/le-agencies/stats?${params.toString()}`, undefined, {
+    timeoutMs: 60000,
+  })
+}
+
+export type CrmDealFeature = {
+  type: 'Feature'
+  geometry: { type: 'Point'; coordinates: [number, number] }
+  properties: {
+    dealId: string
+    name: string
+    stage: string
+    owner: string
+    state: string
+    ori: string
+    matchedAgencyName: string
+    isLawEnforcement: boolean
+    locationSource: string
+    locationNote: string
+  }
+}
+
+export type UnplacedDeal = {
+  dealId: string
+  dealName: string
+  stage: string
+  owner: string
+  state: string
+  locationNote: string
+}
+
+export function getCrmDealGeojson(query: { stage?: string; state?: string } = {}) {
+  const params = new URLSearchParams()
+  if (query.stage) params.set('stage', query.stage)
+  if (query.state) params.set('state', query.state)
+  return request<{ type: 'FeatureCollection'; features: CrmDealFeature[] }>(
+    `/crm-deals/geojson?${params.toString()}`,
+    undefined,
+    { timeoutMs: 60000 },
+  )
+}
+
+export function getUnplacedCrmDeals(query: { stage?: string } = {}) {
+  const params = new URLSearchParams()
+  if (query.stage) params.set('stage', query.stage)
+  return request<{ total: number; deals: UnplacedDeal[] }>(
+    `/crm-deals/unplaced?${params.toString()}`,
+    undefined,
+    { timeoutMs: 60000 },
+  )
+}
+
+export type BriefingSourcedItem = { text: string; url: string; date: string }
+
+export type AgencyBriefing = {
+  ori: string
+  agencyName: string
+  cached?: boolean
+  searchCount?: number
+  generatedAt?: string
+  durationMs?: number
+  sources: string[]
+  facts: {
+    agencyType: string
+    state: string
+    county: string
+    swornOfficers: number | null
+    civilians: number | null
+    dataYear: number | null
+    populationServed: number | null
+    trend: null | {
+      fromYear: number
+      toYear: number
+      fromOfficers: number
+      toOfficers: number
+      change: number
+    }
+    isNibrs: boolean
+    crm: null | { stage: string; dealCount: number; owner: string }
+  }
+  research: {
+    summary: string
+    bwcStatus: { hasProgram: 'yes' | 'no' | 'unknown'; vendor: string; details: string; confidence: string }
+    budget: { summary: string; fiscalYear: string; signals: BriefingSourcedItem[] }
+    grants: BriefingSourcedItem[]
+    news: BriefingSourcedItem[]
+    outreachAngle: string
+    openQuestions: string[]
+    failedTopics?: string[]
+  }
+}
+
+export function getAgencyBriefing(ori: string, options: { refresh?: boolean } = {}) {
+  const params = new URLSearchParams()
+  if (options.refresh) params.set('refresh', 'true')
+  return request<AgencyBriefing>(
+    `/le-agencies/${encodeURIComponent(ori)}/briefing?${params.toString()}`,
+    undefined,
+    // Four parallel web-research calls plus a writeup.
+    { timeoutMs: 180000 },
+  )
+}

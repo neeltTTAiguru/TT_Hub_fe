@@ -17,12 +17,17 @@
     "grapesjs": "^0.23.5",
     "grapesjs-preset-newsletter": "^1.0.2",
     "html2pdf.js": "^0.14.0",
+    "leaflet": "^1.9.4",
+    "leaflet.markercluster": "^1.5.3",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
+    "react-leaflet": "^5.0.0",
+    "react-leaflet-cluster": "^4.1.3",
     "react-router-dom": "^7.9.2"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
+    "@types/leaflet": "^1.9.22",
     "@types/node": "^24.12.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
