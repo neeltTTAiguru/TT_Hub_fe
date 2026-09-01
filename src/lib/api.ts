@@ -2047,6 +2047,11 @@ export type LeAgencyFeature = {
     approximate: boolean
     streetAddress: string
     addressCity: string
+    email: string
+    chiefName: string
+    chiefTitle: string
+    chiefSourceUrl: string
+    commandStaff: Array<{ name: string; title: string }>
   }
 }
 

@@ -89,6 +89,15 @@ type MapPoint = {
   officers: number | null
   lines: string[]
   approximate: boolean
+  contact?: {
+    chiefName: string
+    chiefTitle: string
+    chiefSourceUrl: string
+    commandStaff: Array<{ name: string; title: string }>
+    website: string
+    email: string
+    phone: string
+  }
 }
 
 function bandFor(officers: number | null) {
@@ -412,6 +421,15 @@ export default function AgencyMap() {
         `ORI ${f.properties.ori}`,
       ].filter(Boolean),
       approximate: f.properties.approximate,
+      contact: {
+        chiefName: f.properties.chiefName,
+        chiefTitle: f.properties.chiefTitle,
+        chiefSourceUrl: f.properties.chiefSourceUrl,
+        commandStaff: f.properties.commandStaff ?? [],
+        website: f.properties.website,
+        email: f.properties.email,
+        phone: f.properties.phone,
+      },
     }))
   }, [showAgencies, features])
 
@@ -736,6 +754,44 @@ export default function AgencyMap() {
                         Approximate location
                       </Text>
                     ) : null}
+
+                    {point.contact?.chiefName ? (
+                      <Text style={{ fontSize: 12, marginTop: 4 }}>
+                        {point.contact.chiefTitle
+                          ? `${point.contact.chiefTitle}: `
+                          : 'Chief: '}
+                        <Text strong style={{ fontSize: 12 }}>
+                          {point.contact.chiefName}
+                        </Text>
+                      </Text>
+                    ) : null}
+                    {(point.contact?.commandStaff ?? []).slice(0, 3).map((person) => (
+                      <Text key={person.name} type="secondary" style={{ fontSize: 12 }}>
+                        {person.title ? `${person.title}: ` : ''}
+                        {person.name}
+                      </Text>
+                    ))}
+
+                    {point.contact?.phone ? (
+                      <Text style={{ fontSize: 12 }}>
+                        <a href={`tel:${point.contact.phone.replace(/[^\d+]/g, '')}`}>
+                          {point.contact.phone}
+                        </a>
+                      </Text>
+                    ) : null}
+                    {point.contact?.email ? (
+                      <Text style={{ fontSize: 12 }}>
+                        <a href={`mailto:${point.contact.email}`}>{point.contact.email}</a>
+                      </Text>
+                    ) : null}
+                    {point.contact?.website ? (
+                      <Text style={{ fontSize: 12 }}>
+                        <a href={point.contact.website} target="_blank" rel="noreferrer">
+                          Official website
+                        </a>
+                      </Text>
+                    ) : null}
+
                     {point.ori ? (
                       <Button
                         size="small"
