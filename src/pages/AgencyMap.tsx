@@ -11,11 +11,9 @@ import {
   getCrmDealStats,
   getLeAgencyGeojson,
   getLeAgencyStats,
-  getUnplacedCrmDeals,
   type CrmDealFeature,
   type LeAgencyFeature,
   type LeAgencyStats,
-  type UnplacedDeal,
 } from '../lib/api'
 
 const { Paragraph, Text, Title } = Typography
@@ -281,7 +279,6 @@ export default function AgencyMap() {
   const [showDeals, setShowDeals] = useState(true)
   const [features, setFeatures] = useState<LeAgencyFeature[]>([])
   const [dealFeatures, setDealFeatures] = useState<CrmDealFeature[]>([])
-  const [unplaced, setUnplaced] = useState<UnplacedDeal[]>([])
   const [stats, setStats] = useState<LeAgencyStats | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -337,9 +334,6 @@ export default function AgencyMap() {
   // The FBI returns null coordinates for ~14% of agencies (task forces, state
   // and campus police, and a few hundred real city PDs). They match the filter
   // but cannot be plotted, so say so rather than dropping them silently.
-  const unmappable = stats ? Math.max(stats.totals.agencies - stats.totals.withCoords, 0) : 0
-  const countyProxies = stats?.totals.countyProxies ?? 0
-  const resolved = stats?.totals.resolved ?? 0
 
   // Counted from the HubSpot deals themselves. The equivalent le-agencies
   // rollup counts *agencies* carrying a deal, and only a third of our deals
@@ -368,14 +362,13 @@ export default function AgencyMap() {
     let cancelled = false
     const dealQuery = { stage: stages.length ? stages.join(',') : undefined, state }
 
-    Promise.all([getCrmDealGeojson(dealQuery), getUnplacedCrmDeals(dealQuery)])
-      .then(([geo, unplacedResult]) => {
+    getCrmDealGeojson(dealQuery)
+      .then((geo) => {
         if (cancelled) return
         setDealFeatures(geo.features)
-        setUnplaced(unplacedResult.deals)
       })
       .catch(() => {
-        if (!cancelled) { setDealFeatures([]); setUnplaced([]) }
+        if (!cancelled) setDealFeatures([])
       })
 
     return () => { cancelled = true }
@@ -631,24 +624,6 @@ export default function AgencyMap() {
         </Col>
       </Row>
 
-      {showAgencies && countyProxies > 0 ? (
-        <Alert
-          type="warning"
-          showIcon
-          message={`${countyProxies.toLocaleString()} matching agencies are still pinned to their county centre`}
-          description={`The FBI feed substitutes the county's centre point when it has no location for an agency, which is why some pins sit in the wrong town. ${resolved.toLocaleString()} agencies have been corrected from their street address so far; the rest are drawn with a dashed outline until they are.`}
-        />
-      ) : null}
-
-      {showAgencies && unmappable > 0 ? (
-        <Alert
-          type="info"
-          showIcon
-          message={`${unmappable.toLocaleString()} matching agencies are not on the map`}
-          description="The FBI publishes no coordinates for these. They are still in the database and returned by the list and stats endpoints - mostly task forces, state and campus police, plus several hundred municipal departments."
-        />
-      ) : null}
-
       {measureMode ? (
         <Card className="section-card">
           <Space direction="vertical" size={8} style={{ width: '100%' }}>
@@ -798,32 +773,6 @@ export default function AgencyMap() {
           ) : null}
         </MapContainer>
       </Card>
-
-      {showDeals && unplaced.length ? (
-        <Alert
-          type="warning"
-          showIcon
-          message={`${unplaced.length} deals could not be placed on the map`}
-          description={
-            <Space direction="vertical" size={2}>
-              <Text type="secondary">
-                No usable location in the deal name. Add coordinates to
-                beCRM/data/crm-deal-locations.json and re-run the importer to pin them.
-              </Text>
-              {unplaced.slice(0, 12).map((deal) => (
-                <Text key={deal.dealId} style={{ fontSize: 12 }}>
-                  {deal.dealName} - {deal.stage}
-                </Text>
-              ))}
-              {unplaced.length > 12 ? (
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  and {unplaced.length - 12} more
-                </Text>
-              ) : null}
-            </Space>
-          }
-        />
-      ) : null}
 
       <Card className="section-card" title="Legend">
         <Space wrap size={16}>
