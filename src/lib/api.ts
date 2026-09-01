@@ -2041,6 +2041,12 @@ export type LeAgencyFeature = {
     stageRank: number | null
     dealCount: number
     dealOwner: string
+    // rooftop | street | city | county | fbi - how the point was placed.
+    precision: string
+    locationSource: string
+    approximate: boolean
+    streetAddress: string
+    addressCity: string
   }
 }
 
@@ -2051,6 +2057,8 @@ export type LeAgencyStats = {
     withCoords: number
     totalOfficers: number
     inPipeline: number
+    countyProxies: number
+    resolved: number
   }
   byState: Array<{ _id: string; agencies: number; under100: number }>
   bySizeBand: Array<{ _id: number | string; agencies: number }>

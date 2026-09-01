@@ -338,6 +338,8 @@ export default function AgencyMap() {
   // and campus police, and a few hundred real city PDs). They match the filter
   // but cannot be plotted, so say so rather than dropping them silently.
   const unmappable = stats ? Math.max(stats.totals.agencies - stats.totals.withCoords, 0) : 0
+  const countyProxies = stats?.totals.countyProxies ?? 0
+  const resolved = stats?.totals.resolved ?? 0
 
   // Counted from the HubSpot deals themselves. The equivalent le-agencies
   // rollup counts *agencies* carrying a deal, and only a third of our deals
@@ -392,6 +394,11 @@ export default function AgencyMap() {
       inPipeline: f.properties.inPipeline,
       officers: f.properties.swornOfficers,
       lines: [
+        f.properties.streetAddress
+          ? `${f.properties.streetAddress}${
+              f.properties.addressCity ? `, ${f.properties.addressCity}` : ''
+            }`
+          : '',
         `${f.properties.county ? `${f.properties.county} County, ` : ''}${f.properties.state}${
           f.properties.agencyType ? ` - ${f.properties.agencyType}` : ''
         }`,
@@ -403,9 +410,15 @@ export default function AgencyMap() {
         f.properties.inPipeline
           ? `${f.properties.stage}${f.properties.dealCount > 1 ? ` (${f.properties.dealCount} deals)` : ''}`
           : 'Not in HubSpot',
+        // Say where the pin came from. A county-centre pin is not a location.
+        f.properties.precision === 'county'
+          ? 'Location: county centre only (FBI published no address)'
+          : f.properties.precision === 'rooftop' || f.properties.precision === 'street'
+            ? 'Location: geocoded from street address'
+            : '',
         `ORI ${f.properties.ori}`,
       ].filter(Boolean),
-      approximate: false,
+      approximate: f.properties.approximate,
     }))
   }, [showAgencies, features])
 
@@ -617,6 +630,15 @@ export default function AgencyMap() {
           </Card>
         </Col>
       </Row>
+
+      {showAgencies && countyProxies > 0 ? (
+        <Alert
+          type="warning"
+          showIcon
+          message={`${countyProxies.toLocaleString()} matching agencies are still pinned to their county centre`}
+          description={`The FBI feed substitutes the county's centre point when it has no location for an agency, which is why some pins sit in the wrong town. ${resolved.toLocaleString()} agencies have been corrected from their street address so far; the rest are drawn with a dashed outline until they are.`}
+        />
+      ) : null}
 
       {showAgencies && unmappable > 0 ? (
         <Alert
