@@ -554,10 +554,22 @@ export default function AgencyMap() {
             allowClear
             disabled={crm === 'unmatched'}
             placeholder={crm === 'unmatched' ? 'No stage (never contacted)' : 'All stages'}
-            style={{ minWidth: 260, maxWidth: 460 }}
+            // Fixed width and a numeric tag count, both deliberately.
+            //
+            // A min/max width makes this control size itself to its contents,
+            // and maxTagCount="responsive" measures the available space with a
+            // ResizeObserver to decide how many tags fit. Inside a wrapping
+            // flex row the two feed each other: showing a tag widens the
+            // control, which reflows the row, which changes the space it has,
+            // which changes how many tags fit. The row never settles and the
+            // whole bar visibly shakes.
+            //
+            // A fixed width cannot be changed by its contents, and a numeric
+            // count needs no measurement at all, so neither loop can start.
+            style={{ width: 340 }}
             value={stages}
             onChange={(value) => setStages(value)}
-            maxTagCount="responsive"
+            maxTagCount={1}
             options={STAGE_ORDER.map((stage) => {
               const count = stageCounts[stage]
               if (!count?.deals) return { value: stage, label: stage }
