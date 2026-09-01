@@ -8,6 +8,7 @@ import 'leaflet/dist/leaflet.css'
 import 'leaflet.markercluster/dist/MarkerCluster.css'
 import {
   getCrmDealGeojson,
+  getCrmDealStats,
   getLeAgencyGeojson,
   getLeAgencyStats,
   getUnplacedCrmDeals,
@@ -338,14 +339,23 @@ export default function AgencyMap() {
   // but cannot be plotted, so say so rather than dropping them silently.
   const unmappable = stats ? Math.max(stats.totals.agencies - stats.totals.withCoords, 0) : 0
 
-  const [stageCounts, setStageCounts] = useState<Record<string, number>>({})
+  // Counted from the HubSpot deals themselves. The equivalent le-agencies
+  // rollup counts *agencies* carrying a deal, and only a third of our deals
+  // sit on an FBI-rostered agency - so it read "Closed Won (2)" against 12
+  // real won deals. `unplaced` is carried too, because a deal with no usable
+  // location never reaches the map and that gap belongs in the label.
+  const [stageCounts, setStageCounts] = useState<
+    Record<string, { deals: number; unplaced: number }>
+  >({})
 
   useEffect(() => {
     // Fetched once, without a stage filter, so the option counts stay stable.
-    getLeAgencyStats({ crm: 'matched' })
+    getCrmDealStats()
       .then((result) => {
-        const next: Record<string, number> = {}
-        for (const row of result.byStage || []) next[row._id] = row.agencies
+        const next: Record<string, { deals: number; unplaced: number }> = {}
+        for (const row of result.byStage || []) {
+          next[row._id] = { deals: row.deals, unplaced: row.unplaced }
+        }
         setStageCounts(next)
       })
       .catch(() => setStageCounts({}))
@@ -542,10 +552,16 @@ export default function AgencyMap() {
             value={stages}
             onChange={(value) => setStages(value)}
             maxTagCount="responsive"
-            options={STAGE_ORDER.map((stage) => ({
-              value: stage,
-              label: stageCounts[stage] ? `${stage} (${stageCounts[stage]})` : stage,
-            }))}
+            options={STAGE_ORDER.map((stage) => {
+              const count = stageCounts[stage]
+              if (!count?.deals) return { value: stage, label: stage }
+              return {
+                value: stage,
+                label: count.unplaced
+                  ? `${stage} (${count.deals}, ${count.unplaced} unmapped)`
+                  : `${stage} (${count.deals})`,
+              }
+            })}
           />
           <Button
             type={measureMode ? 'primary' : 'default'}

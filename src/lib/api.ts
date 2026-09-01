@@ -2148,6 +2148,27 @@ export function getCrmDealGeojson(query: { stage?: string; state?: string } = {}
   )
 }
 
+export type CrmDealStats = {
+  total: number
+  byStage: Array<{
+    _id: string
+    deals: number
+    placed: number
+    unplaced: number
+    rank: number | null
+  }>
+}
+
+/** Stage counts taken from the deals themselves, not from agencies matched to one. */
+export function getCrmDealStats(query: { stage?: string; state?: string } = {}) {
+  const params = new URLSearchParams()
+  if (query.stage) params.set('stage', query.stage)
+  if (query.state) params.set('state', query.state)
+  return request<CrmDealStats>(`/crm-deals/stats?${params.toString()}`, undefined, {
+    timeoutMs: 60000,
+  })
+}
+
 export function getUnplacedCrmDeals(query: { stage?: string } = {}) {
   const params = new URLSearchParams()
   if (query.stage) params.set('stage', query.stage)
