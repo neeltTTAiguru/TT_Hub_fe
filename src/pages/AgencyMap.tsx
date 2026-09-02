@@ -48,6 +48,11 @@ const NO_BWC_COLOR = '#6f9457'
 // because a surveyed NO and an unresearched agency are opposite facts: one is
 // a qualified prospect, the other is a to-do.
 const UNKNOWN_BWC_COLOR = '#d4a017'
+// Buying, but not yet equipped - budgeted, grant-funded, or bought and not
+// rolled out. Commercially this is the hottest state on the map and it was
+// rendering as amber, i.e. indistinguishable from an agency nobody had looked
+// at. Blue because it belongs to neither the has nor the has-not group.
+const IN_MOTION_BWC_COLOR = '#1f6f8f'
 
 
 // Reverse pipeline order: the stages worth looking at first sit at the top.
@@ -102,6 +107,8 @@ type PinCategory =
   | 'bwcPipeline'
   | 'noBwc'
   | 'noBwcPipeline'
+  | 'inMotion'
+  | 'inMotionPipeline'
   | 'unknownBwc'
   | 'unknownBwcPipeline'
 
@@ -113,6 +120,9 @@ function categoryFor(point: {
   if (isCustomerStage(point.stage)) return 'customer'
   if (point.bwcStatus === 'yes') return point.inPipeline ? 'bwcPipeline' : 'bwc'
   if (point.bwcStatus === 'no') return point.inPipeline ? 'noBwcPipeline' : 'noBwc'
+  if (point.bwcStatus === 'planned' || point.bwcStatus === 'purchased_not_deployed') {
+    return point.inPipeline ? 'inMotionPipeline' : 'inMotion'
+  }
   return point.inPipeline ? 'unknownBwcPipeline' : 'unknownBwc'
 }
 
@@ -136,6 +146,14 @@ function bwcLine(p: {
   if (p.bwcStatus === 'no') {
     return `Body cameras: NO - agency reported none${year ? `, ${year}` : ''}`
   }
+  if (p.bwcStatus === 'planned') {
+    return `Body cameras: PLANNED - budgeted or committed, not yet bought${
+      year ? ` (${year})` : ''
+    }`
+  }
+  if (p.bwcStatus === 'purchased_not_deployed') {
+    return `Body cameras: BOUGHT${vendor}, not yet deployed${year ? ` (${year})` : ''}`
+  }
   if (p.bwcStatus === 'yes') {
     switch (p.bwcEvidence) {
       case 'observed':
@@ -146,6 +164,12 @@ function bwcLine(p: {
         return `Body cameras: yes - took a camera grant${year ? ` (${year})` : ''}`
       case 'mandated':
         return 'Body cameras: required by state law - not individually verified'
+      // The freshest and best-sourced class on the map, so it says so rather
+      // than falling through to a bare "yes" with no provenance.
+      case 'researched':
+        return `Body cameras: yes${vendor} - verified from source${
+          year ? ` in ${year}` : ''
+        }`
       default:
         return `Body cameras: yes${vendor}`
     }
@@ -157,6 +181,9 @@ function bwcLine(p: {
 function colorFor(bwcStatus: string) {
   if (bwcStatus === 'yes') return BWC_COLOR
   if (bwcStatus === 'no') return NO_BWC_COLOR
+  if (bwcStatus === 'planned' || bwcStatus === 'purchased_not_deployed') {
+    return IN_MOTION_BWC_COLOR
+  }
   return UNKNOWN_BWC_COLOR
 }
 
@@ -547,6 +574,8 @@ export default function AgencyMap() {
       bwcPipeline: 0,
       noBwc: 0,
       noBwcPipeline: 0,
+      inMotion: 0,
+      inMotionPipeline: 0,
       unknownBwc: 0,
       unknownBwcPipeline: 0,
     }
@@ -972,6 +1001,18 @@ export default function AgencyMap() {
                   striped: true,
                 },
                 {
+                  key: 'inMotion',
+                  label: 'Planned or bought, not deployed',
+                  color: IN_MOTION_BWC_COLOR,
+                  striped: false,
+                },
+                {
+                  key: 'inMotionPipeline',
+                  label: 'Planned or bought, in HubSpot',
+                  color: IN_MOTION_BWC_COLOR,
+                  striped: true,
+                },
+                {
                   key: 'unknownBwc',
                   label: 'Unknown',
                   color: UNKNOWN_BWC_COLOR,
@@ -1042,8 +1083,8 @@ export default function AgencyMap() {
           </Space>
 
           <Text type="secondary" style={{ fontSize: 12 }}>
-            Untick a box to hide those pins. Red = has cameras, green = confirmed none, amber =
-            nobody has published either way. Stripes =
+            Untick a box to hide those pins. Red = has cameras, green = confirmed none, blue =
+            planned or bought but not deployed, amber = nobody has published either way. Stripes =
             already in HubSpot. Camera status comes from four sources of differing strength - a
             documented sighting, an agency's own survey answer, a camera grant, or a state mandate.
             A mandate is a legal duty, not a verified purchase. Open a pin to see which applies to
