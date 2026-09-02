@@ -52,11 +52,6 @@ const NO_BWC_COLOR = '#6f9457'
 // because a surveyed NO and an unresearched agency are opposite facts: one is
 // a qualified prospect, the other is a to-do.
 const UNKNOWN_BWC_COLOR = '#d4a017'
-// Buying, but not yet equipped - budgeted, grant-funded, or bought and not
-// rolled out. Commercially this is the hottest state on the map and it was
-// rendering as amber, i.e. indistinguishable from an agency nobody had looked
-// at. Blue because it belongs to neither the has nor the has-not group.
-const IN_MOTION_BWC_COLOR = '#1f6f8f'
 
 
 type MapPoint = {
@@ -91,29 +86,15 @@ type MapPoint = {
  * a customer is also "in HubSpot", so it has to be claimed first or it would
  * fall into a second bucket and the counts would not sum.
  */
-type PinCategory =
-  | 'customer'
-  | 'bwc'
-  | 'bwcPipeline'
-  | 'noBwc'
-  | 'noBwcPipeline'
-  | 'inMotion'
-  | 'inMotionPipeline'
-  | 'unknownBwc'
-  | 'unknownBwcPipeline'
+type PinCategory = 'customer' | 'bwc' | 'noBwc' | 'unknownBwc'
 
-function categoryFor(point: {
-  stage: string
-  inPipeline: boolean
-  bwcStatus: string
-}): PinCategory {
+function categoryFor(point: { stage: string; bwcStatus: string }): PinCategory {
   if (isCustomerStage(point.stage)) return 'customer'
-  if (point.bwcStatus === 'yes') return point.inPipeline ? 'bwcPipeline' : 'bwc'
-  if (point.bwcStatus === 'no') return point.inPipeline ? 'noBwcPipeline' : 'noBwc'
-  if (point.bwcStatus === 'planned' || point.bwcStatus === 'purchased_not_deployed') {
-    return point.inPipeline ? 'inMotionPipeline' : 'inMotion'
-  }
-  return point.inPipeline ? 'unknownBwcPipeline' : 'unknownBwc'
+  if (point.bwcStatus === 'yes') return 'bwc'
+  if (point.bwcStatus === 'no') return 'noBwc'
+  // planned and purchased_not_deployed land here: nothing is deployed yet, so
+  // the map does not claim they have cameras. The card still says which it is.
+  return 'unknownBwc'
 }
 
 /**
@@ -171,9 +152,6 @@ function bwcLine(p: {
 function colorFor(bwcStatus: string) {
   if (bwcStatus === 'yes') return BWC_COLOR
   if (bwcStatus === 'no') return NO_BWC_COLOR
-  if (bwcStatus === 'planned' || bwcStatus === 'purchased_not_deployed') {
-    return IN_MOTION_BWC_COLOR
-  }
   return UNKNOWN_BWC_COLOR
 }
 
@@ -547,13 +525,8 @@ export default function AgencyMap() {
     const counts: Record<PinCategory, number> = {
       customer: 0,
       bwc: 0,
-      bwcPipeline: 0,
       noBwc: 0,
-      noBwcPipeline: 0,
-      inMotion: 0,
-      inMotionPipeline: 0,
       unknownBwc: 0,
-      unknownBwcPipeline: 0,
     }
     for (const point of agencyPoints) counts[categoryFor(point)] += 1
     return counts
@@ -899,46 +872,16 @@ export default function AgencyMap() {
               [
                 { key: 'bwc', label: 'Has body-worn cameras', color: BWC_COLOR, striped: false },
                 {
-                  key: 'bwcPipeline',
-                  label: 'Has cameras, in HubSpot',
-                  color: BWC_COLOR,
-                  striped: true,
-                },
-                {
                   key: 'noBwc',
                   label: 'Confirmed no cameras',
                   color: NO_BWC_COLOR,
                   striped: false,
                 },
                 {
-                  key: 'noBwcPipeline',
-                  label: 'No cameras, in HubSpot',
-                  color: NO_BWC_COLOR,
-                  striped: true,
-                },
-                {
-                  key: 'inMotion',
-                  label: 'Planned or bought, not deployed',
-                  color: IN_MOTION_BWC_COLOR,
-                  striped: false,
-                },
-                {
-                  key: 'inMotionPipeline',
-                  label: 'Planned or bought, in HubSpot',
-                  color: IN_MOTION_BWC_COLOR,
-                  striped: true,
-                },
-                {
                   key: 'unknownBwc',
                   label: 'Unknown',
                   color: UNKNOWN_BWC_COLOR,
                   striped: false,
-                },
-                {
-                  key: 'unknownBwcPipeline',
-                  label: 'Unknown, in HubSpot',
-                  color: UNKNOWN_BWC_COLOR,
-                  striped: true,
                 },
                 {
                   key: 'customer',
@@ -999,9 +942,8 @@ export default function AgencyMap() {
           </Space>
 
           <Text type="secondary" style={{ fontSize: 12 }}>
-            Untick a box to hide those pins. Red = has cameras, green = confirmed none, blue =
-            planned or bought but not deployed, amber = nobody has published either way. Stripes =
-            already in HubSpot. Camera status comes from four sources of differing strength - a
+            Untick a box to hide those pins. Red = has cameras, green = confirmed none, amber =
+            nobody has published either way. Stripes = already in HubSpot. Camera status comes from four sources of differing strength - a
             documented sighting, an agency's own survey answer, a camera grant, or a state mandate.
             A mandate is a legal duty, not a verified purchase. Open a pin to see which applies to
             that agency, and how its location was placed.
