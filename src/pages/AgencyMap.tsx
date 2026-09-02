@@ -386,10 +386,24 @@ export default function AgencyMap() {
     setLoading(true)
     setError('')
 
-    Promise.all([getLeAgencyGeojson(query), getLeAgencyStats(query)])
-      .then(([geo, nextStats]) => {
+    Promise.all([
+      getLeAgencyGeojson(query),
+      getLeAgencyStats(query),
+      // Customers are fetched separately and deliberately NOT narrowed by size,
+      // type or search. They are the reference points the rest of the map is
+      // read against, and a filter quietly dropping one is worse than useless -
+      // it makes the map look like you have no customers there. State is the
+      // one filter they still respect, because that is which part of the
+      // country you are looking at rather than a question about the agency.
+      getLeAgencyGeojson({ state, stage: CUSTOMER_STAGE }),
+    ])
+      .then(([geo, nextStats, customerGeo]) => {
         if (cancelled) return
-        setFeatures(geo.features)
+        const seen = new Set(geo.features.map((f) => f.properties.ori))
+        setFeatures([
+          ...geo.features,
+          ...customerGeo.features.filter((f) => !seen.has(f.properties.ori)),
+        ])
         setStats(nextStats)
       })
       .catch((err: unknown) => {
@@ -405,7 +419,7 @@ export default function AgencyMap() {
     return () => {
       cancelled = true
     }
-  }, [query])
+  }, [query, state])
 
   // The FBI returns null coordinates for ~14% of agencies (task forces, state
   // and campus police, and a few hundred real city PDs). They match the filter
@@ -532,7 +546,12 @@ export default function AgencyMap() {
     () =>
       hiddenCategories.size === 0
         ? agencyPoints
-        : agencyPoints.filter((point) => !hiddenCategories.has(categoryFor(point))),
+        : agencyPoints.filter(
+            // Customers are exempt from the legend filters too. Southwestern
+            // University has no camera status, so unticking Unknown made a
+            // customer vanish - which is the one thing the map must never do.
+            (point) => isCustomerStage(point.stage) || !hiddenCategories.has(categoryFor(point)),
+          ),
     [agencyPoints, hiddenCategories],
   )
 
