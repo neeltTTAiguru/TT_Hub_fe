@@ -86,10 +86,11 @@ type MapPoint = {
  * a customer is also "in HubSpot", so it has to be claimed first or it would
  * fall into a second bucket and the counts would not sum.
  */
-type PinCategory = 'customer' | 'bwc' | 'noBwc' | 'unknownBwc'
+type PinCategory = 'bwc' | 'noBwc' | 'unknownBwc'
 
-function categoryFor(point: { stage: string; bwcStatus: string }): PinCategory {
-  if (isCustomerStage(point.stage)) return 'customer'
+// Customers are no longer a category of their own: they keep their distinct
+// ticked pin, but they are filtered by camera status like every other agency.
+function categoryFor(point: { bwcStatus: string }): PinCategory {
   if (point.bwcStatus === 'yes') return 'bwc'
   if (point.bwcStatus === 'no') return 'noBwc'
   // planned and purchased_not_deployed land here: nothing is deployed yet, so
@@ -522,12 +523,7 @@ export default function AgencyMap() {
 
   /** Live tally per legend row, from what is actually plotted right now. */
   const categoryCounts = useMemo(() => {
-    const counts: Record<PinCategory, number> = {
-      customer: 0,
-      bwc: 0,
-      noBwc: 0,
-      unknownBwc: 0,
-    }
+    const counts: Record<PinCategory, number> = { bwc: 0, noBwc: 0, unknownBwc: 0 }
     for (const point of agencyPoints) counts[categoryFor(point)] += 1
     return counts
   }, [agencyPoints])
@@ -883,13 +879,6 @@ export default function AgencyMap() {
                   color: UNKNOWN_BWC_COLOR,
                   striped: false,
                 },
-                {
-                  key: 'customer',
-                  label: 'Current customer',
-                  color: CUSTOMER_COLOR,
-                  striped: false,
-                  emphasis: true,
-                },
               ] as Array<{
                 key: PinCategory
                 label: string
@@ -943,7 +932,8 @@ export default function AgencyMap() {
 
           <Text type="secondary" style={{ fontSize: 12 }}>
             Untick a box to hide those pins. Red = has cameras, green = confirmed none, amber =
-            nobody has published either way. Stripes = already in HubSpot. Camera status comes from four sources of differing strength - a
+            nobody has published either way. Stripes = already in HubSpot, and a larger ticked
+            green pin is a current customer. Camera status comes from four sources of differing strength - a
             documented sighting, an agency's own survey answer, a camera grant, or a state mandate.
             A mandate is a legal duty, not a verified purchase. Open a pin to see which applies to
             that agency, and how its location was placed.
