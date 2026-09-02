@@ -116,6 +116,43 @@ function categoryFor(point: {
   return point.inPipeline ? 'unknownBwcPipeline' : 'unknownBwc'
 }
 
+/**
+ * One line describing what we know about this agency's cameras.
+ *
+ * Both the answer AND how it was established, because the four evidence
+ * classes are not interchangeable: a sighting is a fact, a survey answer is a
+ * self-report with a date on it, and a state mandate is only a legal duty that
+ * small departments routinely lag behind. Rendering them identically would be
+ * the same mistake as printing nothing at all for a confirmed "no".
+ */
+function bwcLine(p: {
+  bwcStatus?: string
+  bwcEvidence?: string
+  bwcAsOf?: string | null
+  bwcVendor?: string
+}) {
+  const year = p.bwcAsOf ? new Date(p.bwcAsOf).getFullYear() : null
+  const vendor = p.bwcVendor ? ` - ${p.bwcVendor}` : ''
+  if (p.bwcStatus === 'no') {
+    return `Body cameras: NO - agency reported none${year ? `, ${year}` : ''}`
+  }
+  if (p.bwcStatus === 'yes') {
+    switch (p.bwcEvidence) {
+      case 'observed':
+        return `Body cameras: yes${vendor}${year ? ` (documented ${year})` : ''}`
+      case 'surveyed':
+        return `Body cameras: yes${vendor} (agency reported${year ? `, ${year}` : ''})`
+      case 'funded':
+        return `Body cameras: yes - took a camera grant${year ? ` (${year})` : ''}`
+      case 'mandated':
+        return 'Body cameras: required by state law - not individually verified'
+      default:
+        return `Body cameras: yes${vendor}`
+    }
+  }
+  return 'Body cameras: unknown - nobody has published either way'
+}
+
 /** Colour says one thing only: does this agency have body-worn cameras. */
 function colorFor(bwcStatus: string) {
   if (bwcStatus === 'yes') return BWC_COLOR
