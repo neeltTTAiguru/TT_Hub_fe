@@ -29,36 +29,25 @@ const STATES = [
   'SC', 'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY',
 ]
 
-const SIZE_BANDS = [
-  { max: 10, label: '1-10 officers', color: '#2f6f4f' },
-  { max: 25, label: '11-25 officers', color: '#5c8a3c' },
-  { max: 50, label: '26-50 officers', color: '#b08a2e' },
-  { max: 100, label: '51-100 officers', color: '#b4622b' },
-  { max: Infinity, label: '100+ officers', color: '#8c3a3a' },
-]
-
-const UNKNOWN_COLOR = '#8c8c8c'
-
 // A won deal means a live customer. They are the pins worth spotting first.
 const CUSTOMER_STAGE = 'Closed Won'
 const CUSTOMER_COLOR = '#1f8f4d'
 
 export const isCustomerStage = (stage: string) => stage === CUSTOMER_STAGE
 
-const STAGE_COLORS: Record<string, string> = {
-  'Closed Won': CUSTOMER_COLOR,
-  'Contract Sent': '#3f7d5c',
-  'Quote Sent': '#5c8a3c',
-  'Trial In Progress': '#8fa02f',
-  'Trial Agreement Sent': '#b08a2e',
-  'Trial Requested': '#c2922c',
-  'Presentation / Demonstration Completed': '#b4622b',
-  'Qualified Lead': '#9c6b4f',
-  'Closed Lost': '#8c3a3a',
-  'No Further Interest': '#6b6b6b',
-}
-
-const NOT_IN_PIPELINE_COLOR = '#c8c8c0'
+// The two signals on this map are independent and must stay that way:
+//   COLOUR  = does this agency have a documented body-worn camera
+//   STRIPES = is it already in the HubSpot pipeline
+// Conflating them hides the camera layer, because only 20 of the 5,071
+// camera-equipped agencies are in HubSpot at all.
+const BWC_COLOR = '#7f1d1d'
+// Muted sage rather than the customer pin's vivid green, so a confirmed "no"
+// never gets misread as "this is already a customer".
+const NO_BWC_COLOR = '#6f9457'
+// Amber for "nobody has published either way". Kept distinct from green
+// because a surveyed NO and an unresearched agency are opposite facts: one is
+// a qualified prospect, the other is a to-do.
+const UNKNOWN_BWC_COLOR = '#d4a017'
 
 
 // Reverse pipeline order: the stages worth looking at first sit at the top.
@@ -75,8 +64,6 @@ const STAGE_ORDER = [
   'No Further Interest',
 ]
 
-type ColorMode = 'size' | 'stage'
-
 type MapPoint = {
   kind: 'agency' | 'deal'
   id: string
@@ -87,6 +74,10 @@ type MapPoint = {
   stage: string
   inPipeline: boolean
   officers: number | null
+  hasBwc: boolean
+  // yes | no | unknown
+  bwcStatus: string
+  bwcVendor: string
   lines: string[]
   approximate: boolean
   contact?: {
@@ -100,11 +91,36 @@ type MapPoint = {
   }
 }
 
-function bandFor(officers: number | null) {
-  if (officers === null || officers === undefined) {
-    return { label: 'No count reported', color: UNKNOWN_COLOR }
-  }
-  return SIZE_BANDS.find((band) => officers <= band.max) ?? SIZE_BANDS[SIZE_BANDS.length - 1]
+/**
+ * Which legend row a pin belongs to. Exactly one, and the order matters:
+ * a customer is also "in HubSpot", so it has to be claimed first or it would
+ * fall into a second bucket and the counts would not sum.
+ */
+type PinCategory =
+  | 'customer'
+  | 'bwc'
+  | 'bwcPipeline'
+  | 'noBwc'
+  | 'noBwcPipeline'
+  | 'unknownBwc'
+  | 'unknownBwcPipeline'
+
+function categoryFor(point: {
+  stage: string
+  inPipeline: boolean
+  bwcStatus: string
+}): PinCategory {
+  if (isCustomerStage(point.stage)) return 'customer'
+  if (point.bwcStatus === 'yes') return point.inPipeline ? 'bwcPipeline' : 'bwc'
+  if (point.bwcStatus === 'no') return point.inPipeline ? 'noBwcPipeline' : 'noBwc'
+  return point.inPipeline ? 'unknownBwcPipeline' : 'unknownBwc'
+}
+
+/** Colour says one thing only: does this agency have body-worn cameras. */
+function colorFor(bwcStatus: string) {
+  if (bwcStatus === 'yes') return BWC_COLOR
+  if (bwcStatus === 'no') return NO_BWC_COLOR
+  return UNKNOWN_BWC_COLOR
 }
 
 const EARTH_RADIUS_MILES = 3958.7613
@@ -120,11 +136,10 @@ function haversineMiles(a: { lat: number; lon: number }, b: { lat: number; lon: 
 }
 
 /** Pin width for a point, mirroring the sizing used by each icon builder. */
-function pinWidthFor(point: { officers: number | null; stage: string; approximate: boolean }) {
+function pinWidthFor(point: { officers: number | null; stage: string }) {
   if (isCustomerStage(point.stage)) {
     return point.officers === null ? 30 : Math.min(30 + Math.sqrt(point.officers) * 1.1, 42)
   }
-  if (point.approximate) return 22
   return point.officers === null ? 20 : Math.min(20 + Math.sqrt(point.officers) * 1.1, 34)
 }
 
@@ -178,6 +193,25 @@ function distanceLabel(text: string) {
 const PIN_PATH =
   'M12 0C5.373 0 0 5.373 0 12c0 8.4 12 20 12 20s12-11.6 12-20C24 5.373 18.627 0 12 0z'
 
+/**
+ * Diagonal stripe fill, used to mark a pin as already in the HubSpot pipeline.
+ *
+ * The pattern id has to be unique per colour or every pin on the page inherits
+ * whichever one rendered first - SVG pattern ids share a single document scope
+ * even across separate <svg> elements. Deriving it from the colour keeps it
+ * stable across re-renders without a counter.
+ */
+function stripePattern(color: string) {
+  const id = `stripe-${color.replace('#', '')}`
+  const defs =
+    `<defs><pattern id="${id}" patternUnits="userSpaceOnUse" width="4" height="4" ` +
+    `patternTransform="rotate(45)">` +
+    `<rect width="4" height="4" fill="#ffffff"/>` +
+    `<rect width="2" height="4" fill="${color}"/>` +
+    `</pattern></defs>`
+  return { id, defs }
+}
+
 function pinSvg(inner: string, width: number, height: number) {
   return `<svg width="${width}" height="${height}" viewBox="0 0 24 32" xmlns="http://www.w3.org/2000/svg" style="display:block;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.35));">${inner}</svg>`
 }
@@ -192,22 +226,42 @@ function makePin(html: string, width: number, height: number) {
   })
 }
 
-/** Solid pin, sized by officer count, coloured by the active mode. */
-function dotIcon(officers: number | null, colorMode: ColorMode, stage: string, inPipeline: boolean) {
-  const color =
-    colorMode === 'stage'
-      ? inPipeline
-        ? STAGE_COLORS[stage] ?? UNKNOWN_COLOR
-        : NOT_IN_PIPELINE_COLOR
-      : bandFor(officers).color
-
+/**
+ * Agency pin, carrying two independent signals at once.
+ *
+ *   fill colour -> the active mode; in BWC mode dark red means the Atlas has
+ *                  documented a body-worn camera here
+ *   stripes     -> this agency is already in the HubSpot pipeline
+ *
+ * They are deliberately orthogonal. Letting pipeline membership drive the
+ * colour would erase the camera layer, since only 20 of 5,071 camera-equipped
+ * agencies are in HubSpot.
+ */
+function dotIcon(officers: number | null, inPipeline: boolean, bwcStatus: string) {
   const width = officers === null ? 20 : Math.min(20 + Math.sqrt(officers) * 1.1, 34)
-  const height = Math.round(width * 4 / 3)
+  const height = Math.round((width * 4) / 3)
+
+  const color = colorFor(bwcStatus)
+
+  if (!inPipeline) {
+    return makePin(
+      pinSvg(
+        `<path d="${PIN_PATH}" fill="${color}" stroke="#ffffff" stroke-width="1.75"/>` +
+          `<circle cx="12" cy="12" r="4.4" fill="#ffffff" fill-opacity="0.92"/>`,
+        width,
+        height,
+      ),
+      width,
+      height,
+    )
+  }
+
+  const { id, defs } = stripePattern(color)
 
   return makePin(
     pinSvg(
-      `<path d="${PIN_PATH}" fill="${color}" stroke="#ffffff" stroke-width="1.75"/>` +
-        `<circle cx="12" cy="12" r="4.4" fill="#ffffff" fill-opacity="0.92"/>`,
+      `${defs}<path d="${PIN_PATH}" fill="url(#${id})" stroke="${color}" stroke-width="2.25" stroke-linejoin="round"/>` +
+        `<circle cx="12" cy="12" r="4.4" fill="#ffffff" fill-opacity="0.95"/>`,
       width,
       height,
     ),
@@ -217,20 +271,18 @@ function dotIcon(officers: number | null, colorMode: ColorMode, stage: string, i
 }
 
 /**
- * Customer pin: larger, brighter, haloed, and carrying a tick. Approximate
- * customer locations keep the dashed outline so provenance is never lost.
+ * Customer pin: larger, brighter, haloed, and carrying a tick.
+ *
+ * Left solid rather than striped even though a customer is by definition in the
+ * pipeline. These are the twelve landmarks the rest of the map is read against,
+ * and stripes behind a tick at this size is mush.
  */
-function customerIcon(officers: number | null, approximate: boolean) {
+function customerIcon(officers: number | null) {
   const width = officers === null ? 30 : Math.min(30 + Math.sqrt(officers) * 1.1, 42)
   const height = Math.round((width * 4) / 3)
 
-  const body = approximate
-    ? `<path d="${PIN_PATH}" fill="#ffffff" fill-opacity="0.9" stroke="${CUSTOMER_COLOR}" stroke-width="2.75" stroke-dasharray="4 2.6" stroke-linejoin="round"/>`
-    : `<path d="${PIN_PATH}" fill="${CUSTOMER_COLOR}" stroke="#ffffff" stroke-width="2"/>`
-
-  const tick = `<path d="M7.6 12.1 L10.6 15.1 L16.6 9.1" fill="none" stroke="${
-    approximate ? CUSTOMER_COLOR : '#ffffff'
-  }" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>`
+  const body = `<path d="${PIN_PATH}" fill="${CUSTOMER_COLOR}" stroke="#ffffff" stroke-width="2"/>`
+  const tick = `<path d="M7.6 12.1 L10.6 15.1 L16.6 9.1" fill="none" stroke="#ffffff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>`
 
   const html = `<svg width="${width}" height="${height}" viewBox="0 0 24 32" xmlns="http://www.w3.org/2000/svg" style="display:block;filter:drop-shadow(0 0 3px rgba(31,143,77,0.55)) drop-shadow(0 1px 2px rgba(0,0,0,0.35));">${body}${tick}</svg>`
 
@@ -241,24 +293,6 @@ function customerIcon(officers: number | null, approximate: boolean) {
     iconAnchor: [width / 2, height],
     popupAnchor: [0, -height + 6],
   })
-}
-
-/** Hollow, dashed pin: this location is inferred, not surveyed. */
-function approximateIcon(stage: string, inPipeline: boolean) {
-  const color = inPipeline ? STAGE_COLORS[stage] ?? UNKNOWN_COLOR : NOT_IN_PIPELINE_COLOR
-  const width = 22
-  const height = Math.round(width * 4 / 3)
-
-  return makePin(
-    pinSvg(
-      `<path d="${PIN_PATH}" fill="#ffffff" fill-opacity="0.82" stroke="${color}" stroke-width="2.75" stroke-dasharray="4 2.6" stroke-linejoin="round"/>` +
-        `<circle cx="12" cy="12" r="3" fill="${color}"/>`,
-      width,
-      height,
-    ),
-    width,
-    height,
-  )
 }
 
 /** Cluster bubbles in the app's own palette, sized by how much they contain. */
@@ -285,6 +319,8 @@ export default function AgencyMap() {
   const [measureMode, setMeasureMode] = useState(false)
   const [selected, setSelected] = useState<MapPoint[]>([])
   const [showAgencies, setShowAgencies] = useState(true)
+  // Legend rows double as filters. Empty = nothing hidden.
+  const [hiddenCategories, setHiddenCategories] = useState<Set<PinCategory>>(new Set())
   const [showDeals, setShowDeals] = useState(true)
   const [features, setFeatures] = useState<LeAgencyFeature[]>([])
   const [dealFeatures, setDealFeatures] = useState<CrmDealFeature[]>([])
@@ -297,7 +333,6 @@ export default function AgencyMap() {
   const [state, setState] = useState<string | undefined>(undefined)
   const [agencyType, setAgencyType] = useState<string | undefined>(undefined)
   const [search, setSearch] = useState('')
-  const [colorMode, setColorMode] = useState<ColorMode>('stage')
   const [crm, setCrm] = useState<'all' | 'matched' | 'unmatched'>('all')
   const [stages, setStages] = useState<string[]>([])
 
@@ -395,6 +430,9 @@ export default function AgencyMap() {
       stage: f.properties.stage,
       inPipeline: f.properties.inPipeline,
       officers: f.properties.swornOfficers,
+      hasBwc: Boolean(f.properties.hasBwc),
+      bwcStatus: f.properties.bwcStatus || 'unknown',
+      bwcVendor: f.properties.bwcVendor || '',
       lines: [
         f.properties.streetAddress
           ? `${f.properties.streetAddress}${
@@ -412,6 +450,9 @@ export default function AgencyMap() {
         f.properties.inPipeline
           ? `${f.properties.stage}${f.properties.dealCount > 1 ? ` (${f.properties.dealCount} deals)` : ''}`
           : 'Not in HubSpot',
+        // Always stated, for every agency. Silence used to mean both "we asked
+        // and they said no" and "we have no idea", which are opposite facts.
+        bwcLine(f.properties),
         // Say where the pin came from. A county-centre pin is not a location.
         f.properties.precision === 'county'
           ? 'Location: county centre only (FBI published no address)'
@@ -448,6 +489,9 @@ export default function AgencyMap() {
         stage: f.properties.stage,
         inPipeline: true,
         officers: null,
+        hasBwc: false,
+        bwcStatus: 'unknown',
+        bwcVendor: '',
         lines: [
           'HubSpot deal',
           f.properties.owner ? `Owner: ${f.properties.owner}` : '',
@@ -458,7 +502,41 @@ export default function AgencyMap() {
       }))
   }, [showDeals, showAgencies, dealFeatures])
 
-  const points = useMemo(() => [...agencyPoints, ...dealPoints], [agencyPoints, dealPoints])
+  /** Live tally per legend row, from what is actually plotted right now. */
+  const categoryCounts = useMemo(() => {
+    const counts: Record<PinCategory, number> = {
+      customer: 0,
+      bwc: 0,
+      bwcPipeline: 0,
+      noBwc: 0,
+      noBwcPipeline: 0,
+      unknownBwc: 0,
+      unknownBwcPipeline: 0,
+    }
+    for (const point of agencyPoints) counts[categoryFor(point)] += 1
+    return counts
+  }, [agencyPoints])
+
+  const visibleAgencyPoints = useMemo(
+    () =>
+      hiddenCategories.size === 0
+        ? agencyPoints
+        : agencyPoints.filter((point) => !hiddenCategories.has(categoryFor(point))),
+    [agencyPoints, hiddenCategories],
+  )
+
+  const toggleCategory = (category: PinCategory) =>
+    setHiddenCategories((current) => {
+      const next = new Set(current)
+      if (next.has(category)) next.delete(category)
+      else next.add(category)
+      return next
+    })
+
+  const points = useMemo(
+    () => [...visibleAgencyPoints, ...dealPoints],
+    [visibleAgencyPoints, dealPoints],
+  )
 
   const togglePoint = (point: MapPoint) => {
     setSelected((current) => {
@@ -619,22 +697,13 @@ export default function AgencyMap() {
           >
             Customers only
           </Button>
-          <Select
-            style={{ width: 180 }}
-            value={colorMode}
-            onChange={(value) => setColorMode(value)}
-            options={[
-              { value: 'stage', label: 'Colour by stage' },
-              { value: 'size', label: 'Colour by size' },
-            ]}
-          />
         </Space>
       </Card>
 
       <Row gutter={16}>
         <Col xs={12} md={6}>
           <Card className="section-card">
-            <Statistic title="Agencies plotted" value={agencyPoints.length} />
+            <Statistic title="Agencies plotted" value={visibleAgencyPoints.length} />
           </Card>
         </Col>
         <Col xs={12} md={6}>
@@ -720,6 +789,7 @@ export default function AgencyMap() {
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
           <MarkerClusterGroup
+            key={`clusters:${[...hiddenCategories].sort().join(',')}`}
             chunkedLoading
             maxClusterRadius={50}
             iconCreateFunction={createClusterIcon}
@@ -732,10 +802,8 @@ export default function AgencyMap() {
                 position={[point.lat, point.lon]}
                 icon={
                   isCustomerStage(point.stage)
-                    ? customerIcon(point.officers, point.approximate)
-                    : point.approximate
-                      ? approximateIcon(point.stage, point.inPipeline)
-                      : dotIcon(point.officers, colorMode, point.stage, point.inPipeline)
+                    ? customerIcon(point.officers)
+                    : dotIcon(point.officers, point.inPipeline, point.bwcStatus)
                 }
                 zIndexOffset={isCustomerStage(point.stage) ? 1000 : 0}
                 eventHandlers={measureMode ? { click: () => togglePoint(point) } : undefined}
@@ -843,52 +911,107 @@ export default function AgencyMap() {
       </Card>
 
       <Card className="section-card" title="Legend">
-        <Space wrap size={16}>
-          {(colorMode === 'stage'
-            ? [
-                ...STAGE_ORDER.map((label) => ({ label, color: STAGE_COLORS[label] })),
-                { label: 'Not in HubSpot', color: NOT_IN_PIPELINE_COLOR },
-              ]
-            : [...SIZE_BANDS, { label: 'No count reported', color: UNKNOWN_COLOR }]
-          ).map((band) => (
-            <Space key={band.label} size={6}>
-              <span
-                style={{
-                  display: 'inline-block',
-                  width: 12,
-                  height: 12,
-                  borderRadius: '50%',
-                  background: band.color,
-                }}
-              />
-              <Text type="secondary">{band.label}</Text>
-            </Space>
-          ))}
-          <Space size={6}>
-            <span
-              style={{
-                display: 'inline-block',
-                width: 12,
-                height: 12,
-                borderRadius: '50%',
-                border: '2px dashed #8c8c8c',
-              }}
-            />
-            <Text type="secondary">Approximate location (dashed)</Text>
+        <Space direction="vertical" size={10} style={{ width: '100%' }}>
+          <Space wrap size={18}>
+            {(
+              [
+                { key: 'bwc', label: 'Has body-worn cameras', color: BWC_COLOR, striped: false },
+                {
+                  key: 'bwcPipeline',
+                  label: 'Has cameras, in HubSpot',
+                  color: BWC_COLOR,
+                  striped: true,
+                },
+                {
+                  key: 'noBwc',
+                  label: 'Confirmed no cameras',
+                  color: NO_BWC_COLOR,
+                  striped: false,
+                },
+                {
+                  key: 'noBwcPipeline',
+                  label: 'No cameras, in HubSpot',
+                  color: NO_BWC_COLOR,
+                  striped: true,
+                },
+                {
+                  key: 'unknownBwc',
+                  label: 'Unknown',
+                  color: UNKNOWN_BWC_COLOR,
+                  striped: false,
+                },
+                {
+                  key: 'unknownBwcPipeline',
+                  label: 'Unknown, in HubSpot',
+                  color: UNKNOWN_BWC_COLOR,
+                  striped: true,
+                },
+                {
+                  key: 'customer',
+                  label: 'Current customer',
+                  color: CUSTOMER_COLOR,
+                  striped: false,
+                  emphasis: true,
+                },
+              ] as Array<{
+                key: PinCategory
+                label: string
+                color: string
+                striped: boolean
+                emphasis?: boolean
+              }>
+            ).map((item) => {
+              const hidden = hiddenCategories.has(item.key)
+              return (
+                // The click lives on the row, not the Checkbox: antd's own
+                // onChange did not fire reliably here, and the whole row is a
+                // bigger target anyway. The Checkbox is display-only, with
+                // pointer events off so it can never fire a second toggle.
+                <Space
+                  key={item.key}
+                  size={6}
+                  onClick={() => toggleCategory(item.key)}
+                  role="checkbox"
+                  aria-checked={!hidden}
+                  aria-label={item.label}
+                  style={{ cursor: 'pointer', userSelect: 'none' }}
+                >
+                  <Checkbox checked={!hidden} onChange={() => {}} style={{ pointerEvents: 'none' }} />
+                  <span
+                    style={{
+                      display: 'inline-block',
+                      width: item.emphasis ? 15 : 13,
+                      height: item.emphasis ? 15 : 13,
+                      borderRadius: '50%',
+                      border: `1px solid ${item.color}`,
+                      background: item.striped ? undefined : item.color,
+                      backgroundImage: item.striped
+                        ? `repeating-linear-gradient(45deg, ${item.color} 0 2px, #ffffff 2px 4px)`
+                        : undefined,
+                      verticalAlign: 'middle',
+                    }}
+                  />
+                  <Text strong={item.emphasis} type={item.emphasis ? undefined : 'secondary'}>
+                    {item.label} ({categoryCounts[item.key].toLocaleString()})
+                  </Text>
+                </Space>
+              )
+            })}
+            {hiddenCategories.size ? (
+              <Button size="small" onClick={() => setHiddenCategories(new Set())}>
+                Show all
+              </Button>
+            ) : null}
           </Space>
-          <Space size={6}>
-            <span
-              style={{
-                display: 'inline-block',
-                width: 14,
-                height: 14,
-                borderRadius: '50%',
-                background: CUSTOMER_COLOR,
-                boxShadow: `0 0 0 2px #fff, 0 0 5px ${CUSTOMER_COLOR}`,
-              }}
-            />
-            <Text strong>Current customer (larger green pin, ticked)</Text>
-          </Space>
+
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            Untick a box to hide those pins. Red = has cameras, green = confirmed none, amber =
+            nobody has published either way. Stripes =
+            already in HubSpot. Camera status comes from four sources of differing strength - a
+            documented sighting, an agency's own survey answer, a camera grant, or a state mandate.
+            A mandate is a legal duty, not a verified purchase. Open a pin to see which applies to
+            that agency, and how its location was placed.
+          </Text>
         </Space>
       </Card>
       <AgencyBriefingPanel

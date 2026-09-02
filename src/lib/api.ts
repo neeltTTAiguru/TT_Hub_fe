@@ -2052,6 +2052,18 @@ export type LeAgencyFeature = {
     chiefTitle: string
     chiefSourceUrl: string
     commandStaff: Array<{ name: string; title: string }>
+    // Body-worn camera documented by the Atlas of Surveillance. `bwcVendor` is
+    // blank on most of them - that means the vendor was never published, not
+    // that the agency runs no vendor.
+    hasBwc: boolean
+    // yes | no | unknown. 'no' comes only from a source that asked the agency.
+    bwcStatus: string
+    // observed | surveyed | funded | mandated - how strong the claim is.
+    bwcEvidence: string
+    bwcAsOf: string | null
+    bwcDeclineReasons: string[]
+    bwcVendor: string
+    bwcEvidenceDate: string | null
   }
 }
 
@@ -2064,6 +2076,8 @@ export type LeAgencyStats = {
     inPipeline: number
     countyProxies: number
     resolved: number
+    withBwc: number
+    withBwcVendor: number
   }
   byState: Array<{ _id: string; agencies: number; under100: number }>
   bySizeBand: Array<{ _id: number | string; agencies: number }>
@@ -2081,6 +2095,9 @@ export type LeAgencyQuery = {
   page?: number
   crm?: 'matched' | 'unmatched'
   stage?: string
+  bwc?: boolean | 'unknown'
+  bwcVendor?: string
+  bwcEvidence?: string
 }
 
 function buildLeAgencyParams(query: LeAgencyQuery = {}) {
@@ -2092,6 +2109,9 @@ function buildLeAgencyParams(query: LeAgencyQuery = {}) {
   if (query.hasOfficerCount) params.set('hasOfficerCount', 'true')
   if (query.crm) params.set('crm', query.crm)
   if (query.stage) params.set('stage', query.stage)
+  if (query.bwc !== undefined) params.set('bwc', String(query.bwc))
+  if (query.bwcVendor) params.set('bwcVendor', query.bwcVendor)
+  if (query.bwcEvidence) params.set('bwcEvidence', query.bwcEvidence)
   if (query.search) params.set('search', query.search)
   if (typeof query.limit === 'number') params.set('limit', String(query.limit))
   if (typeof query.page === 'number') params.set('page', String(query.page))
