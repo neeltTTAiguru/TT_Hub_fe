@@ -8,7 +8,6 @@ import 'leaflet/dist/leaflet.css'
 import 'leaflet.markercluster/dist/MarkerCluster.css'
 import {
   getCrmDealGeojson,
-  getCrmDealStats,
   getLeAgencyGeojson,
   getLeAgencyStats,
   type CrmDealFeature,
@@ -28,6 +27,11 @@ const STATES = [
   'NJ', 'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI',
   'SC', 'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY',
 ]
+
+// Deals worth showing on a map: the ones with an outcome. Everything still in
+// flight is a pipeline question, not a geographic one, and it buried the
+// settled deals under noise.
+const PLOTTED_DEAL_STAGES = ['Closed Won', 'Closed Lost', 'No Further Interest']
 
 // A won deal means a live customer. They are the pins worth spotting first.
 const CUSTOMER_STAGE = 'Closed Won'
@@ -54,20 +58,6 @@ const UNKNOWN_BWC_COLOR = '#d4a017'
 // at. Blue because it belongs to neither the has nor the has-not group.
 const IN_MOTION_BWC_COLOR = '#1f6f8f'
 
-
-// Reverse pipeline order: the stages worth looking at first sit at the top.
-const STAGE_ORDER = [
-  'Closed Won',
-  'Contract Sent',
-  'Quote Sent',
-  'Trial In Progress',
-  'Trial Agreement Sent',
-  'Trial Requested',
-  'Presentation / Demonstration Completed',
-  'Qualified Lead',
-  'Closed Lost',
-  'No Further Interest',
-]
 
 type MapPoint = {
   kind: 'agency' | 'deal'
@@ -382,10 +372,10 @@ export default function AgencyMap() {
   const [briefingFor, setBriefingFor] = useState<{ ori: string; name: string } | null>(null)
   const [measureMode, setMeasureMode] = useState(false)
   const [selected, setSelected] = useState<MapPoint[]>([])
-  const [showAgencies, setShowAgencies] = useState(true)
+
   // Legend rows double as filters. Empty = nothing hidden.
   const [hiddenCategories, setHiddenCategories] = useState<Set<PinCategory>>(new Set())
-  const [showDeals, setShowDeals] = useState(true)
+
   const [features, setFeatures] = useState<LeAgencyFeature[]>([])
   const [dealFeatures, setDealFeatures] = useState<CrmDealFeature[]>([])
   const [stats, setStats] = useState<LeAgencyStats | null>(null)
@@ -397,8 +387,8 @@ export default function AgencyMap() {
   const [state, setState] = useState<string | undefined>(undefined)
   const [agencyType, setAgencyType] = useState<string | undefined>(undefined)
   const [search, setSearch] = useState('')
-  const [crm, setCrm] = useState<'all' | 'matched' | 'unmatched'>('all')
-  const [stages, setStages] = useState<string[]>([])
+  // The stage multi-select is gone; this is the one stage question left.
+  const [customersOnly, setCustomersOnly] = useState(false)
 
   const query = useMemo(
     () => ({
@@ -407,10 +397,9 @@ export default function AgencyMap() {
       search: search.trim() || undefined,
       maxOfficers: maxOfficers ?? undefined,
       hasOfficerCount: maxOfficers !== null,
-      crm: crm === 'all' ? undefined : crm,
-      stage: stages.length ? stages.join(',') : undefined,
+      stage: customersOnly ? CUSTOMER_STAGE : undefined,
     }),
-    [state, agencyType, search, maxOfficers, crm, stages],
+    [state, agencyType, search, maxOfficers, customersOnly],
   )
 
   useEffect(() => {
@@ -448,27 +437,12 @@ export default function AgencyMap() {
   // sit on an FBI-rostered agency - so it read "Closed Won (2)" against 12
   // real won deals. `unplaced` is carried too, because a deal with no usable
   // location never reaches the map and that gap belongs in the label.
-  const [stageCounts, setStageCounts] = useState<
-    Record<string, { deals: number; unplaced: number }>
-  >({})
-
   useEffect(() => {
-    // Fetched once, without a stage filter, so the option counts stay stable.
-    getCrmDealStats()
-      .then((result) => {
-        const next: Record<string, { deals: number; unplaced: number }> = {}
-        for (const row of result.byStage || []) {
-          next[row._id] = { deals: row.deals, unplaced: row.unplaced }
-        }
-        setStageCounts(next)
-      })
-      .catch(() => setStageCounts({}))
-  }, [])
-
-  useEffect(() => {
-    if (!showDeals) return
     let cancelled = false
-    const dealQuery = { stage: stages.length ? stages.join(',') : undefined, state }
+    const dealQuery = {
+      stage: (customersOnly ? [CUSTOMER_STAGE] : PLOTTED_DEAL_STAGES).join(','),
+      state,
+    }
 
     getCrmDealGeojson(dealQuery)
       .then((geo) => {
@@ -480,10 +454,9 @@ export default function AgencyMap() {
       })
 
     return () => { cancelled = true }
-  }, [showDeals, stages, state])
+  }, [customersOnly, state])
 
   const agencyPoints: MapPoint[] = useMemo(() => {
-    if (!showAgencies) return []
     return features.map((f) => ({
       kind: 'agency' as const,
       id: `agency:${f.properties.ori}`,
@@ -536,13 +509,16 @@ export default function AgencyMap() {
         phone: f.properties.phone,
       },
     }))
-  }, [showAgencies, features])
+  }, [features])
 
   const dealPoints: MapPoint[] = useMemo(() => {
-    if (!showDeals) return []
     return dealFeatures
       // With the agency layer on, an exactly-matched deal is a duplicate pin.
-      .filter((f) => !(showAgencies && f.properties.locationSource === 'exact'))
+      // An exactly-matched deal duplicates the agency pin underneath it.
+      .filter((f) => !(f.properties.locationSource === 'exact'))
+      // The API is asked for settled stages only; this holds the line if a
+      // cached or stale response carries anything else.
+      .filter((f) => PLOTTED_DEAL_STAGES.includes(f.properties.stage))
       .map((f) => ({
         kind: 'deal' as const,
         id: `deal:${f.properties.dealId}`,
@@ -564,7 +540,7 @@ export default function AgencyMap() {
         ].filter(Boolean),
         approximate: f.properties.locationSource !== 'exact',
       }))
-  }, [showDeals, showAgencies, dealFeatures])
+  }, [dealFeatures])
 
   /** Live tally per legend row, from what is actually plotted right now. */
   const categoryCounts = useMemo(() => {
@@ -652,14 +628,6 @@ export default function AgencyMap() {
 
       <Card className="section-card">
         <Space wrap size={12} style={{ width: '100%' }}>
-          <Space size={12}>
-            <Checkbox checked={showAgencies} onChange={(e) => setShowAgencies(e.target.checked)}>
-              FBI agencies
-            </Checkbox>
-            <Checkbox checked={showDeals} onChange={(e) => setShowDeals(e.target.checked)}>
-              HubSpot deals
-            </Checkbox>
-          </Space>
           <Select
             allowClear
             placeholder="All states"
@@ -671,7 +639,6 @@ export default function AgencyMap() {
           />
           <Select
             style={{ width: 200 }}
-            disabled={!showAgencies}
             value={maxOfficers}
             onChange={(value) => setMaxOfficers(value)}
             options={[
@@ -684,7 +651,6 @@ export default function AgencyMap() {
           />
           <Select
             allowClear
-            disabled={!showAgencies}
             placeholder="All agency types"
             style={{ width: 200 }}
             value={agencyType}
@@ -697,52 +663,6 @@ export default function AgencyMap() {
             style={{ width: 240 }}
             onSearch={(value) => setSearch(value)}
           />
-          <Select
-            style={{ width: 190 }}
-            disabled={!showAgencies}
-            value={crm}
-            onChange={(value) => {
-              setCrm(value)
-              if (value === 'unmatched') setStages([])
-            }}
-            options={[
-              { value: 'all', label: 'All agencies' },
-              { value: 'matched', label: 'In HubSpot pipeline' },
-              { value: 'unmatched', label: 'Never contacted' },
-            ]}
-          />
-          <Select
-            mode="multiple"
-            allowClear
-            disabled={crm === 'unmatched'}
-            placeholder={crm === 'unmatched' ? 'No stage (never contacted)' : 'All stages'}
-            // Fixed width and a numeric tag count, both deliberately.
-            //
-            // A min/max width makes this control size itself to its contents,
-            // and maxTagCount="responsive" measures the available space with a
-            // ResizeObserver to decide how many tags fit. Inside a wrapping
-            // flex row the two feed each other: showing a tag widens the
-            // control, which reflows the row, which changes the space it has,
-            // which changes how many tags fit. The row never settles and the
-            // whole bar visibly shakes.
-            //
-            // A fixed width cannot be changed by its contents, and a numeric
-            // count needs no measurement at all, so neither loop can start.
-            style={{ width: 340 }}
-            value={stages}
-            onChange={(value) => setStages(value)}
-            maxTagCount={1}
-            options={STAGE_ORDER.map((stage) => {
-              const count = stageCounts[stage]
-              if (!count?.deals) return { value: stage, label: stage }
-              return {
-                value: stage,
-                label: count.unplaced
-                  ? `${stage} (${count.deals}, ${count.unplaced} unmapped)`
-                  : `${stage} (${count.deals})`,
-              }
-            })}
-          />
           <Button
             type={measureMode ? 'primary' : 'default'}
             onClick={() => {
@@ -754,12 +674,8 @@ export default function AgencyMap() {
           </Button>
           <Button
             size="middle"
-            type={stages.length === 1 && stages[0] === CUSTOMER_STAGE ? 'primary' : 'default'}
-            onClick={() =>
-              setStages((current) =>
-                current.length === 1 && current[0] === CUSTOMER_STAGE ? [] : [CUSTOMER_STAGE],
-              )
-            }
+            type={customersOnly ? 'primary' : 'default'}
+            onClick={() => setCustomersOnly((on) => !on)}
           >
             Customers only
           </Button>
