@@ -1,8 +1,14 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Alert, Button, Card, Checkbox, Col, Input, Row, Select, Space, Statistic, Spin, Typography, message } from 'antd'
-import { MapContainer, TileLayer, Marker, Polyline, Popup } from 'react-leaflet'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Alert, AutoComplete, Button, Card, Checkbox, Col, Input, Modal, Row, Select, Space, Statistic, Spin, Typography, message } from 'antd'
+import { MapContainer, TileLayer, Marker, Polyline, Popup, useMap } from 'react-leaflet'
 import MarkerClusterGroup from 'react-leaflet-cluster'
 import AgencyBriefingPanel from '../components/AgencyBriefingPanel'
+import TravellerChat from '../components/TravellerChat'
+import {
+  TRAVELLER_SPRITE,
+  TRAVELLER_SPRITE_WAVE,
+  travellerSvg,
+} from '../components/travellerSprite'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import 'leaflet.markercluster/dist/MarkerCluster.css'
@@ -10,9 +16,13 @@ import {
   getCrmDealGeojson,
   getLeAgencyGeojson,
   getLeAgencyStats,
+  getResearchActivity,
+  moveTraveller,
+  setTrustedBwc,
   type CrmDealFeature,
   type LeAgencyFeature,
   type LeAgencyStats,
+  type ResearchActivity,
 } from '../lib/api'
 
 const { Paragraph, Text, Title } = Typography
@@ -52,6 +62,26 @@ const NO_BWC_COLOR = '#6f9457'
 // because a surveyed NO and an unresearched agency are opposite facts: one is
 // a qualified prospect, the other is a to-do.
 const UNKNOWN_BWC_COLOR = '#d4a017'
+// The vendors actually seen in the data, offered as suggestions rather than a
+// closed list - the long tail here is real, and a free-text box that quietly
+// refuses an unlisted vendor is worse than no suggestions at all.
+const COMMON_VENDORS = [
+  'Axon',
+  'Motorola/WatchGuard',
+  'Getac',
+  'Utility',
+  'Digital Ally',
+  'Wolfcom',
+  'Coban',
+  'Reveal',
+  'Visual Labs',
+  'Panasonic',
+  'Pro-Vision',
+  'LensLock',
+]
+// The live research run. A deliberate outsider in this palette - it is the one
+// thing on the map that is happening rather than known.
+const TRAVELLER_COLOR = '#1f6f8f'
 
 
 type MapPoint = {
@@ -67,6 +97,9 @@ type MapPoint = {
   hasBwc: boolean
   // yes | no | unknown
   bwcStatus: string
+  // our own verdict: has_bwc | no_bwc | ''
+  bwcTrusted: string
+  bwcTrustedBy: string
   bwcVendor: string
   lines: string[]
   approximate: boolean
@@ -90,12 +123,29 @@ type PinCategory = 'bwc' | 'noBwc' | 'unknownBwc'
 
 // Customers are no longer a category of their own: they keep their distinct
 // ticked pin, but they are filtered by camera status like every other agency.
-function categoryFor(point: { bwcStatus: string }): PinCategory {
+function categoryFor(point: { bwcStatus: string; bwcTrusted?: string }): PinCategory {
+  if (point.bwcTrusted === 'has_bwc') return 'bwc'
+  if (point.bwcTrusted === 'no_bwc') return 'noBwc'
   if (point.bwcStatus === 'yes') return 'bwc'
   if (point.bwcStatus === 'no') return 'noBwc'
   // planned and purchased_not_deployed land here: nothing is deployed yet, so
   // the map does not claim they have cameras. The card still says which it is.
   return 'unknownBwc'
+}
+
+/**
+ * Our own research verdict, stated on every card.
+ *
+ * Kept apart from the outside-source line below because they answer different
+ * questions: this one is "did WE check, and what did we find", which is the
+ * only claim we stand behind.
+ */
+function trustedLine(p: { bwcTrusted?: string; bwcVendor?: string }) {
+  if (p.bwcTrusted === 'has_bwc') {
+    return `Trusted research: ALREADY HAS BWC${p.bwcVendor ? ` - ${p.bwcVendor}` : ''}`
+  }
+  if (p.bwcTrusted === 'no_bwc') return 'Trusted research: NO BWC'
+  return 'Trusted research: not checked yet'
 }
 
 /**
@@ -108,6 +158,7 @@ function categoryFor(point: { bwcStatus: string }): PinCategory {
  * the same mistake as printing nothing at all for a confirmed "no".
  */
 function bwcLine(p: {
+  bwcTrusted?: string
   bwcStatus?: string
   bwcEvidence?: string
   bwcAsOf?: string | null
@@ -149,8 +200,17 @@ function bwcLine(p: {
   return 'Body cameras: unknown - nobody has published either way'
 }
 
-/** Colour says one thing only: does this agency have body-worn cameras. */
-function colorFor(bwcStatus: string) {
+/**
+ * Colour says one thing only: does this agency have body-worn cameras.
+ *
+ * Our own research wins when it exists. Everything else pools four outside
+ * sources of very different strength - a sighting, a survey answer, a grant, a
+ * state mandate - and a pin we went and verified should not look identical to
+ * one coloured by a statute.
+ */
+function colorFor(bwcStatus: string, bwcTrusted = '') {
+  if (bwcTrusted === 'has_bwc') return BWC_COLOR
+  if (bwcTrusted === 'no_bwc') return NO_BWC_COLOR
   if (bwcStatus === 'yes') return BWC_COLOR
   if (bwcStatus === 'no') return NO_BWC_COLOR
   return UNKNOWN_BWC_COLOR
@@ -270,11 +330,16 @@ function makePin(html: string, width: number, height: number) {
  * colour would erase the camera layer, since only 20 of 5,071 camera-equipped
  * agencies are in HubSpot.
  */
-function dotIcon(officers: number | null, inPipeline: boolean, bwcStatus: string) {
+function dotIcon(
+  officers: number | null,
+  inPipeline: boolean,
+  bwcStatus: string,
+  bwcTrusted = '',
+) {
   const width = officers === null ? 20 : Math.min(20 + Math.sqrt(officers) * 1.1, 34)
   const height = Math.round((width * 4) / 3)
 
-  const color = colorFor(bwcStatus)
+  const color = colorFor(bwcStatus, bwcTrusted)
 
   if (!inPipeline) {
     return makePin(
@@ -328,6 +393,69 @@ function customerIcon(officers: number | null) {
   })
 }
 
+/**
+ * The research run's current position: a pixel-art wanderer.
+ *
+ * Deliberately unlike every other marker here. The pins encode facts about
+ * agencies; he is a thing that is happening, so he is a character rather than
+ * a symbol and sits above the lot. Drawn as SVG rects with crispEdges so he
+ * stays sharp at any zoom and looks identical on every machine - an emoji
+ * would render differently on each and turn to mush at this size.
+ */
+function travellerIcon(label: string, working = true, waving = false) {
+  const frame = waving ? TRAVELLER_SPRITE_WAVE : TRAVELLER_SPRITE
+  const width = 34
+  const height = Math.round((width * frame.length) / 16)
+  const sprite = travellerSvg(width, frame)
+
+  const html = `<div style="position:relative;width:${width}px;height:${height + 22}px;cursor:pointer;
+    ${waving ? 'animation:tvl-wave 0.5s ease-in-out 3;' : working ? 'animation:tvl-bob 1.1s ease-in-out infinite;' : ''}">
+    ${
+      working
+        ? `<span style="position:absolute;left:50%;bottom:-4px;transform:translateX(-50%);
+            width:26px;height:9px;border-radius:50%;background:${TRAVELLER_COLOR};opacity:0.3;
+            animation:tvl-pulse 1.8s ease-out infinite"></span>`
+        : ''
+    }
+    ${
+      waving
+        ? `<span style="position:absolute;top:-6px;left:${width - 4}px;white-space:nowrap;
+            background:#fff;color:#1b1f24;font-size:12px;font-weight:600;
+            padding:5px 10px;border-radius:12px;border:2px solid ${TRAVELLER_COLOR};
+            box-shadow:0 2px 6px rgba(0,0,0,0.25)">Hi.</span>`
+        : ''
+    }
+    ${
+      label
+        ? `<span style="position:absolute;top:0;left:50%;transform:translateX(-50%);
+            white-space:nowrap;background:${TRAVELLER_COLOR};color:#fff;font-size:10px;
+            font-weight:600;padding:2px 6px;border-radius:8px;
+            border:2px solid rgba(255,255,255,0.92)">${label}</span>`
+        : ''
+    }
+    <div style="position:absolute;top:20px;left:0">${sprite}</div>
+  </div>`
+
+  return L.divIcon({
+    className: 'agency-map-traveller',
+    html,
+    iconSize: [width, height + 22],
+    // He stands BESIDE the agency, not on it. Anchoring him centrally put him
+    // squarely over the pin, which hid it and swallowed the click - so the
+    // agency underneath could not be opened or researched. Anchoring past his
+    // right edge places him just to the left, boots level with the coordinate,
+    // leaving the pin visible and clickable.
+    iconAnchor: [width + 8, height + 22],
+  })
+}
+
+/** Hands the Leaflet map instance up, so buttons outside it can move it. */
+function MapHandle({ onReady }: { onReady: (map: L.Map) => void }) {
+  const map = useMap()
+  useEffect(() => onReady(map), [map, onReady])
+  return null
+}
+
 /** Cluster bubbles in the app's own palette, sized by how much they contain. */
 function createClusterIcon(cluster: { getChildCount: () => number }) {
   const count = cluster.getChildCount()
@@ -348,6 +476,15 @@ function createClusterIcon(cluster: { getChildCount: () => number }) {
 }
 
 export default function AgencyMap() {
+  const [activity, setActivity] = useState<ResearchActivity | null>(null)
+  // Read inside the polling loop, which must not re-subscribe on every tick.
+  const activityRef = useRef<ResearchActivity | null>(null)
+  const mapRef = useRef<L.Map | null>(null)
+  const [waving, setWaving] = useState(false)
+  // Marking an agency as having cameras asks which vendor, because "they have
+  // cameras" without a vendor is barely more useful than not knowing.
+  const [vendorPrompt, setVendorPrompt] = useState<{ ori: string; name: string; vendor: string } | null>(null)
+  const [chatOpen, setChatOpen] = useState(false)
   const [briefingFor, setBriefingFor] = useState<{ ori: string; name: string } | null>(null)
   const [measureMode, setMeasureMode] = useState(false)
   const [selected, setSelected] = useState<MapPoint[]>([])
@@ -462,6 +599,8 @@ export default function AgencyMap() {
       officers: f.properties.swornOfficers,
       hasBwc: Boolean(f.properties.hasBwc),
       bwcStatus: f.properties.bwcStatus || 'unknown',
+      bwcTrusted: f.properties.bwcTrusted || '',
+      bwcTrustedBy: f.properties.bwcTrustedBy || '',
       bwcVendor: f.properties.bwcVendor || '',
       lines: [
         f.properties.streetAddress
@@ -480,8 +619,11 @@ export default function AgencyMap() {
         f.properties.inPipeline
           ? `${f.properties.stage}${f.properties.dealCount > 1 ? ` (${f.properties.dealCount} deals)` : ''}`
           : 'Not in HubSpot',
-        // Always stated, for every agency. Silence used to mean both "we asked
-        // and they said no" and "we have no idea", which are opposite facts.
+        // Two separate lines on purpose. The first is our own verdict and is
+        // always present, including when the answer is "we have not looked" -
+        // an absent line reads as an oversight rather than a state. The second
+        // is what outside sources say, which is a different claim entirely.
+        trustedLine(f.properties),
         bwcLine(f.properties),
         // Say where the pin came from. A county-centre pin is not a location.
         f.properties.precision === 'county'
@@ -524,6 +666,8 @@ export default function AgencyMap() {
         officers: null,
         hasBwc: false,
         bwcStatus: 'unknown',
+        bwcTrusted: '',
+        bwcTrustedBy: '',
         bwcVendor: '',
         lines: [
           'HubSpot deal',
@@ -568,6 +712,64 @@ export default function AgencyMap() {
     [visibleAgencyPoints, dealPoints],
   )
 
+  // Working position if a run is live, otherwise wherever it last finished.
+  const isResearching = Boolean(activity?.travellers.length)
+  const travellerAt = activity?.travellers[0] ?? activity?.lastPosition ?? null
+
+  // Follow a running research job.
+  //
+  // Polls a deliberately small endpoint rather than re-pulling the national
+  // geojson, and patches finished agencies into the features already loaded so
+  // their pins change colour in place. Backs off to a slow heartbeat when
+  // nothing is running, so an idle map is not hammering the API.
+  useEffect(() => {
+    let cancelled = false
+    let timer: ReturnType<typeof setTimeout>
+    let since: string | undefined
+
+    const tick = async () => {
+      try {
+        const next = await getResearchActivity({ since, state })
+        if (cancelled) return
+        since = next.now
+        setActivity(next)
+        activityRef.current = next
+        if (next.completed.length) {
+          const byOri = new Map(next.completed.map((row) => [row.ori, row]))
+          setFeatures((current) =>
+            current.map((feature) => {
+              const done = byOri.get(feature.properties.ori)
+              return done
+                ? {
+                    ...feature,
+                    properties: {
+                      ...feature.properties,
+                      bwcStatus: done.bwcStatus,
+                      bwcVendor: done.bwcVendor,
+                      bwcEvidence: 'researched',
+                      hasBwc: done.bwcStatus === 'yes',
+                    },
+                  }
+                : feature
+            }),
+          )
+        }
+      } catch {
+        /* a failed poll is not worth surfacing; the next one will retry */
+      }
+      if (!cancelled) {
+        const running = Boolean(activityRef.current?.travellers.length)
+        timer = setTimeout(tick, running ? 5000 : 30000)
+      }
+    }
+
+    tick()
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [state])
+
   const togglePoint = (point: MapPoint) => {
     setSelected((current) => {
       if (current.some((p) => p.id === point.id)) {
@@ -578,194 +780,74 @@ export default function AgencyMap() {
     })
   }
 
-  const measured = useMemo(() => {
-    if (selected.length < 2) return null
-    const [a, b] = selected
-    const miles = haversineMiles(a, b)
-    return {
-      a,
-      b,
-      miles,
-      km: miles * 1.609344,
-      midpoint: [(a.lat + b.lat) / 2, (a.lon + b.lon) / 2] as [number, number],
-      approximate: a.approximate || b.approximate,
+  /**
+   * Markers, built once per data change rather than once per render.
+   *
+   * There are ~14,600 of them and each builds an SVG string and a Leaflet
+   * divIcon. Rendering them inline meant every unrelated state change rebuilt
+   * the lot: the activity poll ticking every few seconds, and - far worse -
+   * every single keystroke in the traveller chat, which locked the page solid.
+   */
+  /**
+   * Set the trusted verdict by hand and recolour the pin at once.
+   *
+   * Research returns "unknown" for a lot of small agencies - they publish
+   * nothing, and no amount of searching invents a source. This is the escape
+   * hatch for when you know the answer anyway. It is recorded as a person's
+   * judgement rather than a finding, and a later automated run will not
+   * overwrite it.
+   */
+  /**
+   * Open a briefing, and walk the traveller over while it runs.
+   *
+   * Researching an agency IS visiting it, so leaving him standing somewhere
+   * else made the map say one thing and the panel another.
+   */
+  const openBriefing = (ori: string, name: string) => {
+    setBriefingFor({ ori, name })
+    void moveTraveller(ori)
+      .then((position) => {
+        setActivity((current) =>
+          current
+            ? { ...current, lastPosition: { ...position, status: 'unknown', at: null }, sentByHand: true }
+            : current,
+        )
+      })
+      .catch(() => {
+        /* he stays where he is; not worth interrupting the briefing over */
+      })
+  }
+
+  const markTrusted = async (
+    ori: string,
+    value: 'has_bwc' | 'no_bwc' | '',
+    vendor?: string,
+  ) => {
+    setFeatures((current) =>
+      current.map((feature) =>
+        feature.properties.ori === ori
+          ? {
+              ...feature,
+              properties: {
+                ...feature.properties,
+                bwcTrusted: value,
+                bwcTrustedBy: value ? 'manual' : '',
+                bwcVendor: vendor || feature.properties.bwcVendor,
+              },
+            }
+          : feature,
+      ),
+    )
+    try {
+      await setTrustedBwc(ori, value, vendor ? { vendor } : {})
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : 'Could not save that.')
     }
-  }, [selected])
+  }
 
-  const agencyTypes = useMemo(() => {
-    const seen = new Set<string>()
-    for (const feature of features) {
-      if (feature.properties.agencyType) seen.add(feature.properties.agencyType)
-    }
-    return Array.from(seen).sort()
-  }, [features])
-
-  return (
-    <Space direction="vertical" size={16} style={{ width: '100%' }}>
-      <div>
-        <Title level={3} style={{ marginBottom: 4 }}>
-          Agency Map
-        </Title>
-        <Paragraph type="secondary" style={{ marginBottom: 0 }}>
-          Every US law enforcement agency reporting to the FBI, plotted by sworn officer count.
-          Filtered to 100 or fewer officers by default.
-        </Paragraph>
-      </div>
-
-      {error ? <Alert type="error" showIcon message="Could not load agencies" description={error} /> : null}
-
-      <Card className="section-card">
-        <Space wrap size={12} style={{ width: '100%' }}>
-          <Select
-            allowClear
-            placeholder="All states"
-            style={{ width: 160 }}
-            value={state}
-            onChange={(value) => setState(value)}
-            options={STATES.map((code) => ({ value: code, label: code }))}
-            showSearch
-          />
-          <Select
-            style={{ width: 200 }}
-            value={maxOfficers}
-            onChange={(value) => setMaxOfficers(value)}
-            options={[
-              { value: 10, label: '10 or fewer officers' },
-              { value: 25, label: '25 or fewer officers' },
-              { value: 50, label: '50 or fewer officers' },
-              { value: 100, label: '100 or fewer officers' },
-              { value: null, label: 'Any size (incl. unreported)' },
-            ]}
-          />
-          <Select
-            allowClear
-            placeholder="All agency types"
-            style={{ width: 200 }}
-            value={agencyType}
-            onChange={(value) => setAgencyType(value)}
-            options={agencyTypes.map((type) => ({ value: type, label: type }))}
-          />
-          <Input.Search
-            allowClear
-            placeholder="Search agency name"
-            style={{ width: 240 }}
-            onSearch={(value) => setSearch(value)}
-          />
-          <Button
-            type={measureMode ? 'primary' : 'default'}
-            onClick={() => {
-              setMeasureMode((on) => !on)
-              setSelected([])
-            }}
-          >
-            {measureMode ? 'Measuring - click two pins' : 'Measure distance'}
-          </Button>
-          <Button
-            size="middle"
-            type={customersOnly ? 'primary' : 'default'}
-            onClick={() => setCustomersOnly((on) => !on)}
-          >
-            Customers only
-          </Button>
-        </Space>
-      </Card>
-
-      <Row gutter={16}>
-        <Col xs={12} md={6}>
-          <Card className="section-card">
-            <Statistic title="Agencies plotted" value={visibleAgencyPoints.length} />
-          </Card>
-        </Col>
-        <Col xs={12} md={6}>
-          <Card className="section-card">
-            <Statistic title="Deals plotted" value={dealPoints.length} />
-          </Card>
-        </Col>
-        <Col xs={12} md={6}>
-          <Card className="section-card">
-            <Statistic title="Agencies in pipeline" value={stats?.totals.inPipeline ?? 0} />
-          </Card>
-        </Col>
-        <Col xs={12} md={6}>
-          <Card className="section-card">
-            <Statistic title="Matching filter" value={stats?.totals.agencies ?? 0} />
-          </Card>
-        </Col>
-      </Row>
-
-      {measureMode ? (
-        <Card className="section-card">
-          <Space direction="vertical" size={8} style={{ width: '100%' }}>
-            <Space wrap size={16} align="center">
-              <Text strong>
-                {measured
-                  ? `${Math.round(measured.miles).toLocaleString()} miles`
-                  : selected.length === 1
-                    ? 'Now click a second pin'
-                    : 'Click two pins to measure'}
-              </Text>
-              {measured ? (
-                <Text type="secondary">
-                  {Math.round(measured.km).toLocaleString()} km - straight line, not driving distance
-                </Text>
-              ) : null}
-              {selected.length ? (
-                <Button size="small" onClick={() => setSelected([])}>
-                  Clear
-                </Button>
-              ) : null}
-            </Space>
-
-            {selected.map((point, index) => (
-              <Text key={point.id} type="secondary">
-                <Text strong>{index === 0 ? 'A' : 'B'}</Text> - {point.name}
-                {point.approximate ? ' (approximate location)' : ''}
-              </Text>
-            ))}
-
-            {measured?.approximate ? (
-              <Text type="warning">
-                One of these pins is an approximate location, so this distance is an estimate.
-              </Text>
-            ) : null}
-          </Space>
-        </Card>
-      ) : null}
-
-      <Card className="section-card" bodyStyle={{ padding: 0, position: 'relative' }}>
-        {loading ? (
-          <div
-            style={{
-              position: 'absolute',
-              inset: 0,
-              zIndex: 500,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              background: 'rgba(255,255,255,0.55)',
-            }}
-          >
-            <Spin tip="Loading agencies..." />
-          </div>
-        ) : null}
-        <MapContainer
-          center={US_CENTER}
-          zoom={US_ZOOM}
-          scrollWheelZoom
-          style={{ height: 600, width: '100%' }}
-        >
-          <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          />
-          <MarkerClusterGroup
-            key={`clusters:${[...hiddenCategories].sort().join(',')}`}
-            chunkedLoading
-            maxClusterRadius={50}
-            iconCreateFunction={createClusterIcon}
-            showCoverageOnHover={false}
-            spiderfyOnMaxZoom
-          >
+  const markerNodes = useMemo(
+    () => (
+      <>
             {points.map((point) => (
               <Marker
                 key={point.id}
@@ -773,7 +855,7 @@ export default function AgencyMap() {
                 icon={
                   isCustomerStage(point.stage)
                     ? customerIcon(point.officers)
-                    : dotIcon(point.officers, point.inPipeline, point.bwcStatus)
+                    : dotIcon(point.officers, point.inPipeline, point.bwcStatus, point.bwcTrusted)
                 }
                 zIndexOffset={isCustomerStage(point.stage) ? 1000 : 0}
                 eventHandlers={measureMode ? { click: () => togglePoint(point) } : undefined}
@@ -831,20 +913,301 @@ export default function AgencyMap() {
                     ) : null}
 
                     {point.ori ? (
-                      <Button
-                        size="small"
-                        type="primary"
-                        style={{ marginTop: 6 }}
-                        onClick={() => setBriefingFor({ ori: point.ori, name: point.name })}
-                      >
-                        Research this agency
-                      </Button>
+                      <Space direction="vertical" size={6} style={{ marginTop: 6 }}>
+                        <Button
+                          size="small"
+                          type="primary"
+                          onClick={() => openBriefing(point.ori, point.name)}
+                        >
+                          Research this agency
+                        </Button>
+                        {/* Set it by hand when research finds nothing but you
+                            know the answer. A person's word beats an empty
+                            search, and it is recorded as a person's word. */}
+                        <Space size={4}>
+                          <Text type="secondary" style={{ fontSize: 11 }}>
+                            Mark:
+                          </Text>
+                          <Button
+                            size="small"
+                            type={point.bwcTrusted === 'has_bwc' ? 'primary' : 'default'}
+                            onClick={() =>
+                              setVendorPrompt({ ori: point.ori, name: point.name, vendor: point.bwcVendor || '' })
+                            }
+                          >
+                            Has BWC
+                          </Button>
+                          <Button
+                            size="small"
+                            type={point.bwcTrusted === 'no_bwc' ? 'primary' : 'default'}
+                            onClick={() => void markTrusted(point.ori, 'no_bwc')}
+                          >
+                            No BWC
+                          </Button>
+                          {point.bwcTrusted ? (
+                            <Button size="small" onClick={() => void markTrusted(point.ori, '')}>
+                              Clear
+                            </Button>
+                          ) : null}
+                        </Space>
+                      </Space>
                     ) : null}
                   </Space>
                 </Popup>
                 )}
               </Marker>
             ))}
+      </>
+    ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [points, measureMode, selected],
+  )
+
+  const measured = useMemo(() => {
+    if (selected.length < 2) return null
+    const [a, b] = selected
+    const miles = haversineMiles(a, b)
+    return {
+      a,
+      b,
+      miles,
+      km: miles * 1.609344,
+      midpoint: [(a.lat + b.lat) / 2, (a.lon + b.lon) / 2] as [number, number],
+      approximate: a.approximate || b.approximate,
+    }
+  }, [selected])
+
+  const agencyTypes = useMemo(() => {
+    const seen = new Set<string>()
+    for (const feature of features) {
+      if (feature.properties.agencyType) seen.add(feature.properties.agencyType)
+    }
+    return Array.from(seen).sort()
+  }, [features])
+
+  return (
+    <Space direction="vertical" size={16} style={{ width: '100%' }}>
+      <div>
+        <Title level={3} style={{ marginBottom: 4 }}>
+          Agency Map
+        </Title>
+        <Paragraph type="secondary" style={{ marginBottom: 0 }}>
+          Every US law enforcement agency reporting to the FBI, plotted by sworn officer count.
+          Filtered to 100 or fewer officers by default.
+        </Paragraph>
+      </div>
+
+      <style>{`
+        @keyframes tvl-pulse{0%{transform:translateX(-50%) scale(0.6);opacity:0.45}70%{transform:translateX(-50%) scale(1.6);opacity:0}100%{opacity:0}}
+        @keyframes tvl-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
+        @keyframes tvl-wave{0%,100%{transform:rotate(0deg)}50%{transform:rotate(-7deg)}}
+        @media (prefers-reduced-motion: reduce){.agency-map-traveller *{animation:none!important}}
+      `}</style>
+
+      {error ? <Alert type="error" showIcon message="Could not load agencies" description={error} /> : null}
+
+      {activity?.travellers.length ? (
+        <Alert
+          type="info"
+          showIcon
+          message={`Researching ${activity.travellers[0].name}`}
+          description={`${activity.remaining.toLocaleString()} agencies still to research. Pins update as each one finishes.`}
+        />
+      ) : null}
+
+      <Card className="section-card">
+        <Space wrap size={12} style={{ width: '100%' }}>
+          <Select
+            allowClear
+            placeholder="All states"
+            style={{ width: 160 }}
+            value={state}
+            onChange={(value) => setState(value)}
+            options={STATES.map((code) => ({ value: code, label: code }))}
+            showSearch
+          />
+          <Select
+            style={{ width: 200 }}
+            value={maxOfficers}
+            onChange={(value) => setMaxOfficers(value)}
+            options={[
+              { value: 10, label: '10 or fewer officers' },
+              { value: 25, label: '25 or fewer officers' },
+              { value: 50, label: '50 or fewer officers' },
+              { value: 100, label: '100 or fewer officers' },
+              { value: null, label: 'Any size (incl. unreported)' },
+            ]}
+          />
+          <Select
+            allowClear
+            placeholder="All agency types"
+            style={{ width: 200 }}
+            value={agencyType}
+            onChange={(value) => setAgencyType(value)}
+            options={agencyTypes.map((type) => ({ value: type, label: type }))}
+          />
+          <Input.Search
+            allowClear
+            placeholder="Search agency name"
+            style={{ width: 240 }}
+            onSearch={(value) => setSearch(value)}
+          />
+          <Button
+            type={measureMode ? 'primary' : 'default'}
+            onClick={() => {
+              setMeasureMode((on) => !on)
+              setSelected([])
+            }}
+          >
+            {measureMode ? 'Measuring - click two pins' : 'Measure distance'}
+          </Button>
+          <Button
+            // Disabled rather than hidden: a button that appears and vanishes
+            // as runs start and stop makes the whole bar jump around.
+            disabled={!travellerAt}
+            onClick={() => {
+              if (travellerAt && mapRef.current) {
+                mapRef.current.flyTo([travellerAt.lat, travellerAt.lon], 11, { duration: 1.2 })
+              }
+            }}
+          >
+            Find the traveller
+          </Button>
+          <Button
+            size="middle"
+            type={customersOnly ? 'primary' : 'default'}
+            onClick={() => setCustomersOnly((on) => !on)}
+          >
+            Customers only
+          </Button>
+        </Space>
+      </Card>
+
+      <Row gutter={16}>
+        <Col xs={12} md={6}>
+          <Card className="section-card">
+            <Statistic title="Agencies plotted" value={visibleAgencyPoints.length} />
+          </Card>
+        </Col>
+        <Col xs={12} md={6}>
+          <Card className="section-card">
+            <Statistic title="Deals plotted" value={dealPoints.length} />
+          </Card>
+        </Col>
+        <Col xs={12} md={6}>
+          <Card className="section-card">
+            <Statistic title="Agencies in pipeline" value={stats?.totals.inPipeline ?? 0} />
+          </Card>
+        </Col>
+        <Col xs={12} md={6}>
+          <Card className="section-card">
+            <Statistic title="Matching filter" value={stats?.totals.agencies ?? 0} />
+          </Card>
+        </Col>
+      </Row>
+
+      {measureMode ? (
+        <Card className="section-card">
+          <Space direction="vertical" size={8} style={{ width: '100%' }}>
+            <Space wrap size={16} align="center">
+              <Text strong>
+                {measured
+                  ? `${Math.round(measured.miles).toLocaleString()} miles`
+                  : selected.length === 1
+                    ? 'Now click a second pin'
+                    : 'Click two pins to measure'}
+              </Text>
+          {measured ? (
+                <Text type="secondary">
+                  {Math.round(measured.km).toLocaleString()} km - straight line, not driving distance
+                </Text>
+              ) : null}
+              {selected.length ? (
+                <Button size="small" onClick={() => setSelected([])}>
+                  Clear
+                </Button>
+              ) : null}
+            </Space>
+
+            {selected.map((point, index) => (
+              <Text key={point.id} type="secondary">
+                <Text strong>{index === 0 ? 'A' : 'B'}</Text> - {point.name}
+                {point.approximate ? ' (approximate location)' : ''}
+              </Text>
+            ))}
+
+            {measured?.approximate ? (
+              <Text type="warning">
+                One of these pins is an approximate location, so this distance is an estimate.
+              </Text>
+            ) : null}
+          </Space>
+        </Card>
+      ) : null}
+
+      <Card
+        className="section-card"
+        bodyStyle={{ padding: 0, position: 'relative', overflow: 'hidden' }}
+      >
+        {loading ? (
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              zIndex: 500,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: 'rgba(255,255,255,0.55)',
+            }}
+          >
+            <Spin tip="Loading agencies..." />
+          </div>
+        ) : null}
+        <MapContainer
+          center={US_CENTER}
+          zoom={US_ZOOM}
+          scrollWheelZoom
+          style={{ height: 600, width: '100%' }}
+        >
+          <MapHandle onReady={(map) => { mapRef.current = map }} />
+
+          {travellerAt ? (
+            <Marker
+              key={`tvl:${travellerAt.ori}`}
+              position={[travellerAt.lat, travellerAt.lon]}
+              // Labelled only while he is working. Standing still needs no
+              // caption - it is obvious he is where he last got to.
+              icon={travellerIcon(isResearching ? 'researching' : '', isResearching, waving)}
+              zIndexOffset={3000}
+              // No Popup on purpose. A Leaflet popup opens directly over the
+              // marker it belongs to, so clicking him hid both the wave and the
+              // speech bubble behind a panel that repeated what the chat header
+              // already says. Clicking him waves and opens the chat; that is the
+              // whole interaction.
+              eventHandlers={{
+                click: () => {
+                  setWaving(true)
+                  setTimeout(() => setWaving(false), 1800)
+                  setChatOpen(true)
+                },
+              }}
+            />
+          ) : null}
+
+          <TileLayer
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          />
+          <MarkerClusterGroup
+            key={`clusters:${[...hiddenCategories].sort().join(',')}`}
+            chunkedLoading
+            maxClusterRadius={50}
+            iconCreateFunction={createClusterIcon}
+            showCoverageOnHover={false}
+            spiderfyOnMaxZoom
+          >
+            {markerNodes}
           </MarkerClusterGroup>
 
           {selected.map((point, index) => (
@@ -878,6 +1241,22 @@ export default function AgencyMap() {
             </>
           ) : null}
         </MapContainer>
+
+      <TravellerChat
+        open={chatOpen}
+        onClose={() => setChatOpen(false)}
+        onOpenBriefing={openBriefing}
+        at={travellerAt}
+        working={isResearching}
+        onMoved={(moved) => {
+          setActivity((current) =>
+            current
+              ? { ...current, lastPosition: { ...moved, status: 'unknown', at: null }, sentByHand: true }
+              : current,
+          )
+          mapRef.current?.flyTo([moved.lat, moved.lon], 8, { duration: 1.6 })
+        }}
+      />
       </Card>
 
       <Card className="section-card" title="Legend">
@@ -959,11 +1338,63 @@ export default function AgencyMap() {
           </Text>
         </Space>
       </Card>
+      <Modal
+        title={vendorPrompt ? `${vendorPrompt.name} - which vendor?` : 'Which vendor?'}
+        open={Boolean(vendorPrompt)}
+        onCancel={() => setVendorPrompt(null)}
+        okText="Mark as having BWC"
+        onOk={() => {
+          if (!vendorPrompt) return
+          void markTrusted(vendorPrompt.ori, 'has_bwc', vendorPrompt.vendor.trim())
+          setVendorPrompt(null)
+        }}
+      >
+        <Space direction="vertical" size={10} style={{ width: '100%' }}>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            Who supplies their cameras? Leave it blank if you do not know - the agency is still
+            marked as having them, just without a vendor.
+          </Text>
+          <AutoComplete
+            autoFocus
+            style={{ width: '100%' }}
+            value={vendorPrompt?.vendor ?? ''}
+            placeholder="Axon, Motorola/WatchGuard, ..."
+            // Suggestions, not a closed list: the long tail of vendors here is
+            // real, and a picker that refuses an unlisted one loses the answer.
+            options={COMMON_VENDORS.filter((vendor) =>
+              vendor.toLowerCase().includes((vendorPrompt?.vendor || '').toLowerCase()),
+            ).map((vendor) => ({ value: vendor }))}
+            onChange={(value) =>
+              setVendorPrompt((current) => (current ? { ...current, vendor: value } : current))
+            }
+          />
+        </Space>
+      </Modal>
+
       <AgencyBriefingPanel
         ori={briefingFor?.ori ?? null}
         agencyName={briefingFor?.name ?? ''}
         open={Boolean(briefingFor)}
         onClose={() => setBriefingFor(null)}
+        onResearched={(ori, bwcStatus, vendor) =>
+          setFeatures((current) =>
+            current.map((feature) =>
+              feature.properties.ori === ori
+                ? {
+                    ...feature,
+                    properties: {
+                      ...feature.properties,
+                      bwcStatus,
+                      bwcVendor: vendor || feature.properties.bwcVendor,
+                      bwcEvidence: 'researched',
+                      bwcAsOf: new Date().toISOString(),
+                      hasBwc: bwcStatus === 'yes',
+                    },
+                  }
+                : feature,
+            ),
+          )
+        }
       />
     </Space>
   )

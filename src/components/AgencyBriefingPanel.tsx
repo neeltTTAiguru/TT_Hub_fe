@@ -46,11 +46,15 @@ export default function AgencyBriefingPanel({
   agencyName,
   open,
   onClose,
+  onResearched,
 }: {
   ori: string | null
   agencyName: string
   open: boolean
   onClose: () => void
+  // Fired when a briefing settles the camera question, so the pin behind the
+  // panel updates the moment you read the answer rather than on the next poll.
+  onResearched?: (ori: string, bwcStatus: string, vendor: string) => void
 }) {
   const [briefing, setBriefing] = useState<AgencyBriefing | null>(null)
   const [loading, setLoading] = useState(false)
@@ -61,7 +65,17 @@ export default function AgencyBriefingPanel({
     setLoading(true)
     setError('')
     getAgencyBriefing(ori, { refresh })
-      .then(setBriefing)
+      .then((next) => {
+        setBriefing(next)
+        // The backend has already written this to the agency; telling the map
+        // directly saves it waiting up to 30 seconds for the activity poll to
+        // notice, which is how long the pin sat unchanged behind an open panel
+        // that was plainly saying "runs body cameras".
+        const found = next?.research?.bwcStatus
+        if (found?.hasProgram === 'yes' && found.confidence !== 'low' && found.sourceUrl) {
+          onResearched?.(ori, 'yes', found.vendor || '')
+        }
+      })
       .catch((err: unknown) =>
         setError(err instanceof Error ? err.message : 'Could not load the briefing.'),
       )

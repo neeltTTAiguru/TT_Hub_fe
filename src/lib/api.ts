@@ -2017,10 +2017,27 @@ export type LeAgency = {
   employment?: LeAgencyEmployment
   contacts?: {
     chiefName: string
+    chiefTitle: string
     phone: string
     email: string
     website: string
+    streetAddress?: { line1: string; city: string }
   }
+  surveillance?: {
+    bwc?: {
+      status?: string
+      trustedResearched?: string
+      trustedResearchedBy?: string
+      trustedResearchedAt?: string | null
+      evidence?: string
+      vendor?: string
+      asOf?: string | null
+      evidenceUrl?: string
+      summary?: string
+      contractEnd?: string | null
+    }
+  }
+  crm?: { matched?: boolean; stage?: string }
 }
 
 export type LeAgencyFeature = {
@@ -2056,6 +2073,11 @@ export type LeAgencyFeature = {
     // blank on most of them - that means the vendor was never published, not
     // that the agency runs no vendor.
     hasBwc: boolean
+    // Our own research verdict: 'has_bwc' | 'no_bwc' | '' (never looked).
+    // Outranks bwcStatus for colouring, because it is the one we stand behind.
+    bwcTrusted: string
+    // 'research' or 'manual' - who established it.
+    bwcTrustedBy: string
     // yes | no | unknown. 'no' comes only from a source that asked the agency.
     bwcStatus: string
     // observed | surveyed | funded | mandated - how strong the claim is.
@@ -2116,6 +2138,40 @@ function buildLeAgencyParams(query: LeAgencyQuery = {}) {
   if (typeof query.limit === 'number') params.set('limit', String(query.limit))
   if (typeof query.page === 'number') params.set('page', String(query.page))
   return params
+}
+
+/**
+ * Set the trusted verdict by hand, for when research turns up nothing but you
+ * know the answer anyway. Pass '' to clear it back to unchecked.
+ */
+export function setTrustedBwc(
+  ori: string,
+  value: 'has_bwc' | 'no_bwc' | '',
+  options: { vendor?: string; note?: string } = {},
+) {
+  return request<{
+    ori: string
+    name: string
+    trustedResearched: string
+    trustedResearchedBy: string
+    vendor: string
+  }>(`/le-agencies/${encodeURIComponent(ori)}/trusted-bwc`, {
+    method: 'PATCH',
+    body: JSON.stringify({ value, ...options }),
+  })
+}
+
+/** Send the traveller to a named agency. */
+export function moveTraveller(ori: string) {
+  return request<{ ori: string; name: string; state: string; county: string; lat: number; lon: number }>(
+    '/le-agencies/traveller-position',
+    { method: 'PUT', body: JSON.stringify({ ori }) },
+  )
+}
+
+/** One agency, in full. Used for the card the traveller shows. */
+export function getLeAgency(ori: string) {
+  return request<LeAgency>(`/le-agencies/${encodeURIComponent(ori)}`)
 }
 
 export function getLeAgencies(query: LeAgencyQuery = {}) {
@@ -2242,7 +2298,15 @@ export type AgencyBriefing = {
   }
   research: {
     summary: string
-    bwcStatus: { hasProgram: 'yes' | 'no' | 'unknown'; vendor: string; details: string; confidence: string }
+    bwcStatus: {
+      hasProgram: 'yes' | 'no' | 'unknown'
+      vendor: string
+      details: string
+      // The citation. Required before a briefing may write its finding back
+      // onto the agency, so it has to survive into the client type too.
+      sourceUrl: string
+      confidence: string
+    }
     budget: { summary: string; fiscalYear: string; signals: BriefingSourcedItem[] }
     grants: BriefingSourcedItem[]
     news: BriefingSourcedItem[]
@@ -2250,6 +2314,140 @@ export type AgencyBriefing = {
     openQuestions: string[]
     failedTopics?: string[]
   }
+}
+
+export type ResearchActivity = {
+  now: string
+  travellers: Array<{
+    ori: string
+    name: string
+    state: string
+    county: string
+    startedAt: string | null
+    lat: number
+    lon: number
+  }>
+  // True when nothing has been researched yet, so lastPosition is the journey's
+  // starting point rather than somewhere it actually reached.
+  atStart?: boolean
+  // True when he is standing somewhere he was told to go rather than somewhere
+  // research took him.
+  sentByHand?: boolean
+  // Where the run last got to, or where it will set out from. Always present,
+  // so the traveller is always somewhere on the map.
+  lastPosition: {
+    ori: string
+    name: string
+    state: string
+    county: string
+    status: string
+    at: string | null
+    lat: number
+    lon: number
+  } | null
+  completed: Array<{
+    ori: string
+    name: string
+    lat: number
+    lon: number
+    bwcStatus: string
+    bwcVendor: string
+  }>
+  remaining: number
+}
+
+export type BwcResearchResult = {
+  ori: string
+  name: string
+  status: string
+  searches: number
+  vendor: string
+  confidence: string
+  contractEnd: string
+  sourceUrl: string
+  quote: string
+  nextAction: string
+}
+
+/**
+ * Research one agency, reporting each search as it runs.
+ *
+ * Uses fetch rather than EventSource because EventSource cannot send an
+ * Authorization header, and this route is behind auth like everything else.
+ */
+export async function streamBwcResearch(
+  ori: string,
+  handlers: {
+    onSearch: (query: string) => void
+    onDone: (result: BwcResearchResult) => void
+    onFailed: (message: string) => void
+    signal?: AbortSignal
+  },
+) {
+  const headers = new Headers()
+  if (accessTokenProvider) {
+    const token = await accessTokenProvider()
+    if (token) headers.set('Authorization', `Bearer ${token}`)
+  }
+  const response = await fetch(
+    `${API_BASE_URL}/le-agencies/${encodeURIComponent(ori)}/research-stream`,
+    { headers, signal: handlers.signal },
+  )
+  if (!response.ok || !response.body) {
+    throw new Error(`Could not start research (${response.status}).`)
+  }
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    const chunks = buffer.split('\n\n')
+    buffer = chunks.pop() || ''
+    for (const chunk of chunks) {
+      const event = chunk.match(/^event: (.+)$/m)?.[1]
+      const dataLine = chunk.match(/^data: (.+)$/m)?.[1]
+      if (!event || !dataLine) continue
+      const data = JSON.parse(dataLine)
+      if (event === 'search') handlers.onSearch(data.query)
+      else if (event === 'done') handlers.onDone(data)
+      else if (event === 'failed') handlers.onFailed(data.message)
+    }
+  }
+}
+
+export type TravellerChatReply = {
+  reply: string
+  // Set when he was asked to travel and the destination resolved to a real
+  // agency, so the map can move him and fly there.
+  moved: { ori: string; name: string; state: string; county: string; lat: number; lon: number } | null
+  nearest: Array<{ ori: string; name: string; miles: number | null; bwcStatus: string }>
+}
+
+/** Chat with the traveller. Nearest agencies are resolved server-side from Mongo. */
+export function travellerChat(body: {
+  messages: Array<{ role: 'user' | 'assistant'; content: string }>
+  lat: number
+  lon: number
+  // Which agency he is standing on. Without it "their website" is ambiguous
+  // between everything within a few miles of him.
+  ori?: string
+}) {
+  return request<TravellerChatReply>(
+    '/le-agencies/traveller-chat',
+    { method: 'POST', body: JSON.stringify(body) },
+    { timeoutMs: 120000 },
+  )
+}
+
+/** Small on purpose: polled every few seconds while a research run is going. */
+export function getResearchActivity(params: { since?: string; state?: string } = {}) {
+  const search = new URLSearchParams()
+  if (params.since) search.set('since', params.since)
+  if (params.state) search.set('state', params.state)
+  return request<ResearchActivity>(`/le-agencies/research-activity?${search.toString()}`)
 }
 
 export function getAgencyBriefing(ori: string, options: { refresh?: boolean } = {}) {
