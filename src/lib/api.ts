@@ -2364,16 +2364,31 @@ export async function downloadRunWorkbook(runId: string) {
     const token = await accessTokenProvider()
     if (token) headers.set('Authorization', `Bearer ${token}`)
   }
-  const response = await fetch(
-    `${API_BASE_URL}/le-agencies/research-run/${encodeURIComponent(runId)}/export`,
-    { method: 'POST', headers },
-  )
+  // Bounded, so a stalled request cannot leave the button spinning forever.
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 60000)
+  let response: Response
+  try {
+    response = await fetch(
+      `${API_BASE_URL}/le-agencies/research-run/${encodeURIComponent(runId)}/export`,
+      { method: 'POST', headers, signal: controller.signal },
+    )
+  } catch (error) {
+    if ((error as { name?: string })?.name === 'AbortError') {
+      throw new Error('The spreadsheet took too long to build. Try again.')
+    }
+    throw error
+  } finally {
+    clearTimeout(timeout)
+  }
   if (!response.ok) throw new Error(`Could not build the spreadsheet (${response.status}).`)
 
   const blob = await response.blob()
+  // Content-Disposition is only readable cross-origin when the server exposes
+  // it, so keep a fallback that is still a usable name rather than a generic one.
   const name =
     response.headers.get('Content-Disposition')?.match(/filename="([^"]+)"/)?.[1] ||
-    'research-run.xlsx'
+    `trustedtech_map_research_${new Date().toISOString().slice(0, 10)}.xlsx`
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
