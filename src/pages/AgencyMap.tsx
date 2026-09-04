@@ -5,6 +5,7 @@ import MarkerClusterGroup from 'react-leaflet-cluster'
 import AgencyBriefingPanel from '../components/AgencyBriefingPanel'
 import TravellerChat from '../components/TravellerChat'
 import ResearchRunPanel from '../components/ResearchRunPanel'
+import SdrFormModal from '../components/SdrFormModal'
 import {
   TRAVELLER_SPRITE,
   TRAVELLER_SPRITE_WAVE,
@@ -489,6 +490,10 @@ export default function AgencyMap() {
   // Marking an agency as having cameras asks which vendor, because "they have
   // cameras" without a vendor is barely more useful than not knowing.
   const [vendorPrompt, setVendorPrompt] = useState<{ ori: string; name: string; vendor: string } | null>(null)
+  const [sdrFor, setSdrFor] = useState<{ ori: string; name: string } | null>(null)
+  // Which agencies have a qualification on file, so the button can show it
+  // without fetching every agency's form up front.
+  const [sdrFilled, setSdrFilled] = useState<Set<string>>(new Set())
   const [chatOpen, setChatOpen] = useState(false)
   const [briefingFor, setBriefingFor] = useState<{ ori: string; name: string } | null>(null)
   const [measureMode, setMeasureMode] = useState(false)
@@ -973,6 +978,13 @@ export default function AgencyMap() {
                               Clear
                             </Button>
                           ) : null}
+                          <Button
+                            size="small"
+                            type={sdrFilled.has(point.ori) ? 'primary' : 'default'}
+                            onClick={() => setSdrFor({ ori: point.ori, name: point.name })}
+                          >
+                            SDR Form
+                          </Button>
                         </Space>
                       </Space>
                     ) : null}
@@ -984,7 +996,7 @@ export default function AgencyMap() {
       </>
     ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [points, measureMode, selected],
+    [points, measureMode, selected, sdrFilled],
   )
 
   const measured = useMemo(() => {
@@ -1000,6 +1012,39 @@ export default function AgencyMap() {
       approximate: a.approximate || b.approximate,
     }
   }, [selected])
+
+  // Searching for an agency walks the traveller there.
+  //
+  // Deliberately skipped while a run is going: the runner owns his position
+  // then, and sending him somewhere else would either fight the run or be
+  // overwritten within seconds, which looks broken either way.
+  const searchedRef = useRef('')
+  useEffect(() => {
+    const term = search.trim()
+    if (!term || term === searchedRef.current) return
+    if (runIsLive) return
+
+    // The first match in what the map is already showing - no extra request,
+    // and it is the agency the user can see rather than a hidden better match.
+    const match = agencyPoints.find((point) =>
+      point.name.toLowerCase().includes(term.toLowerCase()),
+    )
+    if (!match) return
+
+    searchedRef.current = term
+    moveTraveller(match.ori)
+      .then((moved) => {
+        setActivity((current) =>
+          current
+            ? { ...current, lastPosition: { ...moved, status: 'unknown', at: null }, sentByHand: true }
+            : current,
+        )
+        mapRef.current?.flyTo([moved.lat, moved.lon], 11, { duration: 1.4 })
+      })
+      .catch(() => {
+        // A search that cannot place him is not worth interrupting the user for.
+      })
+  }, [search, agencyPoints, runIsLive])
 
   // The run's trail, polled from the server rather than tracked in this tab.
   // That is what makes it survive a logout and look identical to two people
@@ -1480,6 +1525,21 @@ export default function AgencyMap() {
           />
         </Space>
       </Modal>
+
+      <SdrFormModal
+        ori={sdrFor?.ori ?? null}
+        agencyName={sdrFor?.name ?? ''}
+        open={Boolean(sdrFor)}
+        onClose={() => setSdrFor(null)}
+        onSaved={(ori, filled) =>
+          setSdrFilled((current) => {
+            const next = new Set(current)
+            if (filled) next.add(ori)
+            else next.delete(ori)
+            return next
+          })
+        }
+      />
 
       <AgencyBriefingPanel
         ori={briefingFor?.ori ?? null}

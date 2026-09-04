@@ -2161,6 +2161,25 @@ export function setTrustedBwc(
   })
 }
 
+export type AgencySdr = {
+  timeline: string
+  money: string
+  authority: string
+  needs: string
+  pain: string
+  notes: string
+  filledBy?: string
+  filledAt?: string | null
+}
+
+/** Save the TMAN-P qualification. Shared per agency, not per user. */
+export function saveAgencySdr(ori: string, sdr: Partial<AgencySdr>) {
+  return request<{ ori: string; name: string; sdr: AgencySdr }>(
+    `/le-agencies/${encodeURIComponent(ori)}/sdr`,
+    { method: 'PATCH', body: JSON.stringify(sdr) },
+  )
+}
+
 /** Send the traveller to a named agency. */
 export function moveTraveller(ori: string) {
   return request<{ ori: string; name: string; state: string; county: string; lat: number; lon: number }>(
