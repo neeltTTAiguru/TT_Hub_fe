@@ -16,7 +16,7 @@ import {
   message,
 } from 'antd'
 import {
-  downloadResearchRunWorkbook,
+  downloadRunWorkbook,
   previewResearchRun,
   startResearchRun,
   stopResearchRun,
@@ -88,7 +88,6 @@ export default function ResearchRunPanel({
   const [includeOffMap, setIncludeOffMap] = useState(false)
   const [preview, setPreview] = useState<ResearchRunPreview | null>(null)
   const [reviewing, setReviewing] = useState(false)
-  const [downloading, setDownloading] = useState(false)
   const [starting, setStarting] = useState(false)
 
   // The run keeps its own targeting rather than borrowing the map's. You often
@@ -201,15 +200,20 @@ export default function ResearchRunPanel({
       })
   }
 
-  const download = () => {
-    setDownloading(true)
-    downloadResearchRunWorkbook(runQuery, { skipResearched, includeOffMap, brief })
+  // The banner's download is by run id, so it returns what that run covered
+  // rather than whatever the form is set to now.
+  const [downloadingRun, setDownloadingRun] = useState(false)
+  const downloadRun = () => {
+    if (!run) return
+    setDownloadingRun(true)
+    downloadRunWorkbook(run.id)
       .then((name) => message.success(`Downloaded ${name}`))
       .catch((err: unknown) => {
         message.error(err instanceof Error ? err.message : 'Could not build the spreadsheet.')
       })
-      .finally(() => setDownloading(false))
+      .finally(() => setDownloadingRun(false))
   }
+
 
   const label = (text: string) => (
     <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>
@@ -267,6 +271,9 @@ export default function ResearchRunPanel({
                       Stop
                     </Button>
                   ) : null}
+                  <Button size="small" loading={downloadingRun} onClick={downloadRun}>
+                    Download spreadsheet
+                  </Button>
                 </Space>
               }
               description={
@@ -448,9 +455,6 @@ export default function ResearchRunPanel({
             <Button loading={starting} onClick={() => start(1)} disabled={isLive}>
               Test on one agency
             </Button>
-            <Button loading={downloading} onClick={download}>
-              Download spreadsheet
-            </Button>
             <Text type="secondary" style={{ fontSize: 12 }}>
               {isLive
                 ? 'A run is already going. Stop it before starting another.'
@@ -472,9 +476,6 @@ export default function ResearchRunPanel({
         footer={[
           <Button key="cancel" onClick={() => setPreview(null)}>
             Close
-          </Button>,
-          <Button key="xlsx" loading={downloading} onClick={download}>
-            Download spreadsheet
           </Button>,
           <Button key="test" loading={starting} onClick={() => start(1)}>
             Test on one agency
@@ -532,9 +533,9 @@ export default function ResearchRunPanel({
               <Text type="secondary" style={{ fontSize: 12 }}>
                 One Excel workbook, one row per agency, with the camera verdict and its reasoning,
                 the decision maker and their email, the phone number, and the source URL and date
-                behind each claim. A second sheet records what this run targeted. Download it at any
-                point during a run - rows the traveller has not reached yet come back blank, which
-                is the run's to-do list.
+                behind each claim. A second sheet records what this run targeted and how it went.
+                The download appears on the run itself once it is going, so what you get is what
+                that run covered.
               </Text>
             </div>
 

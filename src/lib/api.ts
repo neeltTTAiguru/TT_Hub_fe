@@ -2351,6 +2351,40 @@ export function startResearchRun(
   })
 }
 
+/**
+ * Download a specific run's spreadsheet.
+ *
+ * By run id, not by filters: the run knows the exact agencies it queued, so the
+ * sheet is what that run covered rather than whatever the form happens to say
+ * now.
+ */
+export async function downloadRunWorkbook(runId: string) {
+  const headers = new Headers({ 'Content-Type': 'application/json' })
+  if (accessTokenProvider) {
+    const token = await accessTokenProvider()
+    if (token) headers.set('Authorization', `Bearer ${token}`)
+  }
+  const response = await fetch(
+    `${API_BASE_URL}/le-agencies/research-run/${encodeURIComponent(runId)}/export`,
+    { method: 'POST', headers },
+  )
+  if (!response.ok) throw new Error(`Could not build the spreadsheet (${response.status}).`)
+
+  const blob = await response.blob()
+  const name =
+    response.headers.get('Content-Disposition')?.match(/filename="([^"]+)"/)?.[1] ||
+    'research-run.xlsx'
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = name
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
+  return name
+}
+
 /** Ask the run to stop. It finishes the agency in flight first. */
 export function stopResearchRun() {
   return request<ResearchRunState>('/le-agencies/research-run/stop', { method: 'POST' })
