@@ -123,7 +123,7 @@ export default function TravellerChat({
               role: 'assistant' as const,
               content:
                 result.status === 'unknown'
-                  ? `I had a proper look at ${result.name} - ${result.searches} searches - and nobody has published either way. ${result.nextAction || 'A records request would settle it.'}`
+                  ? `I had a proper look at ${result.name} - ${result.searches} searches - and nobody has published either way. A records request would settle it.`
                   : `${result.name}: ${result.status.replace(/_/g, ' ')}${
                       result.vendor ? `, ${result.vendor}` : ''
                     }${result.contractEnd ? `, contract to ${result.contractEnd}` : ''}.` +
@@ -165,7 +165,7 @@ export default function TravellerChat({
             settled = true
             const said =
               result.status === 'unknown'
-                ? `I had a proper look at ${result.name} - ${result.searches} searches - and nobody has published either way. ${result.nextAction || 'A records request would settle it.'}`
+                ? `I had a proper look at ${result.name} - ${result.searches} searches - and nobody has published either way. A records request would settle it.`
                 : `${result.name}: ${result.status.replace(/_/g, ' ')}${
                     result.vendor ? `, ${result.vendor}` : ''
                   }${result.contractEnd ? `, contract to ${result.contractEnd}` : ''}.` +

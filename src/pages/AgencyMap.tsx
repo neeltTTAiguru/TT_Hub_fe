@@ -4,6 +4,7 @@ import { MapContainer, TileLayer, Marker, Polyline, Popup, useMap } from 'react-
 import MarkerClusterGroup from 'react-leaflet-cluster'
 import AgencyBriefingPanel from '../components/AgencyBriefingPanel'
 import TravellerChat from '../components/TravellerChat'
+import ResearchRunPanel from '../components/ResearchRunPanel'
 import {
   TRAVELLER_SPRITE,
   TRAVELLER_SPRITE_WAVE,
@@ -23,6 +24,8 @@ import {
   type LeAgencyFeature,
   type LeAgencyStats,
   type ResearchActivity,
+  getActiveResearchRun,
+  type ResearchRunState,
 } from '../lib/api'
 
 const { Paragraph, Text, Title } = Typography
@@ -477,6 +480,8 @@ function createClusterIcon(cluster: { getChildCount: () => number }) {
 
 export default function AgencyMap() {
   const [activity, setActivity] = useState<ResearchActivity | null>(null)
+  const [run, setRun] = useState<ResearchRunState | null>(null)
+  const [runTick, setRunTick] = useState(0)
   // Read inside the polling loop, which must not re-subscribe on every tick.
   const activityRef = useRef<ResearchActivity | null>(null)
   const mapRef = useRef<L.Map | null>(null)
@@ -712,9 +717,28 @@ export default function AgencyMap() {
     [visibleAgencyPoints, dealPoints],
   )
 
-  // Working position if a run is live, otherwise wherever it last finished.
-  const isResearching = Boolean(activity?.travellers.length)
-  const travellerAt = activity?.travellers[0] ?? activity?.lastPosition ?? null
+  // A live run is the authority on where he is standing. The activity feed
+  // derives his position from research timestamps, which is right when nobody
+  // is driving him but lags a run by a poll - and a traveller who arrives after
+  // the agency he is working on is worse than no animation at all.
+  const runAt = useMemo(() => {
+    if (!run) return null
+    const stop = run.current ?? (run.path.length ? run.path[run.path.length - 1] : null)
+    if (!stop || !Number.isFinite(stop.lat) || !Number.isFinite(stop.lon)) return null
+    return {
+      ori: stop.ori,
+      name: stop.name,
+      state: stop.state,
+      county: '',
+      lat: stop.lat as number,
+      lon: stop.lon as number,
+      startedAt: stop.at,
+    }
+  }, [run])
+
+  const runIsLive = run?.status === 'running' || run?.status === 'stopping'
+  const isResearching = Boolean(runIsLive) || Boolean(activity?.travellers.length)
+  const travellerAt = runAt ?? activity?.travellers[0] ?? activity?.lastPosition ?? null
 
   // Follow a running research job.
   //
@@ -977,6 +1001,75 @@ export default function AgencyMap() {
     }
   }, [selected])
 
+  // The run's trail, polled from the server rather than tracked in this tab.
+  // That is what makes it survive a logout and look identical to two people
+  // watching at once - the browser is a viewer here, never the driver.
+  useEffect(() => {
+    let cancelled = false
+    let timer: ReturnType<typeof setTimeout> | undefined
+
+    const poll = () => {
+      getActiveResearchRun()
+        .then((next) => {
+          if (cancelled) return
+          const state = 'id' in next ? next : null
+          setRun(state)
+          // Idle between runs is the common case, so back right off then and
+          // only poll hard while there is actually something moving.
+          const live = state?.status === 'running' || state?.status === 'stopping'
+          timer = setTimeout(poll, live ? 5000 : 30000)
+        })
+        .catch(() => {
+          if (!cancelled) timer = setTimeout(poll, 30000)
+        })
+    }
+    poll()
+
+    return () => {
+      cancelled = true
+      if (timer) clearTimeout(timer)
+    }
+  }, [runTick])
+
+  // Recolour the pins the run has settled, from the trail it already sends.
+  // Re-pulling the geojson every few seconds to see three cells change would
+  // move megabytes; the verdicts are already in the poll, so apply them here.
+  useEffect(() => {
+    const stops = run?.path ?? []
+    if (!stops.length) return
+    setFeatures((current) => {
+      const byOri = new Map(stops.map((stop) => [stop.ori, stop]))
+      let changed = false
+      const next = current.map((feature) => {
+        const stop = byOri.get(feature.properties.ori)
+        if (!stop || stop.verdict === 'unknown' || !stop.verdict) return feature
+        const trusted = stop.verdict === 'no' ? 'no_bwc' : 'has_bwc'
+        if (feature.properties.bwcTrusted === trusted) return feature
+        changed = true
+        return {
+          ...feature,
+          properties: {
+            ...feature.properties,
+            bwcTrusted: trusted,
+            hasBwc: trusted === 'has_bwc',
+            bwcEvidence: 'researched',
+          },
+        }
+      })
+      return changed ? next : current
+    })
+  }, [run])
+
+  // Where the traveller has actually walked, as a line. Stops with no
+  // coordinate are dropped rather than drawn at zero, which would run the trail
+  // through the Gulf of Guinea.
+  const runPath = useMemo(() => {
+    const stops = run?.path ?? []
+    return stops
+      .filter((stop) => Number.isFinite(stop.lat) && Number.isFinite(stop.lon))
+      .map((stop) => [stop.lat, stop.lon] as [number, number])
+  }, [run])
+
   const agencyTypes = useMemo(() => {
     const seen = new Set<string>()
     for (const feature of features) {
@@ -1223,6 +1316,14 @@ export default function AgencyMap() {
             />
           ))}
 
+          {runPath.length > 1 ? (
+            <Polyline
+              positions={runPath}
+              pathOptions={{ color: TRAVELLER_COLOR, weight: 2, opacity: 0.7, dashArray: '4 5' }}
+              interactive={false}
+            />
+          ) : null}
+
           {measured ? (
             <>
               <Polyline
@@ -1338,6 +1439,15 @@ export default function AgencyMap() {
           </Text>
         </Space>
       </Card>
+
+      <ResearchRunPanel
+        mapFilters={query}
+        states={STATES}
+        agencyTypes={agencyTypes}
+        run={run}
+        onRunChanged={() => setRunTick((n) => n + 1)}
+      />
+
       <Modal
         title={vendorPrompt ? `${vendorPrompt.name} - which vendor?` : 'Which vendor?'}
         open={Boolean(vendorPrompt)}

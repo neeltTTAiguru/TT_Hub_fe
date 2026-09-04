@@ -2200,6 +2200,162 @@ export function getLeAgencyStats(query: LeAgencyQuery = {}) {
   })
 }
 
+export type ResearchRunPreview = {
+  matched: number
+  alreadyDone: number
+  queue: number
+  offMap: number
+  includeOffMap: boolean
+  needEmail: number
+  needPhone: number
+  perAgency: { low: number; high: number }
+  cost: { low: number; high: number }
+  hours: { serial: number; concurrent3: number }
+  searchesPerAgency: { low: number; high: number }
+}
+
+/**
+ * Price a research run without starting one. Takes the same query the map is
+ * already showing, so the run and the map can never quietly disagree.
+ */
+export function previewResearchRun(
+  filters: LeAgencyQuery = {},
+  options: { skipResearched?: boolean; includeOffMap?: boolean } = {},
+) {
+  // Encoded through buildLeAgencyParams rather than sent as a raw object: the
+  // backend's filter builder reads query-string values, so `hasOfficerCount`
+  // has to arrive as the string 'true', not a JSON boolean. Reusing the encoder
+  // is what keeps a preview counting the same rows the map is drawing.
+  const encoded = Object.fromEntries(buildLeAgencyParams(filters))
+  return request<ResearchRunPreview>('/le-agencies/research-run/preview', {
+    method: 'POST',
+    body: JSON.stringify({
+      filters: encoded,
+      skipResearched: options.skipResearched !== false,
+      includeOffMap: options.includeOffMap === true,
+    }),
+  })
+}
+
+/**
+ * Download the run as a workbook.
+ *
+ * Its own fetch rather than `request`, because that helper parses JSON and this
+ * returns a binary body. Same auth header as everything else.
+ */
+export async function downloadResearchRunWorkbook(
+  filters: LeAgencyQuery = {},
+  options: { skipResearched?: boolean; includeOffMap?: boolean; brief?: string } = {},
+) {
+  const headers = new Headers({ 'Content-Type': 'application/json' })
+  if (accessTokenProvider) {
+    const token = await accessTokenProvider()
+    if (token) headers.set('Authorization', `Bearer ${token}`)
+  }
+  const response = await fetch(`${API_BASE_URL}/le-agencies/research-run/export`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      filters: Object.fromEntries(buildLeAgencyParams(filters)),
+      skipResearched: options.skipResearched !== false,
+      includeOffMap: options.includeOffMap === true,
+      brief: options.brief || '',
+    }),
+  })
+  if (!response.ok) {
+    throw new Error(`Could not build the spreadsheet (${response.status}).`)
+  }
+
+  const blob = await response.blob()
+  const name =
+    response.headers.get('Content-Disposition')?.match(/filename="([^"]+)"/)?.[1] ||
+    'research-run.xlsx'
+  // Anchor-click rather than window.open: a blob URL opened as a tab is blocked
+  // by the popup blocker, and this keeps the server's filename.
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = name
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
+  return name
+}
+
+export type ResearchRunStop = {
+  ori: string
+  name: string
+  state: string
+  lat: number | null
+  lon: number | null
+  at: string | null
+  verdict: string
+  foundEmail: boolean
+  foundPhone: boolean
+  searches: number
+  error: string
+}
+
+export type ResearchRunState = {
+  id: string
+  status: 'running' | 'stopping' | 'stopped' | 'done' | 'failed'
+  brief: string
+  filtersLabel: string
+  total: number
+  completed: number
+  failed: number
+  cursor: number
+  searches: number
+  foundCameras: number
+  foundEmails: number
+  foundPhones: number
+  current: ResearchRunStop | null
+  path: ResearchRunStop[]
+  pathTruncated: boolean
+  startedAt: string | null
+  finishedAt: string | null
+  lastError: string
+}
+
+/**
+ * The run everyone is watching. Global, not per user - there is one run and the
+ * server owns it, so two people with the hub open see the same traveller.
+ */
+export function getActiveResearchRun() {
+  return request<ResearchRunState | { run: null }>('/le-agencies/research-run/active')
+}
+
+/**
+ * Start a run. It lives in the server process, so it carries on after you close
+ * the tab. `limit` is how you test: same targeting and prompt, fewer agencies.
+ */
+export function startResearchRun(
+  filters: LeAgencyQuery = {},
+  options: {
+    skipResearched?: boolean
+    includeOffMap?: boolean
+    brief?: string
+    limit?: number
+  } = {},
+) {
+  return request<ResearchRunState>('/le-agencies/research-run/start', {
+    method: 'POST',
+    body: JSON.stringify({
+      filters: Object.fromEntries(buildLeAgencyParams(filters)),
+      skipResearched: options.skipResearched !== false,
+      includeOffMap: options.includeOffMap === true,
+      brief: options.brief || '',
+      limit: options.limit,
+    }),
+  })
+}
+
+/** Ask the run to stop. It finishes the agency in flight first. */
+export function stopResearchRun() {
+  return request<ResearchRunState>('/le-agencies/research-run/stop', { method: 'POST' })
+}
+
 export type CrmDealFeature = {
   type: 'Feature'
   geometry: { type: 'Point'; coordinates: [number, number] }
@@ -2366,7 +2522,6 @@ export type BwcResearchResult = {
   contractEnd: string
   sourceUrl: string
   quote: string
-  nextAction: string
 }
 
 /**
