@@ -2173,8 +2173,16 @@ export type AgencySdr = {
 }
 
 /** Save the TMAN-P qualification. Shared per agency, not per user. */
+export type HubSpotSyncResult = {
+  companyId?: string
+  contactId?: string
+  contactSkipped?: string
+  tool?: string
+  error?: string
+}
+
 export function saveAgencySdr(ori: string, sdr: Partial<AgencySdr>) {
-  return request<{ ori: string; name: string; sdr: AgencySdr }>(
+  return request<{ ori: string; name: string; sdr: AgencySdr; hubspot: HubSpotSyncResult | null }>(
     `/le-agencies/${encodeURIComponent(ori)}/sdr`,
     { method: 'PATCH', body: JSON.stringify(sdr) },
   )

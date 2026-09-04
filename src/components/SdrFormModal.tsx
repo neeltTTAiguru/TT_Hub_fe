@@ -1,6 +1,11 @@
 import { useEffect, useState } from 'react'
 import { Alert, Input, Modal, Space, Typography, message } from 'antd'
-import { getLeAgency, saveAgencySdr, type AgencySdr } from '../lib/api'
+import {
+  getLeAgency,
+  saveAgencySdr,
+  type AgencySdr,
+  type HubSpotSyncResult,
+} from '../lib/api'
 
 const { Text } = Typography
 
@@ -72,6 +77,7 @@ export default function SdrFormModal({
   const [saving, setSaving] = useState(false)
   const [filledAt, setFilledAt] = useState<string | null>(null)
   const [filledBy, setFilledBy] = useState('')
+  const [hubspot, setHubspot] = useState<HubSpotSyncResult | null>(null)
 
   // Load whatever is already on file. The form is shared, so someone else may
   // have already had this call - opening a blank form over their answers and
@@ -79,6 +85,7 @@ export default function SdrFormModal({
   useEffect(() => {
     if (!open || !ori) return
     let cancelled = false
+    setHubspot(null)
     setLoading(true)
     getLeAgency(ori)
       .then((agency) => {
@@ -104,8 +111,21 @@ export default function SdrFormModal({
     setSaving(true)
     saveAgencySdr(ori, form)
       .then((result) => {
-        message.success('Qualification saved.')
         onSaved?.(ori, Object.values(result.sdr || {}).some(Boolean))
+        // A failed sync is shown rather than closed over: the form is saved
+        // either way, but "it went to HubSpot" must never be assumed.
+        if (result.hubspot?.error) {
+          setHubspot(result.hubspot)
+          message.warning('Saved, but HubSpot was not updated.')
+          return
+        }
+        message.success(
+          result.hubspot?.contactId
+            ? 'Saved. Company and contact updated in HubSpot.'
+            : result.hubspot?.companyId
+              ? 'Saved. Company updated in HubSpot.'
+              : 'Qualification saved.',
+        )
         onClose()
       })
       .catch((err: unknown) => {
@@ -120,11 +140,26 @@ export default function SdrFormModal({
       open={open}
       onCancel={onClose}
       onOk={save}
-      okText="Save"
+      okText="Save to HubSpot"
       confirmLoading={saving}
       width={620}
     >
       <Space direction="vertical" size={14} style={{ width: '100%' }}>
+        <Text type="secondary" style={{ fontSize: 12 }}>
+          Saving creates or updates the agency as a company in HubSpot, and its chief as a contact,
+          with these answers and the camera findings on the company record. Saving again updates
+          those same records rather than making new ones.
+        </Text>
+
+        {hubspot?.error ? (
+          <Alert
+            type="warning"
+            showIcon
+            message="Saved here, but not pushed to HubSpot"
+            description={hubspot.error}
+          />
+        ) : null}
+
         {filledAt ? (
           <Alert
             type="info"
