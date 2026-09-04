@@ -284,9 +284,11 @@ export default function ResearchRunPanel({
                     status={isLive ? 'active' : run.status === 'failed' ? 'exception' : 'normal'}
                   />
                   <Text type="secondary" style={{ fontSize: 12 }}>
-                    {run.foundCameras.toLocaleString()} with cameras found -{' '}
-                    {run.foundEmails.toLocaleString()} emails - {run.foundPhones.toLocaleString()}{' '}
-                    phone numbers - {run.searches.toLocaleString()} searches
+                    Of {(run.completed + run.failed).toLocaleString()} visited:{' '}
+                    {run.foundCameras.toLocaleString()} have cameras,{' '}
+                    {run.foundPhones.toLocaleString()} have a phone,{' '}
+                    {run.foundEmails.toLocaleString()} have an email -{' '}
+                    {run.searches.toLocaleString()} searches
                     {run.failed ? ` - ${run.failed.toLocaleString()} failed` : ''}
                   </Text>
                   {run.filtersLabel ? (
