@@ -65,6 +65,9 @@ const NO_BWC_COLOR = '#6f9457'
 // Amber for "nobody has published either way". Kept distinct from green
 // because a surveyed NO and an unresearched agency are opposite facts: one is
 // a qualified prospect, the other is a to-do.
+// Deliberately louder than the amber unknown pin, which it sits next to. A
+// test agency that reads as real is a trap somebody eventually rings.
+const TEST_COLOR = '#e8590c'
 const UNKNOWN_BWC_COLOR = '#d4a017'
 // The vendors actually seen in the data, offered as suggestions rather than a
 // closed list - the long tail here is real, and a free-text box that quietly
@@ -104,6 +107,7 @@ type MapPoint = {
   // our own verdict: has_bwc | no_bwc | ''
   bwcTrusted: string
   bwcTrustedBy: string
+  isTest?: boolean
   bwcVendor: string
   lines: string[]
   approximate: boolean
@@ -123,11 +127,12 @@ type MapPoint = {
  * a customer is also "in HubSpot", so it has to be claimed first or it would
  * fall into a second bucket and the counts would not sum.
  */
-type PinCategory = 'bwc' | 'noBwc' | 'unknownBwc'
+type PinCategory = 'bwc' | 'noBwc' | 'unknownBwc' | 'test'
 
 // Customers are no longer a category of their own: they keep their distinct
 // ticked pin, but they are filtered by camera status like every other agency.
-function categoryFor(point: { bwcStatus: string; bwcTrusted?: string }): PinCategory {
+function categoryFor(point: { bwcStatus: string; bwcTrusted?: string; isTest?: boolean }): PinCategory {
+  if (point.isTest) return 'test'
   if (point.bwcTrusted === 'has_bwc') return 'bwc'
   if (point.bwcTrusted === 'no_bwc') return 'noBwc'
   if (point.bwcStatus === 'yes') return 'bwc'
@@ -212,7 +217,8 @@ function bwcLine(p: {
  * state mandate - and a pin we went and verified should not look identical to
  * one coloured by a statute.
  */
-function colorFor(bwcStatus: string, bwcTrusted = '') {
+function colorFor(bwcStatus: string, bwcTrusted = '', isTest = false) {
+  if (isTest) return TEST_COLOR
   if (bwcTrusted === 'has_bwc') return BWC_COLOR
   if (bwcTrusted === 'no_bwc') return NO_BWC_COLOR
   if (bwcStatus === 'yes') return BWC_COLOR
@@ -339,11 +345,12 @@ function dotIcon(
   inPipeline: boolean,
   bwcStatus: string,
   bwcTrusted = '',
+  isTest = false,
 ) {
   const width = officers === null ? 20 : Math.min(20 + Math.sqrt(officers) * 1.1, 34)
   const height = Math.round((width * 4) / 3)
 
-  const color = colorFor(bwcStatus, bwcTrusted)
+  const color = colorFor(bwcStatus, bwcTrusted, isTest)
 
   if (!inPipeline) {
     return makePin(
@@ -612,6 +619,7 @@ export default function AgencyMap() {
       bwcTrusted: f.properties.bwcTrusted || '',
       bwcTrustedBy: f.properties.bwcTrustedBy || '',
       bwcVendor: f.properties.bwcVendor || '',
+      isTest: Boolean(f.properties.isTest),
       lines: [
         f.properties.streetAddress
           ? `${f.properties.streetAddress}${
@@ -691,7 +699,7 @@ export default function AgencyMap() {
 
   /** Live tally per legend row, from what is actually plotted right now. */
   const categoryCounts = useMemo(() => {
-    const counts: Record<PinCategory, number> = { bwc: 0, noBwc: 0, unknownBwc: 0 }
+    const counts: Record<PinCategory, number> = { bwc: 0, noBwc: 0, unknownBwc: 0, test: 0 }
     for (const point of agencyPoints) counts[categoryFor(point)] += 1
     return counts
   }, [agencyPoints])
@@ -884,7 +892,7 @@ export default function AgencyMap() {
                 icon={
                   isCustomerStage(point.stage)
                     ? customerIcon(point.officers)
-                    : dotIcon(point.officers, point.inPipeline, point.bwcStatus, point.bwcTrusted)
+                    : dotIcon(point.officers, point.inPipeline, point.bwcStatus, point.bwcTrusted, point.isTest)
                 }
                 zIndexOffset={isCustomerStage(point.stage) ? 1000 : 0}
                 eventHandlers={measureMode ? { click: () => togglePoint(point) } : undefined}
@@ -1423,6 +1431,7 @@ export default function AgencyMap() {
                   color: UNKNOWN_BWC_COLOR,
                   striped: false,
                 },
+                { key: 'test', label: 'Test agency', color: TEST_COLOR, striped: false },
               ] as Array<{
                 key: PinCategory
                 label: string

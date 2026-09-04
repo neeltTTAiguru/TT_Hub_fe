@@ -2086,6 +2086,7 @@ export type LeAgencyFeature = {
     bwcDeclineReasons: string[]
     bwcVendor: string
     bwcEvidenceDate: string | null
+    isTest?: boolean
   }
 }
 
