@@ -212,11 +212,26 @@ type AgentChatWorkspaceProps = {
   // beginning, so a host that wants to show progress of its own had no way to
   // learn the turn had ended.
   onBusyChange?: (busy: boolean) => void
+  // Host state saved alongside the conversation, and handed back when the thread
+  // is reopened. The messages are enough to rebuild an article's text, but not
+  // anything produced *about* it afterwards — the artwork, which is uploaded
+  // elsewhere and referenced by URL. Without this it lived only in the browser
+  // that made it, so reopening an article brought back its words and none of its
+  // pictures. Read the live values inside the callback: it is invoked long after
+  // the render that passed it.
+  threadState?: () => Record<string, unknown>
+  // The saved state of the thread being opened, before its messages replay.
+  // Called with an empty object for a thread saved before it had any.
+  onThreadState?: (state: Record<string, unknown>) => void
   // Lets a side panel write into the conversation — a background job reporting
   // what it did belongs in the thread, not only in a toolbar tag.
   registerChatApi?: (api: {
     appendAssistantMessage: (content: string) => void
     sendMessage: (content: string) => void
+    // Re-saves the thread. Work that finishes after the turn does — artwork
+    // takes a minute — lands after the autosave has already run, and would
+    // otherwise never be written anywhere durable.
+    saveThreadState: () => void
   }) => void
   // Icon controls stacked under the thread-rail toggle, top right of the chat.
   railTools?: ReactNode
@@ -438,6 +453,8 @@ export default function AgentChatWorkspace({
   onNewThread,
   onTurnStart,
   onBusyChange,
+  threadState,
+  onThreadState,
   registerChatApi,
   railTools,
   hideAssistantMessage,
@@ -497,6 +514,10 @@ export default function AgentChatWorkspace({
   assistantMessageRef.current = onAssistantMessage
   const threadResetRef = useRef(onThreadReset)
   threadResetRef.current = onThreadReset
+  // Reassigned every render, for the same reason sendMessage is: the saved state
+  // has to be whatever the host holds at save time, not at mount.
+  const threadStateRef = useRef(threadState)
+  threadStateRef.current = threadState
 
   // Registered once, so anything it calls must be reached through a ref.
   // appendAssistantMessage is safe because it only uses the setState updater
@@ -514,10 +535,16 @@ export default function AgentChatWorkspace({
         const text = String(content || '').trim()
         if (text) void sendChatRef.current(text)
       },
+      saveThreadState: () => { void autoSaveThreadRef.current(chatMessagesRef.current) },
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   const sendChatRef = useRef<(text?: string) => Promise<void>>(async () => {})
+  // Both reassigned every render, so the once-registered saveThreadState saves
+  // the conversation as it stands now rather than as it was at mount.
+  const chatMessagesRef = useRef<AgentChatMessage[]>([])
+  chatMessagesRef.current = chatMessages
+  const autoSaveThreadRef = useRef<(messages: AgentChatMessage[]) => Promise<void>>(async () => {})
   const [isSavingThread, setIsSavingThread] = useState(false)
   const [isThreadSidebarOpen, setIsThreadSidebarOpen] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
@@ -710,7 +737,7 @@ export default function AgentChatWorkspace({
         competitor,
         title: threadTitleFrom(messages),
         messages,
-        thread: { messages },
+        thread: { messages, ...(threadStateRef.current?.() || {}) },
       }
       const savedThread = existingId ? await updateChatThread(existingId, payload) : await createChatThread(payload)
       activeThreadIdRef.current = savedThread._id
@@ -722,6 +749,7 @@ export default function AgentChatWorkspace({
       creatingThreadRef.current = false
     }
   }
+  autoSaveThreadRef.current = autoSaveThread
 
   // ---- Attachments (paste / attach files → images + docs for the model) ----
   const readFileAsDataUrl = (file: File) =>
@@ -1041,6 +1069,16 @@ export default function AgentChatWorkspace({
           ? full.thread.messages
           : full.messages
 
+      // Before the messages replay, so the host has this thread's own state in
+      // hand by the time its article comes back through onAssistantMessage.
+      //
+      // Not when it is already the open thread: the host resets to what was
+      // saved, and clicking the thread you are reading would throw away edits
+      // made since — an accepted keyword fix changes the article without adding
+      // a message for it to be replayed from.
+      if (activeThreadIdRef.current !== full._id) {
+        onThreadState?.((full.thread as Record<string, unknown>) || {})
+      }
       setChatMessages(importedMessages)
       setActiveThreadId(full._id)
       activeThreadIdRef.current = full._id
@@ -1072,6 +1110,7 @@ export default function AgentChatWorkspace({
         messages: chatMessages,
         thread: {
           messages: chatMessages,
+          ...(threadStateRef.current?.() || {}),
         },
       }
       const savedThread = activeThreadId

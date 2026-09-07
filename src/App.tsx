@@ -21,6 +21,7 @@ import TrustedTechYouTrackAssistant from './pages/TrustedTechYouTrackAssistant'
 import EmailCampaignBuilder from './pages/EmailCampaignBuilder'
 import TrustedTechAhrefsAssistant from './pages/TrustedTechAhrefsAssistant'
 import CompanyFiles from './pages/CompanyFiles'
+import ProductImages from './pages/ProductImages'
 import AgencyMap from './pages/AgencyMap'
 import ContentOperations from './pages/ContentOperations'
 import ContentOperationsPublish from './pages/ContentOperationsPublish'
@@ -95,6 +96,10 @@ const baseNavItems = [
         key: '/company-files',
         label: <Link to="/company-files">Company Files</Link>,
       },
+      {
+        key: '/product-images',
+        label: <Link to="/product-images">Product Images</Link>,
+      },
     ],
   },
   {
@@ -135,6 +140,11 @@ const baseNavItems = [
   },
 ]
 
+
+// Kept out of the sidebar without being deleted. The page, its route and its
+// saved chats all still work — /competitor-analyst reaches it directly — so
+// putting it back is removing a key from this list.
+const HIDDEN_NAV_KEYS = ['/competitor-analyst']
 
 const NAV_ORDER_STORAGE_KEY = 'smarthub.navOrder'
 
@@ -184,7 +194,7 @@ function AppShell({ isDark, onToggle }: { isDark: boolean; onToggle: () => void 
   const [dragKey, setDragKey] = useState<string | null>(null)
   const [dropTarget, setDropTarget] = useState<{ key: string; after: boolean } | null>(null)
 
-  const navItems = applyNavOrder(baseNavItems, navOrder)
+  const navItems = applyNavOrder(baseNavItems.filter((item) => !HIDDEN_NAV_KEYS.includes(item.key)), navOrder)
 
   /** Reorders `from` to sit before or after `to`, then persists the result. */
   const moveNavItem = (from: string, to: string, after: boolean) => {
@@ -435,6 +445,7 @@ function AppShell({ isDark, onToggle }: { isDark: boolean; onToggle: () => void 
             <Route path="/email-builder" element={<EmailCampaignBuilder />} />
             <Route path="/ahrefs-assistant" element={<TrustedTechAhrefsAssistant />} />
             <Route path="/company-files" element={<CompanyFiles />} />
+            <Route path="/product-images" element={<ProductImages />} />
             <Route path="/agency-map" element={<AgencyMap />} />
             <Route path="/assistants/content-operations" element={<ContentOperations />} />
             <Route path="/assistants/content-operations/seo" element={<ContentOperationsSeo />} />

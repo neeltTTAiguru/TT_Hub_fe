@@ -635,6 +635,22 @@
   border-radius: 14px;
 }
 
+/* A product photograph is shot on white, and on the article's ivory it reads as
+   a bright card sitting on top of the page rather than part of it. Multiply
+   makes white take the colour underneath — so the shot's background becomes the
+   page exactly, whatever the page is — while the black housing stays black. Only
+   photographs get this: multiplying a full-colour generated scene would darken
+   and warm the whole image. */
+.rendered-article .article-figure-photo img {
+  mix-blend-mode: multiply;
+}
+
+/* Dark theme blends against a dark surface, which would swallow the photograph
+   whole. It keeps its own white background there. */
+:root[data-theme='dark'] .rendered-article .article-figure-photo img {
+  mix-blend-mode: normal;
+}
+
 .rendered-article .article-figure figcaption {
   margin-top: 8px;
   color: var(--app-text-muted);

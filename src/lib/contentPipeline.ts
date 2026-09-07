@@ -19,6 +19,14 @@ const KEY = 'tt-content-pipeline'
 const EVENT = 'tt-content-pipeline-change'
 const EMPTY: ContentPipelineState = { draft: '', images: [], runId: '', seoStage: '' }
 
+// The pipeline as it stands right now, outside React. Anything that has to
+// report the live state from inside a callback — a save that runs a minute after
+// the render that registered it — must read here rather than close over the
+// hook's state, which is a snapshot of the render it came from.
+export function readContentPipeline(): ContentPipelineState {
+  return read()
+}
+
 function read(): ContentPipelineState {
   try {
     const raw = localStorage.getItem(KEY)

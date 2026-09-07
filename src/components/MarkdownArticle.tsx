@@ -56,12 +56,23 @@ export type ArticleImage = {
   altText?: string
   caption?: string
   placementAfterHeading?: string
+  // 'approved_photo' for a real photograph placed from the library. It is drawn
+  // differently: a product shot is on a white background, and only that one
+  // needs blending into the page.
+  source?: string
 }
 
 // Mirrors NON_CONTENT_HEADING and imageSlots() in beCRM articleImages.js. Both ends
 // place the same images in the same sections, so the draft pane shows the article
 // exactly as WordPress will render it.
 const NON_CONTENT_HEADING = /^(?:in this article|on this page|contents|summary|frequently asked questions|faqs?|next steps?)\b/i
+
+// Mirrors PHOTO_ONLY_HEADING in beCRM articleImages.js. A specifications section
+// needs a photograph of the real device, because a picture above a measurement is
+// read as evidence for it; docking and charging sections are barred because there
+// is no approved photograph of the dock, so generated artwork there would be an
+// invented product.
+const PHOTO_ONLY_HEADING = /\b(?:spec(?:ification)?s?|technical details|at a glance|dock|docks|docking|docking station|undock(?:ing)?|charg(?:e|es|er|ers|ing)|cradle|what'?s in the box)\b/i
 
 function imageSlots(count: number, sectionCount: number) {
   const slots: number[] = []
@@ -78,8 +89,13 @@ function imageSlots(count: number, sectionCount: number) {
 }
 
 function figure(image: ArticleImage, key: number) {
+  // Product photographs are shot on white, so on the article's warm ivory they
+  // read as a bright card floating over the page. The extra class blends that
+  // white away. Generated artwork is full-bleed and must NOT get it — blending a
+  // full-colour scene against ivory darkens and warms the whole thing.
+  const photo = image.source === 'approved_photo'
   return (
-    <figure className="article-figure" key={`figure-${key}`}>
+    <figure className={`article-figure${photo ? ' article-figure-photo' : ''}`} key={`figure-${key}`}>
       <img src={image.url} alt={image.altText || ''} loading="lazy" />
       {image.caption ? <figcaption>{image.caption}</figcaption> : null}
     </figure>
@@ -129,10 +145,17 @@ export default function MarkdownArticle({
   for (const image of ordered) {
     const wanted = String(image.placementAfterHeading || '').trim().toLowerCase()
     const section = wanted ? sectionTitles.findIndex((title) => title.toLowerCase() === wanted) : -1
-    if (section >= 0 && !imageBySection.has(section)) imageBySection.set(section, image)
+    // Generated artwork may not take a section reserved for photographs, however
+    // its anchor came to name one.
+    const allowed = section >= 0
+      && !imageBySection.has(section)
+      && (image.source === 'approved_photo' || !PHOTO_ONLY_HEADING.test(sectionTitles[section]))
+    if (allowed) imageBySection.set(section, image)
     else floating.push(image)
   }
-  const free = sectionTitles.map((_, index) => index).filter((index) => !imageBySection.has(index))
+  const free = sectionTitles
+    .map((_, index) => index)
+    .filter((index) => !imageBySection.has(index) && !PHOTO_ONLY_HEADING.test(sectionTitles[index]))
   const slots = imageSlots(floating.length, free.length)
   slots.forEach((slot, position) => imageBySection.set(free[slot], floating[position]))
   const leftovers = floating.slice(slots.length)

@@ -3,9 +3,9 @@ import type { ReactNode } from 'react'
 import { Alert, Button, Space, Typography, message } from 'antd'
 import AgentChatWorkspace from '../AgentChatWorkspace'
 import FieldGuideArticle, { draftTitle } from './FieldGuideArticle'
-import type { ArticleFix } from '../MarkdownArticle'
+import type { ArticleFix, ArticleImage } from '../MarkdownArticle'
 import ArticleTools from './ArticleTools'
-import surferLogo from '../../assets/agent-logos/surfer.svg'
+import contentGeneratorLogo from '../../assets/agent-logos/content-generator.svg'
 import { generateContentOperationsDraftImages } from '../../lib/api'
 
 const { Text } = Typography
@@ -50,7 +50,7 @@ function looksUnfencedArticle(value: string) {
   return !extractArticle(value) && /^#\s+\S/m.test(value.trim()) && value.trim().length > 240
 }
 
-import { useContentPipeline } from '../../lib/contentPipeline'
+import { readContentPipeline, useContentPipeline } from '../../lib/contentPipeline'
 import SeoProgress from './SeoProgress'
 import { getSeoPassState, stopSeoPass, subscribeSeoPass } from '../../lib/seoPassRunner'
 import {
@@ -64,6 +64,7 @@ import {
 type ChatBridge = {
   appendAssistantMessage: (content: string) => void
   sendMessage: (content: string) => void
+  saveThreadState: () => void
 }
 
 export type ChatApi = ChatBridge
@@ -116,7 +117,11 @@ export default function ArticleWorkspace({
   useEffect(() => () => {
     if (streamTimer.current !== null) window.clearTimeout(streamTimer.current)
   }, [])
-  const chatApiRef = useRef<ChatBridge>({ appendAssistantMessage: () => {}, sendMessage: () => {} })
+  const chatApiRef = useRef<ChatBridge>({
+    appendAssistantMessage: () => {},
+    sendMessage: () => {},
+    saveThreadState: () => {},
+  })
   // Handed to the panel instead of the ref's current value. Reading the ref
   // during render captures whatever is there at mount — the placeholder, since
   // registration happens in an effect afterwards — and a panel that never
@@ -124,6 +129,7 @@ export default function ArticleWorkspace({
   const chatApi = useRef<ChatApi>({
     appendAssistantMessage: (content: string) => chatApiRef.current.appendAssistantMessage(content),
     sendMessage: (content: string) => chatApiRef.current.sendMessage(content),
+    saveThreadState: () => chatApiRef.current.saveThreadState(),
   })
 
   // Whether the turn that just ended left the article exactly as it was. Asking
@@ -185,6 +191,29 @@ export default function ArticleWorkspace({
     if (!pipeline.draft) setPanelOpen(false)
   }
 
+  // Opening a saved article from the rail. Its artwork comes back from the
+  // thread; its text comes back a moment later, replayed through
+  // handleAssistantMessage.
+  //
+  // The draft is cleared first because that replay refuses to overwrite an
+  // article already in the pipeline — a guard that exists so moving between
+  // Write, SEO and Publish cannot undo a rewrite. Opening a different article is
+  // the opposite intent, and without this you would read one article's text
+  // beside another's pictures.
+  //
+  // A thread saved before artwork was stored on it carries none, and that empties
+  // the panel's images rather than leaving the last article's behind: no pictures
+  // is honest, pictures of something else is not.
+  const handleThreadState = (state: Record<string, unknown>) => {
+    const saved = state?.articleImages
+    pipeline.update({ draft: '', images: Array.isArray(saved) ? (saved as ArticleImage[]) : [] })
+    setImageError('')
+    setUnchanged(false)
+    setPromotable('')
+    imagesStartedRef.current = false
+    liveTurnRef.current = false
+  }
+
   const generateImagesFor = async (article: string) => {
     setImagesLoading(true)
     setImageError('')
@@ -194,6 +223,10 @@ export default function ArticleWorkspace({
         title: draftTitle(article),
       })
       pipeline.update({ images: result.images })
+      // The turn's own autosave ran a minute ago, before these existed. Without
+      // this the artwork would live only in this browser and the article would
+      // come back next time with no pictures.
+      chatApi.current.saveThreadState()
     } catch (error) {
       // A failed generation must not lock the article out of artwork forever.
       imagesStartedRef.current = false
@@ -429,7 +462,7 @@ export default function ArticleWorkspace({
       showPageHeader={false}
       chatTitle=""
       assistantLabel="Content Generator"
-      agentLogo={surferLogo}
+      agentLogo={contentGeneratorLogo}
       backendLabel="Hermes + Content Operations"
       queryingLabel={queryingLabel}
       onBusyChange={setWriting}
@@ -478,6 +511,8 @@ export default function ArticleWorkspace({
       }}
       onThreadReset={handleThreadReset}
       onNewThread={handleNewArticle}
+      threadState={() => ({ articleImages: readContentPipeline().images })}
+      onThreadState={handleThreadState}
       draftKey={draftKey}
     />
     </>
