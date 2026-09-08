@@ -6,6 +6,7 @@ import AgencyBriefingPanel from '../components/AgencyBriefingPanel'
 import TravellerChat from '../components/TravellerChat'
 import ResearchRunPanel from '../components/ResearchRunPanel'
 import SdrFormModal from '../components/SdrFormModal'
+import CallLogModal from '../components/CallLogModal'
 import {
   TRAVELLER_SPRITE,
   TRAVELLER_SPRITE_WAVE,
@@ -86,6 +87,16 @@ const COMMON_VENDORS = [
   'Pro-Vision',
   'LensLock',
 ]
+// An agency an SDR has logged a call to. Deliberately the one cool colour in a
+// warm palette, so a worked territory reads at a glance without squinting at
+// shades of red and amber.
+//
+// It OVERRIDES the camera colour rather than sitting beside it, which is a real
+// trade: a contacted agency no longer says on the map whether it has cameras.
+// That is the intended reading - once we have rung them, "have we spoken to
+// them" is the question being asked of the pin, and the card still carries the
+// camera lines in full.
+const CONTACTED_COLOR = '#7fc4e8'
 // The live research run. A deliberate outsider in this palette - it is the one
 // thing on the map that is happening rather than known.
 const TRAVELLER_COLOR = '#1f6f8f'
@@ -108,6 +119,10 @@ type MapPoint = {
   bwcTrusted: string
   bwcTrustedBy: string
   isTest?: boolean
+  // An SDR has logged at least one call to this agency.
+  contacted: boolean
+  callCount: number
+  lastCalledAt: string | null
   bwcVendor: string
   lines: string[]
   approximate: boolean
@@ -127,12 +142,21 @@ type MapPoint = {
  * a customer is also "in HubSpot", so it has to be claimed first or it would
  * fall into a second bucket and the counts would not sum.
  */
-type PinCategory = 'bwc' | 'noBwc' | 'unknownBwc' | 'test'
+type PinCategory = 'contacted' | 'bwc' | 'noBwc' | 'unknownBwc' | 'test'
 
 // Customers are no longer a category of their own: they keep their distinct
 // ticked pin, but they are filtered by camera status like every other agency.
-function categoryFor(point: { bwcStatus: string; bwcTrusted?: string; isTest?: boolean }): PinCategory {
+function categoryFor(point: {
+  bwcStatus: string
+  bwcTrusted?: string
+  isTest?: boolean
+  contacted?: boolean
+}): PinCategory {
   if (point.isTest) return 'test'
+  // Claimed before the camera rows on purpose - a contacted agency is coloured
+  // light blue, so it has to be counted and filtered as one, or the legend
+  // tallies would not match what is on the screen.
+  if (point.contacted) return 'contacted'
   if (point.bwcTrusted === 'has_bwc') return 'bwc'
   if (point.bwcTrusted === 'no_bwc') return 'noBwc'
   if (point.bwcStatus === 'yes') return 'bwc'
@@ -217,8 +241,11 @@ function bwcLine(p: {
  * state mandate - and a pin we went and verified should not look identical to
  * one coloured by a statute.
  */
-function colorFor(bwcStatus: string, bwcTrusted = '', isTest = false) {
+function colorFor(bwcStatus: string, bwcTrusted = '', isTest = false, contacted = false) {
   if (isTest) return TEST_COLOR
+  // Outreach outranks camera status: once somebody has rung them, the pin is
+  // answering "have we spoken to this agency" instead.
+  if (contacted) return CONTACTED_COLOR
   if (bwcTrusted === 'has_bwc') return BWC_COLOR
   if (bwcTrusted === 'no_bwc') return NO_BWC_COLOR
   if (bwcStatus === 'yes') return BWC_COLOR
@@ -346,11 +373,12 @@ function dotIcon(
   bwcStatus: string,
   bwcTrusted = '',
   isTest = false,
+  contacted = false,
 ) {
   const width = officers === null ? 20 : Math.min(20 + Math.sqrt(officers) * 1.1, 34)
   const height = Math.round((width * 4) / 3)
 
-  const color = colorFor(bwcStatus, bwcTrusted, isTest)
+  const color = colorFor(bwcStatus, bwcTrusted, isTest, contacted)
 
   if (!inPipeline) {
     return makePin(
@@ -501,6 +529,13 @@ export default function AgencyMap() {
   // Which agencies have a qualification on file, so the button can show it
   // without fetching every agency's form up front.
   const [sdrFilled, setSdrFilled] = useState<Set<string>>(new Set())
+  const [callLogFor, setCallLogFor] = useState<{
+    ori: string
+    name: string
+    phone: string
+    chiefName: string
+    chiefTitle: string
+  } | null>(null)
   const [chatOpen, setChatOpen] = useState(false)
   const [briefingFor, setBriefingFor] = useState<{ ori: string; name: string } | null>(null)
   const [measureMode, setMeasureMode] = useState(false)
@@ -620,6 +655,9 @@ export default function AgencyMap() {
       bwcTrustedBy: f.properties.bwcTrustedBy || '',
       bwcVendor: f.properties.bwcVendor || '',
       isTest: Boolean(f.properties.isTest),
+      contacted: Boolean(f.properties.contacted),
+      callCount: f.properties.callCount ?? 0,
+      lastCalledAt: f.properties.lastCalledAt ?? null,
       lines: [
         f.properties.streetAddress
           ? `${f.properties.streetAddress}${
@@ -643,6 +681,17 @@ export default function AgencyMap() {
         // is what outside sources say, which is a different claim entirely.
         trustedLine(f.properties),
         bwcLine(f.properties),
+        // Said in words as well as colour. A light blue pin tells you somebody
+        // called; only the card can tell you when, and how many times.
+        f.properties.contacted
+          ? `Reached out: ${f.properties.callCount ?? 1} call${
+              (f.properties.callCount ?? 1) === 1 ? '' : 's'
+            }${
+              f.properties.lastCalledAt
+                ? `, last ${new Date(f.properties.lastCalledAt).toLocaleDateString()}`
+                : ''
+            }${f.properties.lastCallOutcome ? ` - ${f.properties.lastCallOutcome}` : ''}`
+          : '',
         // Say where the pin came from. A county-centre pin is not a location.
         f.properties.precision === 'county'
           ? 'Location: county centre only (FBI published no address)'
@@ -687,6 +736,9 @@ export default function AgencyMap() {
         bwcTrusted: '',
         bwcTrustedBy: '',
         bwcVendor: '',
+        contacted: false,
+        callCount: 0,
+        lastCalledAt: null,
         lines: [
           'HubSpot deal',
           f.properties.owner ? `Owner: ${f.properties.owner}` : '',
@@ -699,7 +751,13 @@ export default function AgencyMap() {
 
   /** Live tally per legend row, from what is actually plotted right now. */
   const categoryCounts = useMemo(() => {
-    const counts: Record<PinCategory, number> = { bwc: 0, noBwc: 0, unknownBwc: 0, test: 0 }
+    const counts: Record<PinCategory, number> = {
+      contacted: 0,
+      bwc: 0,
+      noBwc: 0,
+      unknownBwc: 0,
+      test: 0,
+    }
     for (const point of agencyPoints) counts[categoryFor(point)] += 1
     return counts
   }, [agencyPoints])
@@ -892,7 +950,14 @@ export default function AgencyMap() {
                 icon={
                   isCustomerStage(point.stage)
                     ? customerIcon(point.officers)
-                    : dotIcon(point.officers, point.inPipeline, point.bwcStatus, point.bwcTrusted, point.isTest)
+                    : dotIcon(
+                        point.officers,
+                        point.inPipeline,
+                        point.bwcStatus,
+                        point.bwcTrusted,
+                        point.isTest,
+                        point.contacted,
+                      )
                 }
                 zIndexOffset={isCustomerStage(point.stage) ? 1000 : 0}
                 eventHandlers={measureMode ? { click: () => togglePoint(point) } : undefined}
@@ -961,8 +1026,10 @@ export default function AgencyMap() {
                         {/* Set it by hand when research finds nothing but you
                             know the answer. A person's word beats an empty
                             search, and it is recorded as a person's word. */}
-                        <Space size={4}>
-                          <Text type="secondary" style={{ fontSize: 11 }}>
+                        {/* wrap, because a fourth button here squeezed the
+                            "Mark:" label down to one letter per line. */}
+                        <Space size={4} wrap>
+                          <Text type="secondary" style={{ fontSize: 11, whiteSpace: 'nowrap' }}>
                             Mark:
                           </Text>
                           <Button
@@ -992,6 +1059,28 @@ export default function AgencyMap() {
                             onClick={() => setSdrFor({ ori: point.ori, name: point.name })}
                           >
                             SDR Form
+                          </Button>
+                          {/* The call log sits beside the qualification because
+                              they are filled in at the same moment - one is what
+                              the call established, the other is that it happened
+                              at all. Saving one turns the pin light blue. */}
+                          <Button
+                            size="small"
+                            // Same convention as the SDR Form button beside it:
+                            // filled means there is something on file. The
+                            // light blue lives on the pin, not in the theme.
+                            type={point.contacted ? 'primary' : 'default'}
+                            onClick={() =>
+                              setCallLogFor({
+                                ori: point.ori,
+                                name: point.name,
+                                phone: point.contact?.phone || '',
+                                chiefName: point.contact?.chiefName || '',
+                                chiefTitle: point.contact?.chiefTitle || '',
+                              })
+                            }
+                          >
+                            Call log{point.callCount ? ` (${point.callCount})` : ''}
                           </Button>
                         </Space>
                       </Space>
@@ -1418,6 +1507,12 @@ export default function AgencyMap() {
           <Space wrap size={18}>
             {(
               [
+                {
+                  key: 'contacted',
+                  label: 'Reached out',
+                  color: CONTACTED_COLOR,
+                  striped: false,
+                },
                 { key: 'bwc', label: 'Has body-worn cameras', color: BWC_COLOR, striped: false },
                 {
                   key: 'noBwc',
@@ -1484,8 +1579,9 @@ export default function AgencyMap() {
           </Space>
 
           <Text type="secondary" style={{ fontSize: 12 }}>
-            Untick a box to hide those pins. Red = has cameras, green = confirmed none, amber =
-            nobody has published either way. Stripes = already in HubSpot, and a larger ticked
+            Untick a box to hide those pins. Light blue = an SDR has logged a call, and it takes
+            precedence over the camera colour - open the pin to see its camera status. Red = has
+            cameras, green = confirmed none, amber = nobody has published either way. Stripes = already in HubSpot, and a larger ticked
             green pin is a current customer. Camera status comes from four sources of differing strength - a
             documented sighting, an agency's own survey answer, a camera grant, or a state mandate.
             A mandate is a legal duty, not a verified purchase. Open a pin to see which applies to
@@ -1547,6 +1643,36 @@ export default function AgencyMap() {
             else next.delete(ori)
             return next
           })
+        }
+      />
+
+      <CallLogModal
+        ori={callLogFor?.ori ?? null}
+        agencyName={callLogFor?.name ?? ''}
+        phone={callLogFor?.phone}
+        chiefName={callLogFor?.chiefName}
+        chiefTitle={callLogFor?.chiefTitle}
+        open={Boolean(callLogFor)}
+        onClose={() => setCallLogFor(null)}
+        // Patched into the features already loaded rather than refetching the
+        // national geojson - the pin recolours in place the moment it saves.
+        onChanged={(ori, outreach) =>
+          setFeatures((current) =>
+            current.map((feature) =>
+              feature.properties.ori === ori
+                ? {
+                    ...feature,
+                    properties: {
+                      ...feature.properties,
+                      contacted: outreach.callCount > 0,
+                      callCount: outreach.callCount,
+                      lastCalledAt: outreach.lastCalledAt,
+                      lastCallOutcome: outreach.lastOutcome,
+                    },
+                  }
+                : feature,
+            ),
+          )
         }
       />
 

@@ -2141,6 +2141,12 @@ export type LeAgencyFeature = {
     bwcDeclineReasons: string[]
     bwcVendor: string
     bwcEvidenceDate: string | null
+    // Has an SDR logged a call to this agency. Sent as a summary, never the
+    // log itself - the map only needs to know whether anyone has reached out.
+    contacted?: boolean
+    callCount?: number
+    lastCalledAt?: string | null
+    lastCallOutcome?: string
     isTest?: boolean
   }
 }
@@ -2242,6 +2248,72 @@ export function saveAgencySdr(ori: string, sdr: Partial<AgencySdr>) {
     `/le-agencies/${encodeURIComponent(ori)}/sdr`,
     { method: 'PATCH', body: JSON.stringify(sdr) },
   )
+}
+
+/**
+ * One logged call to an agency.
+ *
+ * Shared per agency like the qualification, and kept as a log rather than a
+ * single record: the second call only makes sense next to the first.
+ */
+export type AgencyCall = {
+  _id: string
+  calledAt: string
+  contactName: string
+  contactTitle: string
+  phone: string
+  outcome: string
+  followUpAt: string | null
+  notes: string
+  loggedBy: string
+  loggedAt: string
+}
+
+export type AgencyOutreach = {
+  callCount: number
+  lastCalledAt: string | null
+  lastOutcome: string
+  lastLoggedBy: string
+}
+
+type CallLogResponse = {
+  ori: string
+  name: string
+  calls: AgencyCall[]
+  outreach: AgencyOutreach | null
+}
+
+/** Every call logged against an agency, newest first. */
+export function getAgencyCallLog(ori: string) {
+  return request<CallLogResponse>(`/le-agencies/${encodeURIComponent(ori)}/call-log`)
+}
+
+/** Add a call to the log. Appends - it never overwrites an earlier call. */
+export function addAgencyCall(ori: string, call: Partial<AgencyCall>) {
+  return request<CallLogResponse>(`/le-agencies/${encodeURIComponent(ori)}/call-log`, {
+    method: 'POST',
+    body: JSON.stringify(call),
+  })
+}
+
+/** Remove a mis-logged call, so the map stops showing the agency as contacted. */
+export function deleteAgencyCall(ori: string, callId: string) {
+  return request<CallLogResponse>(
+    `/le-agencies/${encodeURIComponent(ori)}/call-log/${encodeURIComponent(callId)}`,
+    { method: 'DELETE' },
+  )
+}
+
+/**
+ * Wipe the whole log, putting the pin back to its camera colour.
+ *
+ * Distinct from deleting entries one by one: this is "we never worked this
+ * agency", not "that entry was wrong".
+ */
+export function clearAgencyCallLog(ori: string) {
+  return request<CallLogResponse>(`/le-agencies/${encodeURIComponent(ori)}/call-log`, {
+    method: 'DELETE',
+  })
 }
 
 /** Send the traveller to a named agency. */
