@@ -687,6 +687,55 @@ function AuthenticatedApp({ isDark, onToggle }: { isDark: boolean; onToggle: () 
   return <AppShell isDark={isDark} onToggle={onToggle} />
 }
 
+/**
+ * Auth0 turned this person away, and said why.
+ *
+ * A denial comes back to the redirect_uri - which is the site root, not
+ * /callback - carrying ?error=access_denied. Without this the app fell through
+ * to the login card, and clicking "Log in" bounced straight off the same rule
+ * with the same silent result: an unreadable loop that looks like a hang.
+ *
+ * The way out has to clear the Auth0 session, not just the local one. While
+ * that session stands, every retry is answered by the same account and denied
+ * the same way - which is the loop itself.
+ */
+function AuthDeniedScreen({ description }: { description: string }) {
+  const { logout } = useAuth0()
+
+  return (
+    <div className="auth-screen">
+      <Card className="auth-card">
+        <Space direction="vertical" size={24} style={{ width: '100%' }}>
+          <Title level={1} className="auth-title">
+            You do not have access
+          </Title>
+          <Alert
+            type="warning"
+            showIcon
+            message="Auth0 refused this sign in"
+            description={description || 'No reason was given.'}
+          />
+          <Text type="secondary" className="auth-copy">
+            If this is your work account, ask an administrator to check it. Otherwise sign out and
+            try a different one.
+          </Text>
+          <div className="auth-actions">
+            <Button
+              type="primary"
+              size="large"
+              onClick={() =>
+                logout({ logoutParams: { returnTo: window.location.origin } })
+              }
+            >
+              Sign out and try another account
+            </Button>
+          </div>
+        </Space>
+      </Card>
+    </div>
+  )
+}
+
 function AppRouterGate({ isDark, onToggle }: { isDark: boolean; onToggle: () => void }) {
   const location = useLocation()
   const { isAuthenticated, isLoading } = useAuth0()
@@ -707,6 +756,18 @@ function AppRouterGate({ isDark, onToggle }: { isDark: boolean; onToggle: () => 
 
   if (isAuthenticated) {
     return <AuthenticatedApp isDark={isDark} onToggle={onToggle} />
+  }
+
+  // Before any path check: Auth0 sends a refusal to the redirect_uri, which is
+  // the site root. Routing on pathname alone put this on the login card, where
+  // the only offered action was the one that had just failed.
+  const authFailure = new URLSearchParams(location.search).get('error')
+  if (authFailure) {
+    return (
+      <AuthDeniedScreen
+        description={new URLSearchParams(location.search).get('error_description') || ''}
+      />
+    )
   }
 
   if (location.pathname === '/login') {
