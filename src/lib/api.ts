@@ -2824,7 +2824,10 @@ export function getAgencyBriefing(ori: string, options: { refresh?: boolean } = 
   )
 }
 
-export type HermesSession = { ok: true; email: string; expiresInMs: number }
+export type HermesSessionResult =
+  | { status: 'ok'; email: string; expiresInMs: number }
+  | { status: 'forbidden'; message: string }
+  | { status: 'unavailable'; message: string }
 
 /**
  * Mint the cookie the Orchestrator's iframe travels on.
@@ -2835,26 +2838,47 @@ export type HermesSession = { ok: true; email: string; expiresInMs: number }
  * requests. In production the Hub's host routes /hermes-session through to the
  * backend; in dev the Vite proxy does.
  *
- * Returns null when the backend has no Hermes route at all (the endpoint 404s),
- * which is the "not wired up yet" case rather than a refusal -- callers then
- * fall back to probing Hermes directly.
+ * Only a 403 is a real refusal. Everything else that fails means the route is
+ * not wired up -- a static host answers a POST it cannot route with 400/404/405
+ * and an XML body, and reporting that as "you do not have access" sends whoever
+ * sees it hunting through an allowlist for a problem that is not there.
  */
-export async function startHermesSession(): Promise<HermesSession | null> {
+export async function startHermesSession(): Promise<HermesSessionResult> {
   const headers = new Headers()
   if (accessTokenProvider) {
     const token = await accessTokenProvider()
     if (token) headers.set('Authorization', `Bearer ${token}`)
   }
-  const response = await fetch('/hermes-session', {
-    method: 'POST',
-    headers,
-    // Without this the Set-Cookie is dropped and every frame request 401s.
-    credentials: 'include',
-  })
-  if (response.status === 404) return null
-  const payload = await response.json().catch(() => ({}))
-  if (!response.ok) {
-    throw new Error(payload?.message || `Could not start a Hermes session (${response.status}).`)
+
+  let response: Response
+  try {
+    response = await fetch('/hermes-session', {
+      method: 'POST',
+      headers,
+      // Without this the Set-Cookie is dropped and every frame request 401s.
+      credentials: 'include',
+    })
+  } catch {
+    return { status: 'unavailable', message: 'The Hub could not reach /hermes-session.' }
   }
-  return payload as HermesSession
+
+  const payload = await response.json().catch(() => null)
+
+  if (response.status === 403) {
+    return {
+      status: 'forbidden',
+      message: payload?.message || 'This account is not approved for the Hermes dashboard.',
+    }
+  }
+
+  if (!response.ok || !payload?.ok) {
+    return {
+      status: 'unavailable',
+      message:
+        payload?.message ||
+        `/hermes-session is not routed to the backend here (${response.status}).`,
+    }
+  }
+
+  return { status: 'ok', email: payload.email, expiresInMs: payload.expiresInMs }
 }

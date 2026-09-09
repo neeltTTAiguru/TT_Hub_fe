@@ -39,15 +39,14 @@ export default function Orchestrator() {
       // 1. Mint the session cookie. The iframe cannot present a bearer token, so
       //    this is the only point where the Auth0 token is exchanged for
       //    something the frame's own requests can carry.
-      try {
-        await startHermesSession()
-      } catch (error) {
-        if (!cancelled) {
-          setState({
-            status: 'forbidden',
-            reason: error instanceof Error ? error.message : 'Could not start a Hermes session.',
-          })
-        }
+      const session = await startHermesSession()
+      if (cancelled) return
+      if (session.status === 'forbidden') {
+        setState({ status: 'forbidden', reason: session.message })
+        return
+      }
+      if (session.status === 'unavailable') {
+        setState({ status: 'down', reason: session.message })
         return
       }
 
