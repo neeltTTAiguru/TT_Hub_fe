@@ -119,12 +119,15 @@ export default function SdrFormModal({
           message.warning('Saved, but HubSpot was not updated.')
           return
         }
+        // Say what actually landed. "Logged to HubSpot" over a save that only
+        // reached the company is the kind of small lie that costs someone an
+        // afternoon looking for a note on a contact that never got one.
+        const sync = result.hubspot
+        const where = sync?.contactId ? 'company and contact' : sync?.companyId ? 'company' : ''
         message.success(
-          result.hubspot?.contactId
-            ? 'Saved. Company and contact updated in HubSpot.'
-            : result.hubspot?.companyId
-              ? 'Saved. Company updated in HubSpot.'
-              : 'Qualification saved.',
+          where
+            ? `Saved. Logged to the ${where} in HubSpot${sync?.noteId ? ', with the full form on the timeline' : ''}.`
+            : 'Qualification saved.',
         )
         onClose()
       })
@@ -146,9 +149,10 @@ export default function SdrFormModal({
     >
       <Space direction="vertical" size={14} style={{ width: '100%' }}>
         <Text type="secondary" style={{ fontSize: 12 }}>
-          Saving creates or updates the agency as a company in HubSpot, and its chief as a contact,
-          with these answers and the camera findings on the company record. Saving again updates
-          those same records rather than making new ones.
+          Saving creates or updates the agency as a company in HubSpot, and its chief as a contact.
+          Every answer below is written to its own field on the company, and the whole form is
+          logged as a note on the company and contact timeline. Saving again updates those same
+          records rather than making new ones.
         </Text>
 
         {hubspot?.error ? (

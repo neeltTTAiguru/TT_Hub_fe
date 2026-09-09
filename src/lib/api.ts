@@ -2238,6 +2238,10 @@ export type AgencySdr = {
 export type HubSpotSyncResult = {
   companyId?: string
   contactId?: string
+  // The timeline note carrying the whole form, and how many of the
+  // qualification fields the portal let us write.
+  noteId?: string
+  propertiesWritten?: number
   contactSkipped?: string
   tool?: string
   error?: string
