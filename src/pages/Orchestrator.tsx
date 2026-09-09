@@ -17,9 +17,12 @@ const { Paragraph, Text } = Typography
 // which proxies the dashboard; in dev the Vite proxy does the same.
 const HERMES_PATH = import.meta.env.VITE_HERMES_WEB_PATH || '/chat'
 
-// Only for the operator-facing label and the open-in-a-real-window escape
-// hatch. Never the iframe src.
-const HERMES_ORIGIN = (import.meta.env.VITE_HERMES_WEB_URL || 'http://127.0.0.1:9119').replace(/\/$/, '')
+// The escape hatch opens the SAME proxied path in a top-level tab, rather than
+// the dashboard's own address. In production the dashboard sits on a VPC-private
+// address no browser can reach, so there is no direct URL to offer -- and a
+// build-time default pointing at localhost sent the link to the reader's own
+// machine. The proxied path is the one route that works from both dev and prod,
+// and a real top-level window is where Hermes is happiest anyway.
 
 type State =
   | { status: 'checking' }
@@ -121,15 +124,13 @@ export default function Orchestrator() {
     <div className="orchestrator-frame-wrap">
       <div className="orchestrator-frame-bar">
         <Text type="secondary" style={{ fontSize: 12 }}>
-          Hermes · {HERMES_ORIGIN.replace(/^https?:\/\//, '')}
+          Hermes · {HERMES_PATH}
         </Text>
         <Space size={4}>
           <Button size="small" type="text" onClick={retry}>
             Reload
           </Button>
-          {/* Escape hatch, and deliberately the dashboard's own origin: a real
-              top-level window is the one place Hermes is guaranteed to work. */}
-          <Button size="small" type="text" href={HERMES_ORIGIN} target="_blank" rel="noreferrer">
+          <Button size="small" type="text" href={HERMES_PATH} target="_blank" rel="noreferrer">
             Open in new tab ↗
           </Button>
         </Space>
