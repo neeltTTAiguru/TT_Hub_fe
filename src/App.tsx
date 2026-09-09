@@ -606,6 +606,12 @@ function LoginLauncher({ mode }: { mode: 'login' | 'signup' }) {
 function CallbackScreen() {
   const { error, isAuthenticated, isLoading } = useAuth0()
 
+  // A domain rule turning someone away is not a malfunction, and "Auth0
+  // callback failed" reads like one - sending a contractor to look for a broken
+  // deploy when the answer is that they used a personal address. Auth0 hands
+  // back the action's own message here, so show that instead of framing it.
+  const denied = (error as { error?: string } | undefined)?.error === 'access_denied'
+
   return (
     <div
       style={{
@@ -622,9 +628,9 @@ function CallbackScreen() {
           </Title>
           {error ? (
             <Alert
-              type="error"
+              type={denied ? 'warning' : 'error'}
               showIcon
-              message="Auth0 callback failed"
+              message={denied ? 'You do not have access' : 'Auth0 callback failed'}
               description={error.message}
             />
           ) : isAuthenticated ? (
