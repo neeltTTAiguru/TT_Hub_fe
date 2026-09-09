@@ -14,6 +14,7 @@ import {
   Typography,
 } from 'antd'
 import { getAntdTheme } from './theme'
+import Orchestrator from './pages/Orchestrator'
 import TrustedTechAssistant from './pages/TrustedTechAssistant'
 import CompetitorAnalyst from './pages/CompetitorAnalyst'
 import TrustedTechHubSpotAssistant from './pages/TrustedTechHubSpotAssistant'
@@ -30,6 +31,7 @@ import Settings from './pages/Settings'
 import NotFound from './pages/NotFound'
 import { setAccessTokenProvider } from './lib/api'
 import trustedTechnologyPrimaryLogo from './assets/trusted-technology-primary-logo.png'
+import orchestratorLogo from './assets/agent-logos/hermes.png'
 import brainLogo from './assets/agent-logos/brain.svg'
 import hubspotLogo from './assets/agent-logos/hubspot.svg'
 import youtrackLogo from './assets/agent-logos/youtrack.svg'
@@ -38,6 +40,10 @@ import competitorAnalystLogo from './assets/agent-logos/competitor-analyst.svg'
 import contentGeneratorLogo from './assets/agent-logos/content-generator.svg'
 import agencyMapLogo from './assets/agent-logos/agency-map.svg'
 import './styles/app.css'
+
+const orchestratorIcon = (
+  <img src={orchestratorLogo} alt="" aria-hidden="true" className="agent-icon" />
+)
 
 const brainIcon = (
   <img src={brainLogo} alt="" aria-hidden="true" className="agent-icon" />
@@ -82,6 +88,12 @@ function getAuthAuthorizationParams(extra?: Record<string, string>) {
 }
 
 const baseNavItems = [
+  {
+    key: '/orchestrator',
+    title: 'Orchestrator',
+    icon: orchestratorIcon,
+    label: <Link to="/orchestrator">Orchestrator</Link>,
+  },
   {
     key: 'brain',
     title: 'Brain',
@@ -174,15 +186,35 @@ function saveNavOrder(order: string[]) {
 /**
  * Applies a saved order to the nav.
  *
- * Anything not in the saved order keeps its natural position at the end, so a
- * nav item added in a later release still appears for someone who reordered
- * their sidebar months ago.
+ * Anything not in the saved order is spliced in beside the neighbours it
+ * shipped with, so a nav item added in a later release lands where it was meant
+ * to for someone who reordered their sidebar months ago. Appending instead put
+ * every new item at the bottom, which silently discards the placement the item
+ * was added for -- Orchestrator ships above Brain, not below Agency Map.
  */
 function applyNavOrder<T extends { key: string }>(items: T[], order: string[]): T[] {
   const byKey = new Map(items.map((item) => [item.key, item]))
-  const ordered = order.map((key) => byKey.get(key)).filter((item): item is T => Boolean(item))
-  const seen = new Set(ordered.map((item) => item.key))
-  return [...ordered, ...items.filter((item) => !seen.has(item.key))]
+  const result = order.map((key) => byKey.get(key)).filter((item): item is T => Boolean(item))
+  const placed = new Set(result.map((item) => item.key))
+
+  items.forEach((item, naturalIndex) => {
+    if (placed.has(item.key)) return
+    // The nearest earlier natural neighbour that already has a spot decides
+    // where this one goes. With no such neighbour the item is naturally first,
+    // so it goes to the top.
+    let at = 0
+    for (let i = naturalIndex - 1; i >= 0; i -= 1) {
+      const anchor = result.findIndex((entry) => entry.key === items[i].key)
+      if (anchor >= 0) {
+        at = anchor + 1
+        break
+      }
+    }
+    result.splice(at, 0, item)
+    placed.add(item.key)
+  })
+
+  return result
 }
 
 function AppShell({ isDark, onToggle }: { isDark: boolean; onToggle: () => void }) {
@@ -438,6 +470,7 @@ function AppShell({ isDark, onToggle }: { isDark: boolean; onToggle: () => void 
         <Content className="app-content">
           <Routes>
             <Route path="/" element={<Navigate to="/trusted-tech-assistant" replace />} />
+            <Route path="/orchestrator" element={<Orchestrator />} />
             <Route path="/trusted-tech-assistant" element={<TrustedTechAssistant />} />
             <Route path="/competitor-analyst" element={<CompetitorAnalyst />} />
             <Route path="/hubspot-assistant" element={<TrustedTechHubSpotAssistant />} />

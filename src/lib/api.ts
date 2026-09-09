@@ -2823,3 +2823,38 @@ export function getAgencyBriefing(ori: string, options: { refresh?: boolean } = 
     { timeoutMs: 180000 },
   )
 }
+
+export type HermesSession = { ok: true; email: string; expiresInMs: number }
+
+/**
+ * Mint the cookie the Orchestrator's iframe travels on.
+ *
+ * Deliberately a RELATIVE url, not API_BASE_URL: the cookie has to land on the
+ * Hub's own origin, because that is the origin the iframe loads Hermes from. A
+ * cookie set on the API's hostname would never be sent with the frame's
+ * requests. In production the Hub's host routes /hermes-session through to the
+ * backend; in dev the Vite proxy does.
+ *
+ * Returns null when the backend has no Hermes route at all (the endpoint 404s),
+ * which is the "not wired up yet" case rather than a refusal -- callers then
+ * fall back to probing Hermes directly.
+ */
+export async function startHermesSession(): Promise<HermesSession | null> {
+  const headers = new Headers()
+  if (accessTokenProvider) {
+    const token = await accessTokenProvider()
+    if (token) headers.set('Authorization', `Bearer ${token}`)
+  }
+  const response = await fetch('/hermes-session', {
+    method: 'POST',
+    headers,
+    // Without this the Set-Cookie is dropped and every frame request 401s.
+    credentials: 'include',
+  })
+  if (response.status === 404) return null
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    throw new Error(payload?.message || `Could not start a Hermes session (${response.status}).`)
+  }
+  return payload as HermesSession
+}

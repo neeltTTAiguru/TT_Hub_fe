@@ -4726,3 +4726,41 @@
   opacity: 0.3;
   cursor: default;
 }
+
+/* Orchestrator: the Hermes desktop UI embedded whole. It brings its own theme,
+   so the Hub adds no chrome around it — only the box it fills. Same viewport
+   arithmetic as .page-chat-full (AntD Header 64px + .app-content's 28px top and
+   bottom padding), so the frame ends exactly at the fold with no page scroll. */
+.orchestrator-frame-wrap {
+  height: calc(100dvh - 120px);
+  min-height: 460px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Slim identity + escape-hatch row. Kept to one text line so the embed loses as
+   little height as possible. */
+.orchestrator-frame-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex: 0 0 auto;
+  min-height: 24px;
+}
+
+.orchestrator-frame {
+  flex: 1;
+  width: 100%;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  background: var(--app-surface);
+}
+
+@media (max-width: 768px) {
+  /* .app-content drops to 20px top / 28px bottom below this breakpoint. */
+  .orchestrator-frame-wrap {
+    height: calc(100dvh - 112px);
+  }
+}
