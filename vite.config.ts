@@ -12,8 +12,14 @@ import react from '@vitejs/plugin-react'
 // None of these paths collide with the Hub -- the Hub's own routes are disjoint
 // from Hermes', and the Hub's production index.html inlines every asset, so it
 // never serves /assets itself.
+//
+// /login and /auth are Hermes' own sign-in bootstrap. Bound to a non-loopback
+// address the dashboard engages its OAuth gate and answers an unauthenticated
+// /chat with 302 -> /login; without these entries that redirect leaves the proxy
+// and the Hub answers it with its own index.html.
 const HERMES_ROUTES = [
   '/analytics',
+  '/auth',
   '/channels',
   '/chat',
   '/config',
@@ -21,6 +27,7 @@ const HERMES_ROUTES = [
   '/docs',
   '/env',
   '/files',
+  '/login',
   '/logs',
   '/mcp',
   '/models',
@@ -35,7 +42,7 @@ const HERMES_ROUTES = [
 
 // Static + API surface. `/api` carries the chat's PTY websocket, so it needs
 // ws:true or the embedded terminal connects and immediately drops.
-const HERMES_ASSETS = ['/assets', '/fonts', '/fonts-terminal']
+const HERMES_ASSETS = ['/assets', '/ds-assets', '/fonts', '/fonts-terminal']
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')

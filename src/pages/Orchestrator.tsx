@@ -24,9 +24,14 @@ const HERMES_PATH = import.meta.env.VITE_HERMES_WEB_PATH || '/chat'
 // machine. The proxied path is the one route that works from both dev and prod,
 // and a real top-level window is where Hermes is happiest anyway.
 
+// Set by the backend proxy on every response it pipes back from the dashboard.
+// See the pre-flight check below for why the body cannot be trusted for this.
+const PROXY_MARKER_HEADER = 'x-hermes-dashboard'
+
 type State =
   | { status: 'checking' }
   | { status: 'up' }
+  | { status: 'signin' }
   | { status: 'down'; reason: string }
   | { status: 'forbidden'; reason: string }
 
@@ -53,20 +58,42 @@ export default function Orchestrator() {
         return
       }
 
-      // 2. Confirm what answers is actually Hermes. `response.ok` alone is not
-      //    enough: a static host that serves index.html as its error document
-      //    answers 200 with the HUB's page, and framing that would nest the Hub
-      //    inside itself.
+      // 2. Confirm what answers is actually Hermes. `response.ok` is not enough:
+      //    a static host that serves index.html as its error document answers
+      //    200 with the HUB's page, and framing that nests the Hub inside
+      //    itself -- an empty white box, since the Hub has no route there.
+      //
+      //    This has to be judged on the marker header rather than the body. The
+      //    body test this replaced looked for "Hermes Agent", which the Hub's
+      //    own production index.html contains: the build inlines the bundle, and
+      //    the bundle contains the source of the test. The check passed on the
+      //    exact page it existed to reject.
       try {
         const response = await fetch(HERMES_PATH, { cache: 'no-store', credentials: 'include' })
-        const isHermes = response.ok && /Hermes Agent/i.test(await response.text())
-        if (!cancelled) {
-          setState(
-            isHermes
-              ? { status: 'up' }
-              : { status: 'down', reason: `${HERMES_PATH} did not return the Hermes dashboard.` },
-          )
+        if (cancelled) return
+
+        if (response.headers.get(PROXY_MARKER_HEADER) !== '1') {
+          setState({
+            status: 'down',
+            reason:
+              response.status === 401
+                ? `${HERMES_PATH} rejected the Hub's dashboard session.`
+                : `${HERMES_PATH} answered ${response.status}, but not through the Hermes proxy — it is not routed to the backend here.`,
+          })
+          return
         }
+
+        // Hermes answered, but with its own sign-in rather than the dashboard.
+        // Bound to a non-loopback address it runs its own OAuth gate, which is
+        // separate from the Hub's allowlist -- passing one does not pass the
+        // other. Same-origin, so the redirect Hermes followed is readable.
+        const landed = new URL(response.url, window.location.origin).pathname
+        if (!response.ok || landed.startsWith('/login') || landed.startsWith('/auth')) {
+          setState({ status: 'signin' })
+          return
+        }
+
+        setState({ status: 'up' })
       } catch {
         if (!cancelled) setState({ status: 'down', reason: `${HERMES_PATH} could not be reached.` })
       }
@@ -80,6 +107,37 @@ export default function Orchestrator() {
   const retry = () => {
     setState({ status: 'checking' })
     setAttempt((value) => value + 1)
+  }
+
+  // Deliberately not framed. Hermes' OAuth gate hands off to an identity
+  // provider, and providers refuse to be framed -- attempting the round trip in
+  // the Orchestrator produces a blank frame with no error, so the sign-in is
+  // sent to a top-level tab instead. The dashboard carries a `next=` back to
+  // HERMES_PATH, and its cookie is set on the Hub's origin, so returning here
+  // and hitting Retry picks the session up.
+  if (state.status === 'signin') {
+    return (
+      <Card className="section-card" title="Orchestrator">
+        <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+          <Alert
+            type="info"
+            showIcon
+            message="Sign in to the Hermes dashboard."
+            description="The Hub has approved you, but the dashboard runs its own sign-in and has not seen you yet. These are two separate gates."
+          />
+          <Space>
+            <Button type="primary" href={HERMES_PATH} target="_blank" rel="noreferrer">
+              Sign in to Hermes ↗
+            </Button>
+            <Button onClick={retry}>I have signed in — retry</Button>
+          </Space>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            It opens in a new tab on purpose: the identity provider refuses to render inside a
+            frame, so the round trip cannot be completed here.
+          </Text>
+        </Space>
+      </Card>
+    )
   }
 
   if (state.status === 'down' || state.status === 'forbidden') {
