@@ -346,6 +346,26 @@ function pinSvg(inner: string, width: number, height: number) {
   return `<svg width="${width}" height="${height}" viewBox="0 0 24 32" xmlns="http://www.w3.org/2000/svg" style="display:block;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.35));">${inner}</svg>`
 }
 
+/**
+ * Two arrows chasing each other round a circle - the refresh glyph.
+ *
+ * Drawn inline rather than pulled from an icon set: this app has no icon
+ * dependency and the three other glyphs in it are hand-written SVG on
+ * currentColor, so a package for one button would be the odd thing out.
+ */
+function RefreshIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+      <g fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M3 8 A5 5 0 0 1 13 8" />
+        <path d="M11.2 6.6 L13 8.4 L14.8 6.6" />
+        <path d="M13 8 A5 5 0 0 1 3 8" />
+        <path d="M4.8 9.4 L3 7.6 L1.2 9.4" />
+      </g>
+    </svg>
+  )
+}
+
 function makePin(html: string, width: number, height: number) {
   return L.divIcon({
     className: 'agency-map-pin',
@@ -557,6 +577,10 @@ export default function AgencyMap() {
   const [search, setSearch] = useState('')
   // The stage multi-select is gone; this is the one stage question left.
   const [customersOnly, setCustomersOnly] = useState(false)
+  // Bumped by the refresh button. The map is left open for hours while other
+  // people are qualifying agencies and closing deals, so what is on screen goes
+  // stale without anything changing here to notice it.
+  const [reloadKey, setReloadKey] = useState(0)
 
   const query = useMemo(
     () => ({
@@ -608,7 +632,9 @@ export default function AgencyMap() {
     return () => {
       cancelled = true
     }
-  }, [query, state])
+    // reloadKey is a counter, deliberately not read in the body - changing it
+    // is the whole signal, and the fetch is otherwise identical.
+  }, [query, state, reloadKey])
 
   // The FBI returns null coordinates for ~14% of agencies (task forces, state
   // and campus police, and a few hundred real city PDs). They match the filter
@@ -636,7 +662,7 @@ export default function AgencyMap() {
       })
 
     return () => { cancelled = true }
-  }, [customersOnly, state])
+  }, [customersOnly, state, reloadKey])
 
   const agencyPoints: MapPoint[] = useMemo(() => {
     return features.map((f) => ({
@@ -1315,6 +1341,16 @@ export default function AgencyMap() {
           >
             Customers only
           </Button>
+          <Button
+            size="middle"
+            // Icon only. The bar is already long, and the glyph is the one
+            // control here that needs no reading.
+            icon={<RefreshIcon />}
+            loading={loading}
+            title="Refresh the map"
+            aria-label="Refresh the map"
+            onClick={() => setReloadKey((key) => key + 1)}
+          />
         </Space>
       </Card>
 
