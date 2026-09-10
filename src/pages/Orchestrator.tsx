@@ -111,13 +111,13 @@ export default function Orchestrator() {
 
   // Deliberately not framed. Hermes' OAuth gate hands off to an identity
   // provider, and providers refuse to be framed -- attempting the round trip in
-  // the Orchestrator produces a blank frame with no error, so the sign-in is
+  // Hermes Operations produces a blank frame with no error, so the sign-in is
   // sent to a top-level tab instead. The dashboard carries a `next=` back to
   // HERMES_PATH, and its cookie is set on the Hub's origin, so returning here
   // and hitting Retry picks the session up.
   if (state.status === 'signin') {
     return (
-      <Card className="section-card" title="Orchestrator">
+      <Card className="section-card" title="Hermes Operations">
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
           <Alert
             type="info"
@@ -143,7 +143,7 @@ export default function Orchestrator() {
   if (state.status === 'down' || state.status === 'forbidden') {
     const refused = state.status === 'forbidden'
     return (
-      <Card className="section-card" title="Orchestrator">
+      <Card className="section-card" title="Hermes Operations">
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
           <Alert
             type={refused ? 'error' : 'warning'}
@@ -201,7 +201,7 @@ export default function Orchestrator() {
         key={attempt}
         className="orchestrator-frame"
         src={HERMES_PATH}
-        title="Hermes Orchestrator"
+        title="Hermes Operations"
         allow="clipboard-read; clipboard-write; fullscreen"
       />
     </div>

@@ -90,9 +90,9 @@ function getAuthAuthorizationParams(extra?: Record<string, string>) {
 const baseNavItems = [
   {
     key: '/orchestrator',
-    title: 'Orchestrator',
+    title: 'Hermes Operations',
     icon: orchestratorIcon,
-    label: <Link to="/orchestrator">Orchestrator</Link>,
+    label: <Link to="/orchestrator">Hermes Operations</Link>,
   },
   {
     key: 'brain',
@@ -202,7 +202,7 @@ function saveNavOrder(order: string[]) {
  * shipped with, so a nav item added in a later release lands where it was meant
  * to for someone who reordered their sidebar months ago. Appending instead put
  * every new item at the bottom, which silently discards the placement the item
- * was added for -- Orchestrator ships above Brain, not below Agency Map.
+ * was added for -- Hermes Operations ships above Brain, not below Agency Map.
  */
 function applyNavOrder<T extends { key: string }>(items: T[], order: string[]): T[] {
   const byKey = new Map(items.map((item) => [item.key, item]))
