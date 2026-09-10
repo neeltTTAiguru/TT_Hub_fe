@@ -7,6 +7,7 @@ import TravellerChat from '../components/TravellerChat'
 import ResearchRunPanel from '../components/ResearchRunPanel'
 import SdrFormModal from '../components/SdrFormModal'
 import CallLogModal from '../components/CallLogModal'
+import CallReportModal from '../components/CallReportModal'
 import {
   TRAVELLER_SPRITE,
   TRAVELLER_SPRITE_WAVE,
@@ -557,6 +558,7 @@ export default function AgencyMap() {
     chiefTitle: string
   } | null>(null)
   const [chatOpen, setChatOpen] = useState(false)
+  const [reportOpen, setReportOpen] = useState(false)
   const [briefingFor, setBriefingFor] = useState<{ ori: string; name: string } | null>(null)
   const [measureMode, setMeasureMode] = useState(false)
   const [selected, setSelected] = useState<MapPoint[]>([])
@@ -1343,6 +1345,14 @@ export default function AgencyMap() {
           </Button>
           <Button
             size="middle"
+            // Reads the same filters the map is drawn from, so the report
+            // covers what is on screen rather than the whole country.
+            onClick={() => setReportOpen(true)}
+          >
+            Call report
+          </Button>
+          <Button
+            size="middle"
             // Icon only. The bar is already long, and the glyph is the one
             // control here that needs no reading.
             icon={<RefreshIcon />}
@@ -1680,6 +1690,12 @@ export default function AgencyMap() {
             return next
           })
         }
+      />
+
+      <CallReportModal
+        open={reportOpen}
+        onClose={() => setReportOpen(false)}
+        filters={query}
       />
 
       <CallLogModal

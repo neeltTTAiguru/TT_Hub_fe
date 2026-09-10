@@ -2310,6 +2310,144 @@ export function clearAgencyCallLog(ori: string) {
   })
 }
 
+/**
+ * Call activity across a whole territory over a date range.
+ *
+ * The per-agency call log answers "what happened at this department"; this
+ * answers "what happened this week", which is the question a territory gets
+ * managed by. Scoped by whatever the map is currently filtered to.
+ */
+export type CallReport = {
+  period: { from: string; to: string; days: number; timezone: string }
+  totals: {
+    calls: number
+    agenciesCalled: number
+    agenciesInScope: number
+    firstContacts: number
+    reps: number
+    conversations: number
+    decisionMakers: number
+    gatekeepers: number
+    voicemails: number
+    noAnswer: number
+    callbacks: number
+    notInterested: number
+    badNumbers: number
+    followUps: number
+    unlabelled: number
+    days: number
+    callsPerDay: number
+    connectRate: number
+  }
+  byOutcome: { outcome: string; calls: number; agencies: number }[]
+  byDay: { date: string; calls: number; agencies: number; conversations: number }[]
+  byState: { state: string; calls: number; agencies: number; conversations: number }[]
+  byRep: { rep: string; calls: number; agencies: number; conversations: number; decisionMakers: number }[]
+  topAgencies: {
+    ori: string
+    name: string
+    state: string
+    county: string
+    calls: number
+    conversations: number
+    lastCalledAt: string | null
+  }[]
+  followUps: {
+    ori: string
+    name: string
+    state: string
+    followUpAt: string
+    outcome: string
+    contactName: string
+    loggedBy: string
+  }[]
+  scopeLabel: string
+}
+
+export type CallReportRange = {
+  /** Bare `YYYY-MM-DD`; the server reads both ends as whole days in `timezone`. */
+  from: string
+  to: string
+  timezone?: string
+}
+
+/** The browser's own zone, so "calls on the 10th" means the 10th where the SDR sits. */
+const localZone = () => {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+  } catch {
+    return 'UTC'
+  }
+}
+
+/** The figures alone, for the preview in the report dialog. */
+export function getCallReport(range: CallReportRange, filters: LeAgencyQuery = {}) {
+  const params = buildLeAgencyParams(filters)
+  params.set('from', range.from)
+  params.set('to', range.to)
+  params.set('timezone', range.timezone || localZone())
+  return request<CallReport>(`/le-agencies/call-report?${params.toString()}`)
+}
+
+/**
+ * The same period as a PDF, with a summary written by Hermes.
+ *
+ * Its own fetch rather than `request`, because that helper parses JSON and this
+ * returns a binary body. No timeout: Hermes reads every call note in the period
+ * before he writes anything, and cutting him off at thirty seconds would fail
+ * the download precisely on the weeks with the most to say.
+ */
+export async function downloadCallReportPdf(
+  range: CallReportRange,
+  filters: LeAgencyQuery = {},
+  options: { narrative?: boolean } = {},
+) {
+  const headers = new Headers({ 'Content-Type': 'application/json' })
+  if (accessTokenProvider) {
+    const token = await accessTokenProvider()
+    if (token) headers.set('Authorization', `Bearer ${token}`)
+  }
+  const response = await fetch(`${API_BASE_URL}/le-agencies/call-report/pdf`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      filters: Object.fromEntries(buildLeAgencyParams(filters)),
+      from: range.from,
+      to: range.to,
+      timezone: range.timezone || localZone(),
+      narrative: options.narrative !== false,
+    }),
+  })
+  if (!response.ok) {
+    // The API reports failures as JSON even on this binary endpoint, so unwrap
+    // it rather than showing the reader a brace-wrapped payload.
+    const body = await response.text().catch(() => '')
+    let detail = body
+    try {
+      detail = (JSON.parse(body) as ApiErrorPayload).message || body
+    } catch {
+      detail = body
+    }
+    throw new Error(detail || `Could not build the report (${response.status}).`)
+  }
+
+  const blob = await response.blob()
+  const name =
+    response.headers.get('Content-Disposition')?.match(/filename="([^"]+)"/)?.[1] ||
+    'call-activity.pdf'
+  // Anchor-click rather than window.open: a blob URL opened as a tab is blocked
+  // by the popup blocker, and this keeps the server's filename.
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = name
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
+  return name
+}
+
 /** Send the traveller to a named agency. */
 export function moveTraveller(ori: string) {
   return request<{ ori: string; name: string; state: string; county: string; lat: number; lon: number }>(
