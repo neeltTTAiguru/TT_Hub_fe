@@ -8,7 +8,6 @@ import {
   createChatThread,
   deleteChatThread,
   getAgent,
-  getAgents,
   getChatThread,
   getChatThreads,
   sendAgentChat,
@@ -19,7 +18,7 @@ import {
   type AgentDetail,
   type AgentChatResponse,
   type BrainMemoryProposal,
-  type BrainSectionMemory,
+  type BrainPage,
   type ChatAttachment,
   type ChatThreadSummary,
 } from '../lib/api'
@@ -166,10 +165,9 @@ type AgentChatWorkspaceProps = {
   enableBrainMemorySave?: boolean
   // When set, "Save to Brain" saves into exactly this section (the one the user
   // is talking to) and the in-modal section picker is hidden.
-  memorySection?: string
   // The current section's existing memories — enables "update an existing memory"
   // in the Save to Brain modal (replace in place instead of adding a duplicate).
-  sectionMemories?: BrainSectionMemory[]
+  sectionMemories?: BrainPage[]
   // Called after a memory is saved/updated so the caller can refresh its section list.
   onMemorySaved?: () => void
   chatSidePanel?: ReactNode
@@ -387,24 +385,9 @@ function buildDocumentHtml(bodyHtml: string, title: string, logo?: string) {
   </div>`
 }
 
-const COMPANY_SECTION = 'company'
-const COMPANY_SECTION_LABEL = 'Trusted Tech Company'
-
-// Only agents actually offered in the product get a brain section. The agent
-// catalog returns planned/internal agents too (WordPress test, Market Researcher,
-// grant/RFP/social surfers), which must not appear as save targets.
-const OFFERED_AGENT_IDS = new Set([
-  'trusted-tech-assistant',
-  'competitor-analyst',
-  'trusted-tech-hubspot-assistant',
-  'trusted-tech-youtrack-assistant',
-  'content-operations-assistant',
-])
-
 const EMPTY_MEMORY_PROPOSAL: BrainMemoryProposal = {
   title: '',
   content: '',
-  section: COMPANY_SECTION,
   sensitivity: 'internal',
   source: '',
 }
@@ -434,7 +417,6 @@ export default function AgentChatWorkspace({
   suppressChatErrors = false,
   streaming = false,
   enableBrainMemorySave = false,
-  memorySection,
   sectionMemories,
   onMemorySaved,
   chatSidePanel,
@@ -554,9 +536,6 @@ export default function AgentChatWorkspace({
   const [memoryProposal, setMemoryProposal] = useState<BrainMemoryProposal>(EMPTY_MEMORY_PROPOSAL)
   // 'new' = write a fresh page; 'update' = overwrite an existing memory in place.
   const [memoryMode, setMemoryMode] = useState<'new' | 'update'>('new')
-  const [sectionOptions, setSectionOptions] = useState<Array<{ value: string; label: string }>>([
-    { value: COMPANY_SECTION, label: COMPANY_SECTION_LABEL },
-  ])
   const chatEndRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
@@ -565,24 +544,13 @@ export default function AgentChatWorkspace({
       setError('')
 
       try {
-        const [agentResponse, threadsResponse, agentsResponse] = await Promise.all([
+        const [agentResponse, threadsResponse] = await Promise.all([
           getAgent(agentId),
           isAuthenticated ? getChatThreads(agentId, competitor) : Promise.resolve([]),
-          enableBrainMemorySave ? getAgents() : Promise.resolve([]),
         ])
 
         setAgent(agentResponse)
         setSavedThreads(threadsResponse)
-        if (enableBrainMemorySave) {
-          // Section picker: "Trusted Tech Company" (all agents) plus one entry per
-          // agent, so a memory can be scoped to exactly the agent that will use it.
-          setSectionOptions([
-            { value: COMPANY_SECTION, label: COMPANY_SECTION_LABEL },
-            ...agentsResponse
-              .filter((entry) => OFFERED_AGENT_IDS.has(entry.id))
-              .map((entry) => ({ value: entry.id, label: entry.name })),
-          ])
-        }
       } catch (loadError) {
         setError(loadError instanceof Error ? loadError.message : 'Failed to load agent workspace.')
       } finally {
@@ -591,7 +559,7 @@ export default function AgentChatWorkspace({
     }
 
     void load()
-  }, [agentId, competitor, isAuthenticated, enableBrainMemorySave])
+  }, [agentId, competitor, isAuthenticated])
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -1135,7 +1103,6 @@ export default function AgentChatWorkspace({
     setMemoryMode('new')
     setMemoryProposal({
       ...EMPTY_MEMORY_PROPOSAL,
-      section: memorySection ?? COMPANY_SECTION,
       content: latestUserMessage,
     })
     setMemoryReviewing(false)
@@ -1204,7 +1171,7 @@ export default function AgentChatWorkspace({
         ...current,
         {
           role: 'assistant',
-          content: `${saved.updated ? 'Updated the existing memory in' : 'Saved to'} GBrain and verified.\n\n- Memory: ${saved.title}\n- ID: \`${saved.slug}\`\n- Section: ${sectionOptions.find((option) => option.value === saved.section)?.label ?? saved.section}\n- Sensitivity: ${saved.sensitivity}`,
+          content: `${saved.updated ? 'Updated the existing memory in' : 'Saved to'} GBrain and verified.\n\n- Memory: ${saved.title}\n- ID: \`${saved.slug}\`\n- Sensitivity: ${saved.sensitivity}`,
         },
       ])
       onMemorySaved?.()
@@ -1712,7 +1679,6 @@ export default function AgentChatWorkspace({
                     <Tag color={memoryMode === 'update' ? 'orange' : 'green'}>
                       {memoryMode === 'update' ? 'Updating existing memory' : 'New memory'}
                     </Tag>
-                    <Tag color="gold">{sectionOptions.find((option) => option.value === memoryProposal.section)?.label ?? memoryProposal.section}</Tag>
                     <Tag color={memoryProposal.sensitivity === 'public' ? 'green' : 'blue'}>{memoryProposal.sensitivity}</Tag>
                   </Space>
                   {memoryProposal.source ? <div><Text type="secondary">Source</Text><Paragraph>{memoryProposal.source}</Paragraph></div> : null}
@@ -1784,36 +1750,19 @@ export default function AgentChatWorkspace({
                     />
                   </div>
                   <Space direction="vertical" size={4} style={{ width: '100%' }}>
-                    <Text strong>{memorySection ? 'Saving to this section' : 'Save to which part of the brain?'}</Text>
-                    <Space wrap>
-                      {memorySection ? (
-                        <Tag color="gold" style={{ padding: '4px 10px' }}>
-                          {sectionOptions.find((option) => option.value === memoryProposal.section)?.label ?? memoryProposal.section}
-                        </Tag>
-                      ) : (
-                        <Select
-                          value={memoryProposal.section}
-                          style={{ width: 260 }}
-                          // "Trusted Tech Company" = readable by every agent. Any other choice
-                          // scopes the memory to just that agent (the section that will use it).
-                          options={sectionOptions}
-                          onChange={(section) => setMemoryProposal((current) => ({ ...current, section }))}
-                        />
-                      )}
-                      <Select
-                        value={memoryProposal.sensitivity}
-                        style={{ width: 170 }}
-                        options={[
-                          { value: 'internal', label: 'Internal' },
-                          { value: 'public', label: 'Public' },
-                        ]}
-                        onChange={(sensitivity) => setMemoryProposal((current) => ({ ...current, sensitivity }))}
-                      />
-                    </Space>
+                    <Text strong>Sensitivity</Text>
+                    <Select
+                      value={memoryProposal.sensitivity}
+                      style={{ width: 170 }}
+                      options={[
+                        { value: 'internal', label: 'Internal' },
+                        { value: 'public', label: 'Public' },
+                      ]}
+                      onChange={(sensitivity) => setMemoryProposal((current) => ({ ...current, sensitivity }))}
+                    />
                     <Text type="secondary" style={{ fontSize: 12 }}>
-                      {memoryProposal.section === COMPANY_SECTION
-                        ? 'Every agent can read this.'
-                        : `Only ${sectionOptions.find((option) => option.value === memoryProposal.section)?.label ?? 'the selected agent'} will read this.`}
+                      Every agent can read this. There are no brain sections &mdash; anything saved
+                      here is company knowledge that the whole brain can retrieve.
                     </Text>
                   </Space>
                   <div style={{ width: '100%' }}>

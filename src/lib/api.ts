@@ -249,13 +249,10 @@ export type WordPressDraftPreview = {
 export type BrainMemoryProposal = {
   title: string
   content: string
-  // The brain "section" to save into: 'company' (readable by every agent) or a
-  // specific agent id (scopes the memory so only that agent retrieves it).
-  section: string
   sensitivity: 'internal' | 'public'
   source?: string
   // When set, update this existing memory in place (same GBrain page) instead of
-  // creating a new one. Must be a memory in the same section.
+  // creating a new one.
   targetSlug?: string
 }
 
@@ -263,8 +260,6 @@ export type BrainMemoryResult = {
   slug: string
   title: string
   department: string
-  allowedAgents: string[]
-  section: string
   competitor?: string
   competitorName?: string
   sensitivity: BrainMemoryProposal['sensitivity']
@@ -1611,22 +1606,6 @@ export function getCompetitorSectionMemories(competitor: string) {
   )
 }
 
-export type BrainSectionMemory = {
-  slug: string
-  title: string
-  sensitivity: string
-  summary: string
-  content: string
-}
-
-export type BrainSectionMemories = {
-  section: string
-  status: 'ok' | 'disabled' | 'unavailable'
-  memories: BrainSectionMemory[]
-}
-
-// Loads a Brain "section": 'company' (memories readable by every agent) or an
-// agent id (memories scoped to just that agent's section).
 export type BrainPage = {
   slug: string
   title: string
@@ -1668,12 +1647,6 @@ export type GbrainHealth = {
 export async function getGbrainHealth() {
   const response = await fetch(`${API_BASE_URL}/health/gbrain`)
   return (await response.json()) as GbrainHealth
-}
-
-export function getBrainSectionMemories(section: string) {
-  return request<BrainSectionMemories>(
-    `/agents/trusted-tech-assistant/brain-sections/${encodeURIComponent(section)}/memories`,
-  )
 }
 
 export type ResearchedBwcModel = {

@@ -101,9 +101,6 @@ export default function TrustedTechAssistant() {
       const saved = await saveBrainMemory({
         title: draft.title.trim(),
         content: draft.content.trim(),
-        // One brain: every page is readable by every agent unless a future
-        // scope is set deliberately.
-        section: 'company',
         sensitivity: draft.sensitivity,
         // Overwrites the same GBrain page rather than creating a near-duplicate.
         ...(editingSlug ? { targetSlug: editingSlug } : {}),
@@ -333,7 +330,6 @@ export default function TrustedTechAssistant() {
       agentLogo={brainLogo}
       backendLabel="Hermes + GBrain"
       enableBrainMemorySave
-      memorySection="company"
       onMemorySaved={refresh}
       renderBeforeChat={brainPanel}
       buildMessageContext={buildChatContext}
