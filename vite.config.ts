@@ -38,11 +38,19 @@ const HERMES_ROUTES = [
   '/skills',
   '/system',
   '/webhooks',
+  // Dashboard plugin tabs. Their bundles are in HERMES_ASSETS below, under a
+  // path of their own -- a tab entry without the bundle entry gives you a tab
+  // that loads and then reports that the plugin never registered.
+  '/kanban',
+  '/achievements',
 ]
 
 // Static + API surface. `/api` carries the chat's PTY websocket, so it needs
 // ws:true or the embedded terminal connects and immediately drops.
-const HERMES_ASSETS = ['/assets', '/ds-assets', '/fonts', '/fonts-terminal']
+// `/dashboard-plugins` is where every dashboard plugin's JS and CSS is served
+// from; it is deliberately unauthenticated on Hermes' side, because a <script
+// src> cannot carry an auth header.
+const HERMES_ASSETS = ['/assets', '/ds-assets', '/fonts', '/fonts-terminal', '/dashboard-plugins']
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
