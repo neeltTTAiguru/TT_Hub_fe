@@ -634,6 +634,23 @@ export type BrowserScreenshotResponse = {
   dataUrl: string
 }
 
+export type MyAccess = {
+  email: string
+  /** True for the accounts on the backend's FULL_ACCESS_EMAILS list. */
+  fullAccess: boolean
+}
+
+/**
+ * What this account is allowed to see.
+ *
+ * The server owns the answer. Shipping the allowlist into the bundle would put
+ * it on a CDN and leave the same rule written in two places, so the sidebar
+ * asks instead of deciding.
+ */
+export function getMyAccess() {
+  return request<MyAccess>('/access')
+}
+
 async function request<T>(path: string, init?: RequestInit, options?: { timeoutMs?: number }): Promise<T> {
   let response: Response
   // Bound slow requests (e.g. HubSpot chat) so the UI never hangs indefinitely.

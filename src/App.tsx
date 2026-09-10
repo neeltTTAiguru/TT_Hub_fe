@@ -29,7 +29,7 @@ import ContentOperationsPublish from './pages/ContentOperationsPublish'
 import ContentOperationsSeo from './pages/ContentOperationsSeo'
 import Settings from './pages/Settings'
 import NotFound from './pages/NotFound'
-import { setAccessTokenProvider } from './lib/api'
+import { getMyAccess, setAccessTokenProvider } from './lib/api'
 import trustedTechnologyPrimaryLogo from './assets/trusted-technology-primary-logo.png'
 import orchestratorLogo from './assets/agent-logos/hermes.png'
 import brainLogo from './assets/agent-logos/brain.svg'
@@ -153,6 +153,18 @@ const baseNavItems = [
 ]
 
 
+/**
+ * What an account that is not on the backend's full-access list keeps.
+ *
+ * The real gate is requireFeatureAccess on the API - hiding a link stops
+ * nobody, and the pages behind these routes would 403 anyway. This is here so a
+ * restricted account sees a hub that works rather than a sidebar of dead ends.
+ *
+ * Keys, not paths: they are matched against the nav items, and the Brain group
+ * is a parent key with children, so leaving it out removes the whole section.
+ */
+const RESTRICTED_NAV_KEYS = ['/agency-map', '/email-builder']
+
 // Kept out of the sidebar without being deleted. The page, its route and its
 // saved chats all still work — /competitor-analyst reaches it directly — so
 // putting it back is removing a key from this list.
@@ -217,7 +229,15 @@ function applyNavOrder<T extends { key: string }>(items: T[], order: string[]): 
   return result
 }
 
-function AppShell({ isDark, onToggle }: { isDark: boolean; onToggle: () => void }) {
+function AppShell({
+  isDark,
+  onToggle,
+  fullAccess,
+}: {
+  isDark: boolean
+  onToggle: () => void
+  fullAccess: boolean
+}) {
   const location = useLocation()
   const { user, logout } = useAuth0()
   const [navCollapsed, setNavCollapsed] = useState(false)
@@ -226,7 +246,11 @@ function AppShell({ isDark, onToggle }: { isDark: boolean; onToggle: () => void 
   const [dragKey, setDragKey] = useState<string | null>(null)
   const [dropTarget, setDropTarget] = useState<{ key: string; after: boolean } | null>(null)
 
-  const navItems = applyNavOrder(baseNavItems.filter((item) => !HIDDEN_NAV_KEYS.includes(item.key)), navOrder)
+  const visibleNavItems = baseNavItems.filter(
+    (item) =>
+      !HIDDEN_NAV_KEYS.includes(item.key) && (fullAccess || RESTRICTED_NAV_KEYS.includes(item.key)),
+  )
+  const navItems = applyNavOrder(visibleNavItems, navOrder)
 
   /** Reorders `from` to sit before or after `to`, then persists the result. */
   const moveNavItem = (from: string, to: string, after: boolean) => {
@@ -451,9 +475,11 @@ function AppShell({ isDark, onToggle }: { isDark: boolean; onToggle: () => void 
             {user?.name ? <Text type="secondary">Signed in as {user.name}</Text> : null}
             <span>{isDark ? 'Dark' : 'Light'} mode</span>
             <Switch checked={isDark} onChange={onToggle} />
-            <Link to="/settings">
-              <Button type="primary">Settings</Button>
-            </Link>
+            {fullAccess ? (
+              <Link to="/settings">
+                <Button type="primary">Settings</Button>
+              </Link>
+            ) : null}
             <Button
               onClick={() =>
                 logout({
@@ -468,27 +494,38 @@ function AppShell({ isDark, onToggle }: { isDark: boolean; onToggle: () => void 
           </div>
         </Header>
         <Content className="app-content">
-          <Routes>
-            <Route path="/" element={<Navigate to="/trusted-tech-assistant" replace />} />
-            <Route path="/orchestrator" element={<Orchestrator />} />
-            <Route path="/trusted-tech-assistant" element={<TrustedTechAssistant />} />
-            <Route path="/competitor-analyst" element={<CompetitorAnalyst />} />
-            <Route path="/hubspot-assistant" element={<TrustedTechHubSpotAssistant />} />
-            <Route path="/youtrack-assistant" element={<TrustedTechYouTrackAssistant />} />
-            <Route path="/email-builder" element={<EmailCampaignBuilder />} />
-            <Route path="/ahrefs-assistant" element={<TrustedTechAhrefsAssistant />} />
-            <Route path="/company-files" element={<CompanyFiles />} />
-            <Route path="/product-images" element={<ProductImages />} />
-            <Route path="/agency-map" element={<AgencyMap />} />
-            <Route path="/assistants/content-operations" element={<ContentOperations />} />
-            <Route path="/assistants/content-operations/seo" element={<ContentOperationsSeo />} />
-            <Route path="/assistants/content-operations/publish" element={<ContentOperationsPublish />} />
-            <Route path="/assistants/content-operations/blog/*" element={<Navigate to="/assistants/content-operations" replace />} />
-            <Route path="/assistants/wordpress-draft-test" element={<Navigate to="/assistants/content-operations" replace />} />
-            <Route path="/assistants/wordpress-draft-editor" element={<Navigate to="/assistants/content-operations" replace />} />
-            <Route path="/settings" element={<Settings />} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
+          {fullAccess ? (
+            <Routes>
+              <Route path="/" element={<Navigate to="/trusted-tech-assistant" replace />} />
+              <Route path="/orchestrator" element={<Orchestrator />} />
+              <Route path="/trusted-tech-assistant" element={<TrustedTechAssistant />} />
+              <Route path="/competitor-analyst" element={<CompetitorAnalyst />} />
+              <Route path="/hubspot-assistant" element={<TrustedTechHubSpotAssistant />} />
+              <Route path="/youtrack-assistant" element={<TrustedTechYouTrackAssistant />} />
+              <Route path="/email-builder" element={<EmailCampaignBuilder />} />
+              <Route path="/ahrefs-assistant" element={<TrustedTechAhrefsAssistant />} />
+              <Route path="/company-files" element={<CompanyFiles />} />
+              <Route path="/product-images" element={<ProductImages />} />
+              <Route path="/agency-map" element={<AgencyMap />} />
+              <Route path="/assistants/content-operations" element={<ContentOperations />} />
+              <Route path="/assistants/content-operations/seo" element={<ContentOperationsSeo />} />
+              <Route path="/assistants/content-operations/publish" element={<ContentOperationsPublish />} />
+              <Route path="/assistants/content-operations/blog/*" element={<Navigate to="/assistants/content-operations" replace />} />
+              <Route path="/assistants/wordpress-draft-test" element={<Navigate to="/assistants/content-operations" replace />} />
+              <Route path="/assistants/wordpress-draft-editor" element={<Navigate to="/assistants/content-operations" replace />} />
+              <Route path="/settings" element={<Settings />} />
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          ) : (
+            // Anything else redirects rather than 404s: a restricted account can
+            // arrive on a bookmark or a shared link to a page it no longer has,
+            // and landing on the map is a better answer than "not found".
+            <Routes>
+              <Route path="/agency-map" element={<AgencyMap />} />
+              <Route path="/email-builder" element={<EmailCampaignBuilder />} />
+              <Route path="*" element={<Navigate to="/agency-map" replace />} />
+            </Routes>
+          )}
         </Content>
       </Layout>
     </Layout>
@@ -685,6 +722,10 @@ function CallbackScreen() {
 function AuthenticatedApp({ isDark, onToggle }: { isDark: boolean; onToggle: () => void }) {
   const { getAccessTokenSilently } = useAuth0()
   const [isTokenProviderReady, setIsTokenProviderReady] = useState(false)
+  // null while unanswered. Starting at `false` would flash the restricted hub
+  // at everyone on every load; starting at `true` would flash the full one at
+  // people who are not allowed it, which is the worse of the two.
+  const [fullAccess, setFullAccess] = useState<boolean | null>(null)
 
   useEffect(() => {
     setAccessTokenProvider((forceRefresh = false) =>
@@ -703,7 +744,27 @@ function AuthenticatedApp({ isDark, onToggle }: { isDark: boolean; onToggle: () 
     }
   }, [getAccessTokenSilently])
 
-  if (!isTokenProviderReady) {
+  useEffect(() => {
+    if (!isTokenProviderReady) return
+    let cancelled = false
+
+    getMyAccess()
+      .then((access) => {
+        if (!cancelled) setFullAccess(Boolean(access.fullAccess))
+      })
+      .catch(() => {
+        // Fails closed. If the server will not say, the map and Brevo are what
+        // this session gets - and those two pages fetch their own data, so a
+        // blip here shows a working hub rather than an empty one.
+        if (!cancelled) setFullAccess(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [isTokenProviderReady])
+
+  if (!isTokenProviderReady || fullAccess === null) {
     return (
       <div
         style={{
@@ -717,7 +778,7 @@ function AuthenticatedApp({ isDark, onToggle }: { isDark: boolean; onToggle: () 
     )
   }
 
-  return <AppShell isDark={isDark} onToggle={onToggle} />
+  return <AppShell isDark={isDark} onToggle={onToggle} fullAccess={fullAccess} />
 }
 
 /**
