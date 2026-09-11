@@ -2605,6 +2605,30 @@ export type ResearchRunState = {
   lastError: string
 }
 
+/** One line in the runs menu: what a run was and how it went, without its rows. */
+export type ResearchRunSummary = Pick<
+  ResearchRunState,
+  | 'id'
+  | 'status'
+  | 'brief'
+  | 'filtersLabel'
+  | 'total'
+  | 'completed'
+  | 'failed'
+  | 'searches'
+  | 'foundCameras'
+  | 'foundEmails'
+  | 'foundPhones'
+  | 'startedAt'
+  | 'finishedAt'
+  | 'lastError'
+> & { startedBy: string }
+
+/** Every run there has been, newest first. Open to everyone who can see the map. */
+export function listResearchRuns(limit = 50) {
+  return request<ResearchRunSummary[]>(`/le-agencies/research-run?limit=${limit}`)
+}
+
 /**
  * The run everyone is watching. Global, not per user - there is one run and the
  * server owns it, so two people with the hub open see the same traveller.
@@ -2685,6 +2709,57 @@ export async function downloadRunWorkbook(runId: string) {
   link.remove()
   URL.revokeObjectURL(url)
   return name
+}
+
+/** One agency's row from a run's findings - the same row the spreadsheet carries. */
+export type ResearchRunFindingRow = {
+  ori: string
+  agency: string
+  type: string
+  county: string
+  state: string
+  cameras: 'Yes' | 'No' | 'Unknown' | 'Not researched'
+  cameraSource: string
+  reasoning: string
+  caveat: string
+  cameraUrl: string
+  cameraAsOf: string | null
+  confidence: string
+  vendor: string
+  contractEnd: string
+  chief: string
+  chiefTitle: string
+  email: string
+  contactUrl: string
+  contactVerified: string | null
+  phone: string
+  website: string
+  officers: number | null
+  addedBy: string
+}
+
+export type ResearchRunFindings = {
+  id: string
+  status: ResearchRunState['status']
+  brief: string
+  filtersLabel: string
+  total: number
+  completed: number
+  failed: number
+  startedAt: string | null
+  finishedAt: string | null
+  rows: ResearchRunFindingRow[]
+}
+
+/**
+ * A run's findings for the on-screen table. Open to everyone who can see the
+ * map, unlike the spreadsheet download, and the full run rather than the trail
+ * tail that the active-run poll returns.
+ */
+export function getResearchRunFindings(runId: string) {
+  return request<ResearchRunFindings>(
+    `/le-agencies/research-run/${encodeURIComponent(runId)}/findings`,
+  )
 }
 
 /** Ask the run to stop. It finishes the agency in flight first. */

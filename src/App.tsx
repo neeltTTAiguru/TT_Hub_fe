@@ -14,6 +14,7 @@ import {
   Typography,
 } from 'antd'
 import { getAntdTheme } from './theme'
+import { FullAccessProvider } from './lib/access'
 import Orchestrator from './pages/Orchestrator'
 import TrustedTechAssistant from './pages/TrustedTechAssistant'
 import CompetitorAnalyst from './pages/CompetitorAnalyst'
@@ -778,7 +779,11 @@ function AuthenticatedApp({ isDark, onToggle }: { isDark: boolean; onToggle: () 
     )
   }
 
-  return <AppShell isDark={isDark} onToggle={onToggle} fullAccess={fullAccess} />
+  return (
+    <FullAccessProvider value={fullAccess}>
+      <AppShell isDark={isDark} onToggle={onToggle} fullAccess={fullAccess} />
+    </FullAccessProvider>
+  )
 }
 
 /**

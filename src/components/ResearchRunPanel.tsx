@@ -2,13 +2,11 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   Alert,
   Button,
-  Card,
   Checkbox,
   Descriptions,
   Input,
   InputNumber,
   Modal,
-  Progress,
   Select,
   Space,
   Tag,
@@ -16,15 +14,12 @@ import {
   message,
 } from 'antd'
 import {
-  downloadRunWorkbook,
   previewResearchRun,
   startResearchRun,
-  stopResearchRun,
   type LeAgencyQuery,
   type ResearchRunPreview,
   type ResearchRunState,
 } from '../lib/api'
-import { TRAVELLER_SPRITE, travellerSvg } from './travellerSprite'
 
 const { Text } = Typography
 
@@ -67,6 +62,12 @@ const CAMERA_OPTIONS = [
 
 type CameraChoice = (typeof CAMERA_OPTIONS)[number]['value']
 
+/**
+ * The form for a new run: brief, targeting, scope, and the priced confirmation
+ * before anything starts. Lives in a modal opened from the runs menu on the
+ * map, and only full-access accounts get that far - starting a run spends
+ * money, and the server refuses everyone else regardless of what is drawn.
+ */
 export default function ResearchRunPanel({
   mapFilters,
   states,
@@ -77,7 +78,9 @@ export default function ResearchRunPanel({
   mapFilters: LeAgencyQuery
   states: string[]
   agencyTypes: string[]
+  /** The run in progress, if any - a second cannot start while one is going. */
   run: ResearchRunState | null
+  /** Called once a run has started, so the caller can refresh and close. */
   onRunChanged: () => void
 }) {
   const [brief, setBrief] = useState('')
@@ -189,32 +192,6 @@ export default function ResearchRunPanel({
       .finally(() => setStarting(false))
   }
 
-  const stop = () => {
-    stopResearchRun()
-      .then(() => {
-        message.success('Stopping after this agency.')
-        onRunChanged()
-      })
-      .catch((err: unknown) => {
-        message.error(err instanceof Error ? err.message : 'Could not stop the run.')
-      })
-  }
-
-  // The banner's download is by run id, so it returns what that run covered
-  // rather than whatever the form is set to now.
-  const [downloadingRun, setDownloadingRun] = useState(false)
-  const downloadRun = () => {
-    if (!run) return
-    setDownloadingRun(true)
-    downloadRunWorkbook(run.id)
-      .then((name) => message.success(`Downloaded ${name}`))
-      .catch((err: unknown) => {
-        message.error(err instanceof Error ? err.message : 'Could not build the spreadsheet.')
-      })
-      .finally(() => setDownloadingRun(false))
-  }
-
-
   const label = (text: string) => (
     <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>
       {text}
@@ -223,252 +200,176 @@ export default function ResearchRunPanel({
 
   return (
     <>
-      <Card
-        className="section-card"
-        title={
-          <Space size={10} align="center">
-            <span
-              aria-hidden
-              style={{ display: 'inline-block', lineHeight: 0 }}
-              dangerouslySetInnerHTML={{ __html: travellerSvg(20, TRAVELLER_SPRITE, false) }}
-            />
-            <span>Research run</span>
-          </Space>
-        }
-        extra={
-          matchesMap ? null : (
-            <Button size="small" onClick={useMapFilters}>
-              Match the map
-            </Button>
-          )
-        }
-      >
-        <Space direction="vertical" size={16} style={{ width: '100%' }}>
-          {run ? (
-            <Alert
-              type={
-                run.status === 'failed' ? 'error' : isLive ? 'info' : run.status === 'done' ? 'success' : 'warning'
-              }
-              showIcon
-              message={
-                <Space wrap size={12} align="center">
-                  <Text strong>
-                    {isLive
-                      ? run.status === 'stopping'
-                        ? 'Stopping after this agency'
-                        : `Walking - ${run.current?.name || 'moving'}`
-                      : run.status === 'done'
-                        ? 'Run finished'
-                        : run.status === 'stopped'
-                          ? 'Run stopped'
-                          : 'Run failed'}
-                  </Text>
-                  <Text type="secondary">
-                    {(run.completed + run.failed).toLocaleString()} of {run.total.toLocaleString()}
-                  </Text>
-                  {isLive ? (
-                    <Button size="small" danger onClick={stop}>
-                      Stop
-                    </Button>
-                  ) : null}
-                  <Button size="small" loading={downloadingRun} onClick={downloadRun}>
-                    Download spreadsheet
-                  </Button>
-                </Space>
-              }
-              description={
-                <Space direction="vertical" size={6} style={{ width: '100%' }}>
-                  <Progress
-                    percent={run.total ? Math.round(((run.completed + run.failed) / run.total) * 100) : 0}
-                    size="small"
-                    status={isLive ? 'active' : run.status === 'failed' ? 'exception' : 'normal'}
-                  />
-                  <Text type="secondary" style={{ fontSize: 12 }}>
-                    Of {(run.completed + run.failed).toLocaleString()} visited:{' '}
-                    {run.foundCameras.toLocaleString()} have cameras,{' '}
-                    {run.foundPhones.toLocaleString()} have a phone,{' '}
-                    {run.foundEmails.toLocaleString()} have an email -{' '}
-                    {run.searches.toLocaleString()} searches
-                    {run.failed ? ` - ${run.failed.toLocaleString()} failed` : ''}
-                  </Text>
-                  {run.filtersLabel ? (
-                    <Text type="secondary" style={{ fontSize: 12 }}>
-                      Targeting: {run.filtersLabel}
-                    </Text>
-                  ) : null}
-                  {run.lastError ? (
-                    <Text type="danger" style={{ fontSize: 12 }}>
-                      Last error: {run.lastError}
-                    </Text>
-                  ) : null}
-                </Space>
-              }
-            />
-          ) : null}
-
+      <Space direction="vertical" size={16} style={{ width: '100%' }}>
+        <Space wrap size={12} align="center" style={{ justifyContent: 'space-between', width: '100%' }}>
           <Text type="secondary" style={{ fontSize: 12 }}>
             The traveller walks every agency this run targets and files one report each. The run
             lives on the server, so it carries on after you close the tab, and everyone with the hub
             open watches the same traveller. Targeting is set here, separately from the map, so you
             can queue a run while looking at somewhere else.
           </Text>
-
-          <div>
-            <Text strong style={{ display: 'block', marginBottom: 6 }}>
-              What is this run for?
-            </Text>
-            <Input.TextArea
-              rows={3}
-              value={brief}
-              onChange={(event) => setBrief(event.target.value)}
-              placeholder="Optional. Anything Hermes should weight or look out for - a vendor whose contracts are expiring, a grant round, a sheriff who just took office."
-            />
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              The three fields below are collected on every run regardless. This only steers what
-              else the traveller pays attention to.
-            </Text>
-          </div>
-
-          <div>
-            <Text strong style={{ display: 'block', marginBottom: 8 }}>
-              On every report
-            </Text>
-            <Space direction="vertical" size={8} style={{ width: '100%' }}>
-              {REQUIRED_FIELDS.map((field, index) => (
-                <Space key={field.label} size={10} align="start">
-                  <Tag style={{ marginTop: 1 }}>{index + 1}</Tag>
-                  <span>
-                    <Text strong>{field.label}</Text>
-                    <br />
-                    <Text type="secondary" style={{ fontSize: 12 }}>
-                      {field.detail}
-                    </Text>
-                  </span>
-                </Space>
-              ))}
-            </Space>
-          </div>
-
-          <div>
-            <Text strong style={{ display: 'block', marginBottom: 10 }}>
-              Who this run targets
-            </Text>
-            <Space wrap size={12} align="start">
-              <div>
-                {label('States')}
-                <Select
-                  mode="multiple"
-                  allowClear
-                  showSearch
-                  maxTagCount="responsive"
-                  placeholder="All states"
-                  style={{ width: 240 }}
-                  value={runStates}
-                  onChange={setRunStates}
-                  options={states.map((code) => ({ value: code, label: code }))}
-                />
-              </div>
-              <div>
-                {label('Agency types')}
-                <Select
-                  mode="multiple"
-                  allowClear
-                  maxTagCount="responsive"
-                  placeholder="All agency types"
-                  style={{ width: 240 }}
-                  value={runTypes}
-                  onChange={setRunTypes}
-                  options={agencyTypes.map((type) => ({ value: type, label: type }))}
-                />
-              </div>
-              <div>
-                {label('Sworn officers')}
-                <Space size={6}>
-                  <InputNumber
-                    min={0}
-                    style={{ width: 100 }}
-                    placeholder="Min"
-                    value={minOfficers}
-                    onChange={(value) => setMinOfficers(value ?? null)}
-                  />
-                  <Text type="secondary">to</Text>
-                  <InputNumber
-                    min={0}
-                    style={{ width: 100 }}
-                    placeholder="Max"
-                    value={maxOfficers}
-                    onChange={(value) => setMaxOfficers(value ?? null)}
-                  />
-                </Space>
-              </div>
-              <div>
-                {label('Camera status')}
-                <Select
-                  style={{ width: 220 }}
-                  value={camera}
-                  onChange={setCamera}
-                  options={CAMERA_OPTIONS.map((option) => ({ ...option }))}
-                />
-              </div>
-              <div>
-                {label('Agency name contains')}
-                <Input
-                  allowClear
-                  style={{ width: 220 }}
-                  placeholder="Any name"
-                  value={nameSearch}
-                  onChange={(event) => setNameSearch(event.target.value)}
-                />
-              </div>
-            </Space>
-            {minOfficers !== null || maxOfficers !== null ? (
-              <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 8 }}>
-                Setting a size range excludes the agencies that never reported an officer count.
-                Clear both to include them.
-              </Text>
-            ) : null}
-          </div>
-
-          <Space direction="vertical" size={6}>
-            <Checkbox
-              checked={skipResearched}
-              onChange={(event) => setSkipResearched(event.target.checked)}
-            >
-              Skip agencies already researched
-            </Checkbox>
-            <Checkbox
-              checked={includeOffMap}
-              onChange={(event) => setIncludeOffMap(event.target.checked)}
-            >
-              Also include agencies that are not on the map
-              {live?.offMap ? ` (${live.offMap.toLocaleString()})` : ''}
-              <Text type="secondary" style={{ fontSize: 12, display: 'block' }}>
-                No published coordinate, so the traveller cannot walk to them - but they still have
-                a website, a chief and a phone number. Leave this off and the count below is exactly
-                what the map is showing.
-              </Text>
-            </Checkbox>
-          </Space>
-
-          <Space wrap>
-            <Button type="primary" loading={reviewing} onClick={review} disabled={isLive}>
-              Run research
+          {matchesMap ? null : (
+            <Button size="small" onClick={useMapFilters}>
+              Match the map
             </Button>
-            <Button loading={starting} onClick={() => start(1)} disabled={isLive}>
-              Test on one agency
-            </Button>
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              {isLive
-                ? 'A run is already going. Stop it before starting another.'
-                : counting
-                ? 'Counting...'
-                : live === null
-                  ? 'You get the scope and the cost first. Nothing starts until you confirm.'
-                  : `${live.queue.toLocaleString()} agencies in scope. You get the full cost before anything starts.`}
-            </Text>
-          </Space>
+          )}
         </Space>
-      </Card>
+
+        <div>
+          <Text strong style={{ display: 'block', marginBottom: 6 }}>
+            What is this run for?
+          </Text>
+          <Input.TextArea
+            rows={3}
+            value={brief}
+            onChange={(event) => setBrief(event.target.value)}
+            placeholder="Optional. Anything Hermes should weight or look out for - a vendor whose contracts are expiring, a grant round, a sheriff who just took office."
+          />
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            The three fields below are collected on every run regardless. This only steers what
+            else the traveller pays attention to.
+          </Text>
+        </div>
+
+        <div>
+          <Text strong style={{ display: 'block', marginBottom: 8 }}>
+            On every report
+          </Text>
+          <Space direction="vertical" size={8} style={{ width: '100%' }}>
+            {REQUIRED_FIELDS.map((field, index) => (
+              <Space key={field.label} size={10} align="start">
+                <Tag style={{ marginTop: 1 }}>{index + 1}</Tag>
+                <span>
+                  <Text strong>{field.label}</Text>
+                  <br />
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    {field.detail}
+                  </Text>
+                </span>
+              </Space>
+            ))}
+          </Space>
+        </div>
+
+        <div>
+          <Text strong style={{ display: 'block', marginBottom: 10 }}>
+            Who this run targets
+          </Text>
+          <Space wrap size={12} align="start">
+            <div>
+              {label('States')}
+              <Select
+                mode="multiple"
+                allowClear
+                showSearch
+                maxTagCount="responsive"
+                placeholder="All states"
+                style={{ width: 240 }}
+                value={runStates}
+                onChange={setRunStates}
+                options={states.map((code) => ({ value: code, label: code }))}
+              />
+            </div>
+            <div>
+              {label('Agency types')}
+              <Select
+                mode="multiple"
+                allowClear
+                maxTagCount="responsive"
+                placeholder="All agency types"
+                style={{ width: 240 }}
+                value={runTypes}
+                onChange={setRunTypes}
+                options={agencyTypes.map((type) => ({ value: type, label: type }))}
+              />
+            </div>
+            <div>
+              {label('Sworn officers')}
+              <Space size={6}>
+                <InputNumber
+                  min={0}
+                  style={{ width: 100 }}
+                  placeholder="Min"
+                  value={minOfficers}
+                  onChange={(value) => setMinOfficers(value ?? null)}
+                />
+                <Text type="secondary">to</Text>
+                <InputNumber
+                  min={0}
+                  style={{ width: 100 }}
+                  placeholder="Max"
+                  value={maxOfficers}
+                  onChange={(value) => setMaxOfficers(value ?? null)}
+                />
+              </Space>
+            </div>
+            <div>
+              {label('Camera status')}
+              <Select
+                style={{ width: 220 }}
+                value={camera}
+                onChange={setCamera}
+                options={CAMERA_OPTIONS.map((option) => ({ ...option }))}
+              />
+            </div>
+            <div>
+              {label('Agency name contains')}
+              <Input
+                allowClear
+                style={{ width: 220 }}
+                placeholder="Any name"
+                value={nameSearch}
+                onChange={(event) => setNameSearch(event.target.value)}
+              />
+            </div>
+          </Space>
+          {minOfficers !== null || maxOfficers !== null ? (
+            <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 8 }}>
+              Setting a size range excludes the agencies that never reported an officer count.
+              Clear both to include them.
+            </Text>
+          ) : null}
+        </div>
+
+        <Space direction="vertical" size={6}>
+          <Checkbox
+            checked={skipResearched}
+            onChange={(event) => setSkipResearched(event.target.checked)}
+          >
+            Skip agencies already researched
+          </Checkbox>
+          <Checkbox
+            checked={includeOffMap}
+            onChange={(event) => setIncludeOffMap(event.target.checked)}
+          >
+            Also include agencies that are not on the map
+            {live?.offMap ? ` (${live.offMap.toLocaleString()})` : ''}
+            <Text type="secondary" style={{ fontSize: 12, display: 'block' }}>
+              No published coordinate, so the traveller cannot walk to them - but they still have
+              a website, a chief and a phone number. Leave this off and the count below is exactly
+              what the map is showing.
+            </Text>
+          </Checkbox>
+        </Space>
+
+        <Space wrap>
+          <Button type="primary" loading={reviewing} onClick={review} disabled={isLive}>
+            Run research
+          </Button>
+          <Button loading={starting} onClick={() => start(1)} disabled={isLive}>
+            Test on one agency
+          </Button>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            {isLive
+              ? 'A run is already going. Stop it before starting another.'
+              : counting
+              ? 'Counting...'
+              : live === null
+                ? 'You get the scope and the cost first. Nothing starts until you confirm.'
+                : `${live.queue.toLocaleString()} agencies in scope. You get the full cost before anything starts.`}
+          </Text>
+        </Space>
+      </Space>
 
       <Modal
         title="Before this run starts"

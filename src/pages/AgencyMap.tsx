@@ -5,9 +5,12 @@ import MarkerClusterGroup from 'react-leaflet-cluster'
 import AgencyBriefingPanel from '../components/AgencyBriefingPanel'
 import TravellerChat from '../components/TravellerChat'
 import ResearchRunPanel from '../components/ResearchRunPanel'
+import ResearchRunMenu from '../components/ResearchRunMenu'
+import ResearchRunFindings from '../components/ResearchRunFindings'
 import SdrFormModal from '../components/SdrFormModal'
 import CallLogModal from '../components/CallLogModal'
 import CallReportModal from '../components/CallReportModal'
+import { useFullAccess } from '../lib/access'
 import {
   TRAVELLER_SPRITE,
   TRAVELLER_SPRITE_WAVE,
@@ -28,7 +31,9 @@ import {
   type LeAgencyStats,
   type ResearchActivity,
   getActiveResearchRun,
+  listResearchRuns,
   type ResearchRunState,
+  type ResearchRunSummary,
 } from '../lib/api'
 
 const { Paragraph, Text, Title } = Typography
@@ -536,9 +541,16 @@ function createClusterIcon(cluster: { getChildCount: () => number }) {
 }
 
 export default function AgencyMap() {
+  const fullAccess = useFullAccess()
   const [activity, setActivity] = useState<ResearchActivity | null>(null)
   const [run, setRun] = useState<ResearchRunState | null>(null)
   const [runTick, setRunTick] = useState(0)
+  // The menu on the map: every run, plus which one is open and whether the
+  // form is up. The form is only reachable through the menu, and only for
+  // accounts that can start a run.
+  const [runs, setRuns] = useState<ResearchRunSummary[]>([])
+  const [creatingRun, setCreatingRun] = useState(false)
+  const [viewingRunId, setViewingRunId] = useState<string | null>(null)
   // Read inside the polling loop, which must not re-subscribe on every tick.
   const activityRef = useRef<ResearchActivity | null>(null)
   const mapRef = useRef<L.Map | null>(null)
@@ -1201,6 +1213,23 @@ export default function AgencyMap() {
     }
   }, [runTick])
 
+  // The list behind the menu. Refetched when a run starts or stops and when
+  // the live run changes state, which is when a line on it would change.
+  const runStatus = run?.status ?? null
+  useEffect(() => {
+    let cancelled = false
+    listResearchRuns()
+      .then((list) => {
+        if (!cancelled) setRuns(list)
+      })
+      .catch(() => {
+        // The menu simply stays as it was; the poll above still shows the live run.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [runTick, runStatus])
+
   // Recolour the pins the run has settled, from the trail it already sends.
   // Re-pulling the geojson every few seconds to see three cells change would
   // move megabytes; the verdicts are already in the poll, so apply them here.
@@ -1445,6 +1474,14 @@ export default function AgencyMap() {
             <Spin tip="Loading agencies..." />
           </div>
         ) : null}
+        <ResearchRunMenu
+          runs={runs}
+          active={run}
+          canRun={fullAccess}
+          onCreate={() => setCreatingRun(true)}
+          onView={setViewingRunId}
+          onChanged={() => setRunTick((n) => n + 1)}
+        />
         <MapContainer
           center={US_CENTER}
           zoom={US_ZOOM}
@@ -1636,12 +1673,32 @@ export default function AgencyMap() {
         </Space>
       </Card>
 
-      <ResearchRunPanel
-        mapFilters={query}
-        states={STATES}
-        agencyTypes={agencyTypes}
-        run={run}
-        onRunChanged={() => setRunTick((n) => n + 1)}
+      {fullAccess ? (
+        <Modal
+          title="New research run"
+          open={creatingRun}
+          onCancel={() => setCreatingRun(false)}
+          footer={null}
+          width={920}
+          destroyOnHidden
+        >
+          <ResearchRunPanel
+            mapFilters={query}
+            states={STATES}
+            agencyTypes={agencyTypes}
+            run={run}
+            onRunChanged={() => {
+              setRunTick((n) => n + 1)
+              setCreatingRun(false)
+            }}
+          />
+        </Modal>
+      ) : null}
+
+      <ResearchRunFindings
+        runId={viewingRunId}
+        open={Boolean(viewingRunId)}
+        onClose={() => setViewingRunId(null)}
       />
 
       <Modal
