@@ -42,12 +42,14 @@ const OUTCOMES = [
   'Asked for information by email',
   'Not interested',
   'Wrong number / bad line',
+  'Call later',
 ]
 
 /** Outcomes worth spotting in a list at a glance. */
 const OUTCOME_COLOR: Record<string, string> = {
   'Spoke with decision maker': 'green',
   'Call back scheduled': 'blue',
+  'Call later': 'magenta',
   'Not interested': 'red',
   'Wrong number / bad line': 'red',
 }

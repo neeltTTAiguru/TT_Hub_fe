@@ -2276,6 +2276,9 @@ type CallLogResponse = {
   name: string
   calls: AgencyCall[]
   outreach: AgencyOutreach | null
+  // Present on a save: the HubSpot Call activity the entry became, or why it
+  // could not. The hub's log is saved either way.
+  hubspot?: { callId: string; ownerId: string; loggedBy: string } | { error: string } | null
 }
 
 /** Every call logged against an agency, newest first. */
@@ -2283,8 +2286,14 @@ export function getAgencyCallLog(ori: string) {
   return request<CallLogResponse>(`/le-agencies/${encodeURIComponent(ori)}/call-log`)
 }
 
-/** Add a call to the log. Appends - it never overwrites an earlier call. */
-export function addAgencyCall(ori: string, call: Partial<AgencyCall>) {
+/**
+ * Add a call to the log. Appends - it never overwrites an earlier call.
+ *
+ * `clientCallId` is minted by the caller so a retried save (a flaky
+ * connection, a double click) updates the same entry - and the same HubSpot
+ * Call - instead of logging the call twice. The server refuses a save without one.
+ */
+export function addAgencyCall(ori: string, call: Partial<AgencyCall> & { clientCallId: string }) {
   return request<CallLogResponse>(`/le-agencies/${encodeURIComponent(ori)}/call-log`, {
     method: 'POST',
     body: JSON.stringify(call),

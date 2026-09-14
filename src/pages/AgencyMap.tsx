@@ -20,12 +20,14 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import 'leaflet.markercluster/dist/MarkerCluster.css'
 import {
+  addAgencyCall,
   getCrmDealGeojson,
   getLeAgencyGeojson,
   getLeAgencyStats,
   getResearchActivity,
   moveTraveller,
   setTrustedBwc,
+  type AgencyOutreach,
   type CrmDealFeature,
   type LeAgencyFeature,
   type LeAgencyStats,
@@ -103,6 +105,13 @@ const COMMON_VENDORS = [
 // them" is the question being asked of the pin, and the card still carries the
 // camera lines in full.
 const CONTACTED_COLOR = '#7fc4e8'
+// The outcome a "Call later" click logs, and the pin colour it earns. Pink is
+// the one colour nothing else on the map uses, so a deferred agency stands out
+// from the worked (blue) and the unworked (camera colours) alike. It wins over
+// the contacted blue only while the LATEST call is a deferral: log a real call
+// afterwards and the pin goes back to blue, because the deferral has been acted on.
+const CALL_LATER_OUTCOME = 'Call later'
+const CALL_LATER_COLOR = '#ff2d95'
 // The live research run. A deliberate outsider in this palette - it is the one
 // thing on the map that is happening rather than known.
 const TRAVELLER_COLOR = '#1f6f8f'
@@ -127,6 +136,8 @@ type MapPoint = {
   isTest?: boolean
   // An SDR has logged at least one call to this agency.
   contacted: boolean
+  // The most recent entry is a "Call later" - see CALL_LATER_OUTCOME.
+  callLater: boolean
   callCount: number
   lastCalledAt: string | null
   bwcVendor: string
@@ -148,7 +159,7 @@ type MapPoint = {
  * a customer is also "in HubSpot", so it has to be claimed first or it would
  * fall into a second bucket and the counts would not sum.
  */
-type PinCategory = 'contacted' | 'bwc' | 'noBwc' | 'unknownBwc' | 'test'
+type PinCategory = 'callLater' | 'contacted' | 'bwc' | 'noBwc' | 'unknownBwc' | 'test'
 
 // Customers are no longer a category of their own: they keep their distinct
 // ticked pin, but they are filtered by camera status like every other agency.
@@ -157,8 +168,10 @@ function categoryFor(point: {
   bwcTrusted?: string
   isTest?: boolean
   contacted?: boolean
+  callLater?: boolean
 }): PinCategory {
   if (point.isTest) return 'test'
+  if (point.callLater) return 'callLater'
   // Claimed before the camera rows on purpose - a contacted agency is coloured
   // light blue, so it has to be counted and filtered as one, or the legend
   // tallies would not match what is on the screen.
@@ -247,8 +260,15 @@ function bwcLine(p: {
  * state mandate - and a pin we went and verified should not look identical to
  * one coloured by a statute.
  */
-function colorFor(bwcStatus: string, bwcTrusted = '', isTest = false, contacted = false) {
+function colorFor(
+  bwcStatus: string,
+  bwcTrusted = '',
+  isTest = false,
+  contacted = false,
+  callLater = false,
+) {
   if (isTest) return TEST_COLOR
+  if (callLater) return CALL_LATER_COLOR
   // Outreach outranks camera status: once somebody has rung them, the pin is
   // answering "have we spoken to this agency" instead.
   if (contacted) return CONTACTED_COLOR
@@ -400,11 +420,12 @@ function dotIcon(
   bwcTrusted = '',
   isTest = false,
   contacted = false,
+  callLater = false,
 ) {
   const width = officers === null ? 20 : Math.min(20 + Math.sqrt(officers) * 1.1, 34)
   const height = Math.round((width * 4) / 3)
 
-  const color = colorFor(bwcStatus, bwcTrusted, isTest, contacted)
+  const color = colorFor(bwcStatus, bwcTrusted, isTest, contacted, callLater)
 
   if (!inPipeline) {
     return makePin(
@@ -569,6 +590,16 @@ export default function AgencyMap() {
     chiefName: string
     chiefTitle: string
   } | null>(null)
+  const [callLaterBusy, setCallLaterBusy] = useState<string | null>(null)
+  // The agency whose Call Result panel is open. Same shape as callLogFor so
+  // "Log Call" can hand it straight across.
+  const [callResultFor, setCallResultFor] = useState<{
+    ori: string
+    name: string
+    phone: string
+    chiefName: string
+    chiefTitle: string
+  } | null>(null)
   const [chatOpen, setChatOpen] = useState(false)
   const [reportOpen, setReportOpen] = useState(false)
   const [briefingFor, setBriefingFor] = useState<{ ori: string; name: string } | null>(null)
@@ -696,6 +727,7 @@ export default function AgencyMap() {
       bwcVendor: f.properties.bwcVendor || '',
       isTest: Boolean(f.properties.isTest),
       contacted: Boolean(f.properties.contacted),
+      callLater: f.properties.lastCallOutcome === CALL_LATER_OUTCOME,
       callCount: f.properties.callCount ?? 0,
       lastCalledAt: f.properties.lastCalledAt ?? null,
       lines: [
@@ -777,6 +809,7 @@ export default function AgencyMap() {
         bwcTrustedBy: '',
         bwcVendor: '',
         contacted: false,
+        callLater: false,
         callCount: 0,
         lastCalledAt: null,
         lines: [
@@ -792,6 +825,7 @@ export default function AgencyMap() {
   /** Live tally per legend row, from what is actually plotted right now. */
   const categoryCounts = useMemo(() => {
     const counts: Record<PinCategory, number> = {
+      callLater: 0,
       contacted: 0,
       bwc: 0,
       noBwc: 0,
@@ -953,6 +987,58 @@ export default function AgencyMap() {
       })
   }
 
+  /** Patch outreach onto the loaded feature so the pin recolours without a refetch. */
+  const applyOutreach = (ori: string, outreach: AgencyOutreach) =>
+    setFeatures((current) =>
+      current.map((feature) =>
+        feature.properties.ori === ori
+          ? {
+              ...feature,
+              properties: {
+                ...feature.properties,
+                contacted: outreach.callCount > 0,
+                callCount: outreach.callCount,
+                lastCalledAt: outreach.lastCalledAt,
+                lastCallOutcome: outreach.lastOutcome,
+              },
+            }
+          : feature,
+      ),
+    )
+
+  /**
+   * "Call later": log a deferral in one click.
+   *
+   * It is a real call-log entry with the Call later outcome, so it counts in
+   * the call report, shows in the agency's log, and - because every log entry
+   * is mirrored to HubSpot - lands there as a Call activity owned by the SDR.
+   * The pink pin is the latest-outcome rule doing its job, not a separate flag.
+   */
+  const callLater = async (ori: string, name: string) => {
+    setCallLaterBusy(ori)
+    try {
+      const result = await addAgencyCall(ori, {
+        clientCallId: crypto.randomUUID(),
+        outcome: CALL_LATER_OUTCOME,
+      })
+      applyOutreach(ori, result.outreach ?? { callCount: 1, lastCalledAt: null, lastOutcome: CALL_LATER_OUTCOME, lastLoggedBy: '' })
+      const hubspotError = result.hubspot && 'error' in result.hubspot ? result.hubspot.error : ''
+      if (hubspotError) message.warning(`${name} marked Call later. HubSpot did not take it: ${hubspotError}`)
+      else message.success(`${name} marked Call later and logged in HubSpot.`)
+    } catch (err: unknown) {
+      message.error(err instanceof Error ? err.message : 'Could not mark that agency.')
+    } finally {
+      setCallLaterBusy(null)
+    }
+  }
+
+  // Live state of the agency behind the open Call Result panel, so its buttons
+  // reflect what is on file (and recolour the moment Call Later lands).
+  const callResultPoint = useMemo(
+    () => (callResultFor ? points.find((point) => point.ori === callResultFor.ori) ?? null : null),
+    [callResultFor, points],
+  )
+
   const markTrusted = async (
     ori: string,
     value: 'has_bwc' | 'no_bwc' | '',
@@ -997,6 +1083,7 @@ export default function AgencyMap() {
                         point.bwcTrusted,
                         point.isTest,
                         point.contacted,
+                        point.callLater,
                       )
                 }
                 zIndexOffset={isCustomerStage(point.stage) ? 1000 : 0}
@@ -1093,25 +1180,16 @@ export default function AgencyMap() {
                               Clear
                             </Button>
                           ) : null}
+                          {/* One door for everything that happens after a call.
+                              The three actions behind it (log the call, defer
+                              it, qualify it into HubSpot) used to be three
+                              buttons here; one button keeps the card readable.
+                              Filled means something is already on file. */}
                           <Button
                             size="small"
-                            type={sdrFilled.has(point.ori) ? 'primary' : 'default'}
-                            onClick={() => setSdrFor({ ori: point.ori, name: point.name })}
-                          >
-                            SDR Form
-                          </Button>
-                          {/* The call log sits beside the qualification because
-                              they are filled in at the same moment - one is what
-                              the call established, the other is that it happened
-                              at all. Saving one turns the pin light blue. */}
-                          <Button
-                            size="small"
-                            // Same convention as the SDR Form button beside it:
-                            // filled means there is something on file. The
-                            // light blue lives on the pin, not in the theme.
-                            type={point.contacted ? 'primary' : 'default'}
+                            type={point.contacted || sdrFilled.has(point.ori) ? 'primary' : 'default'}
                             onClick={() =>
-                              setCallLogFor({
+                              setCallResultFor({
                                 ori: point.ori,
                                 name: point.name,
                                 phone: point.contact?.phone || '',
@@ -1120,7 +1198,7 @@ export default function AgencyMap() {
                               })
                             }
                           >
-                            Call log{point.callCount ? ` (${point.callCount})` : ''}
+                            Call Result{point.callCount ? ` (${point.callCount})` : ''}
                           </Button>
                         </Space>
                       </Space>
@@ -1591,6 +1669,12 @@ export default function AgencyMap() {
             {(
               [
                 {
+                  key: 'callLater',
+                  label: 'Call later',
+                  color: CALL_LATER_COLOR,
+                  striped: false,
+                },
+                {
                   key: 'contacted',
                   label: 'Reached out',
                   color: CONTACTED_COLOR,
@@ -1755,6 +1839,54 @@ export default function AgencyMap() {
         filters={query}
       />
 
+      <Modal
+        title={callResultFor ? `Call result - ${callResultFor.name}` : 'Call result'}
+        open={Boolean(callResultFor)}
+        onCancel={() => setCallResultFor(null)}
+        footer={null}
+        width={420}
+        destroyOnHidden
+      >
+        {callResultFor ? (
+          <Space direction="vertical" size={10} style={{ width: '100%', paddingTop: 8 }}>
+            <Button
+              block
+              type={callResultPoint?.contacted ? 'primary' : 'default'}
+              onClick={() => {
+                setCallLogFor(callResultFor)
+                setCallResultFor(null)
+              }}
+            >
+              Log Call{callResultPoint?.callCount ? ` (${callResultPoint.callCount})` : ''}
+            </Button>
+            <Button
+              block
+              type={callResultPoint?.callLater ? 'primary' : 'default'}
+              loading={callLaterBusy === callResultFor.ori}
+              onClick={() => {
+                void callLater(callResultFor.ori, callResultFor.name).then(() => setCallResultFor(null))
+              }}
+            >
+              Call Later
+            </Button>
+            <Button
+              block
+              type={sdrFilled.has(callResultFor.ori) ? 'primary' : 'default'}
+              onClick={() => {
+                setSdrFor({ ori: callResultFor.ori, name: callResultFor.name })
+                setCallResultFor(null)
+              }}
+            >
+              Save to HubSpot
+            </Button>
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              Log Call records the call. Call Later defers it, logs it in HubSpot and turns the pin pink.
+              Save to HubSpot opens the qualification form and syncs the agency.
+            </Typography.Text>
+          </Space>
+        ) : null}
+      </Modal>
+
       <CallLogModal
         ori={callLogFor?.ori ?? null}
         agencyName={callLogFor?.name ?? ''}
@@ -1765,24 +1897,7 @@ export default function AgencyMap() {
         onClose={() => setCallLogFor(null)}
         // Patched into the features already loaded rather than refetching the
         // national geojson - the pin recolours in place the moment it saves.
-        onChanged={(ori, outreach) =>
-          setFeatures((current) =>
-            current.map((feature) =>
-              feature.properties.ori === ori
-                ? {
-                    ...feature,
-                    properties: {
-                      ...feature.properties,
-                      contacted: outreach.callCount > 0,
-                      callCount: outreach.callCount,
-                      lastCalledAt: outreach.lastCalledAt,
-                      lastCallOutcome: outreach.lastOutcome,
-                    },
-                  }
-                : feature,
-            ),
-          )
-        }
+        onChanged={applyOutreach}
       />
 
       <AgencyBriefingPanel
