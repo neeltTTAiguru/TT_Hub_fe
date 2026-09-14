@@ -53,6 +53,7 @@ const OUTCOME_COLOR: Record<string, string> = {
 }
 
 type CallDraft = {
+  clientCallId: string
   calledAt: string
   contactName: string
   contactTitle: string
@@ -84,6 +85,7 @@ const summarise = (calls: AgencyCall[]): AgencyOutreach => ({
 })
 
 const emptyDraft = (): CallDraft => ({
+  clientCallId: crypto.randomUUID(),
   calledAt: localNow(),
   contactName: '',
   contactTitle: '',

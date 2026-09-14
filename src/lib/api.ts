@@ -2252,6 +2252,7 @@ export function saveAgencySdr(ori: string, sdr: Partial<AgencySdr>) {
  */
 export type AgencyCall = {
   _id: string
+  clientCallId: string
   calledAt: string
   contactName: string
   contactTitle: string
