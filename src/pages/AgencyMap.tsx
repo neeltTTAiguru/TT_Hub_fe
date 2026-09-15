@@ -4,6 +4,7 @@ import { MapContainer, TileLayer, Marker, Polyline, Popup, useMap } from 'react-
 import MarkerClusterGroup from 'react-leaflet-cluster'
 import AgencyBriefingPanel from '../components/AgencyBriefingPanel'
 import TravellerChat from '../components/TravellerChat'
+import TravellerRoster from '../components/TravellerRoster'
 import ResearchRunPanel from '../components/ResearchRunPanel'
 import ResearchRunMenu from '../components/ResearchRunMenu'
 import ResearchRunFindings from '../components/ResearchRunFindings'
@@ -1577,6 +1578,13 @@ export default function AgencyMap() {
           onView={setViewingRunId}
           onChanged={() => setRunTick((n) => n + 1)}
         />
+        {fullAccess ? (
+          <TravellerRoster
+            me={me ? { ...me, at: travellerAt, working: isResearching } : null}
+            others={others}
+            onFly={(at) => mapRef.current?.flyTo([at.lat, at.lon], 11, { duration: 1.4 })}
+          />
+        ) : null}
         <MapContainer
           center={US_CENTER}
           zoom={US_ZOOM}

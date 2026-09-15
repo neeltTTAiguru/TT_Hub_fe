@@ -2986,6 +2986,8 @@ export type TravellerPerson = {
   ownsRun: boolean
   working: boolean
   at: { ori: string; name: string; state: string; county: string; lat: number; lon: number } | null
+  // When this person last had the map open. Written at most once a minute.
+  lastSeenAt: string | null
 }
 
 export type ResearchActivity = {
