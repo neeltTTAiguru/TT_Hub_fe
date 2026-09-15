@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Button, Card, Descriptions, Divider, Drawer, Input, Space, Spin, Tag, Typography } from 'antd'
 import {
   getLeAgency,
+  getMyTraveller,
   streamBwcResearch,
   travellerChat,
   type LeAgency,
@@ -83,6 +84,32 @@ export default function TravellerChat({
   // The full record for whatever he is standing on, so the panel can show the
   // agency's card rather than making you close it and click the pin.
   const [agency, setAgency] = useState<LeAgency | null>(null)
+  // Whether the stored conversation has been fetched. Once per mount: after
+  // that the thread here is the truth and the server only trails it.
+  const hydrated = useRef(false)
+
+  // Pick the conversation back up where it was left. The server keeps the last
+  // stretch of it per person, so a reload does not open on an empty thread.
+  useEffect(() => {
+    if (!open || hydrated.current) return
+    hydrated.current = true
+    let cancelled = false
+    getMyTraveller()
+      .then((mine) => {
+        if (cancelled || !mine.chat?.length) return
+        setLog((current) =>
+          current.length
+            ? current
+            : mine.chat.map((line) => ({ role: line.role, content: line.content })),
+        )
+      })
+      .catch(() => {
+        /* nothing remembered is the same as a fresh start */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [open])
 
   useEffect(() => {
     if (!open || !at?.ori) return
@@ -214,7 +241,7 @@ export default function TravellerChat({
             dangerouslySetInnerHTML={{ __html: travellerSvg(28) }}
           />
           <span style={{ lineHeight: 1.35 }}>
-            <div>The traveller</div>
+            <div>Your traveller</div>
             <Text type="secondary" style={{ fontSize: 12, fontWeight: 400 }}>
               {at ? `${working ? 'working at' : 'standing at'} ${at.name}` : 'not on the map yet'}
             </Text>

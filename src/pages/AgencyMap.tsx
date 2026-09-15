@@ -32,6 +32,7 @@ import {
   type LeAgencyFeature,
   type LeAgencyStats,
   type ResearchActivity,
+  type TravellerPerson,
   getActiveResearchRun,
   listResearchRuns,
   type ResearchRunState,
@@ -488,13 +489,13 @@ function customerIcon(officers: number | null) {
  * stays sharp at any zoom and looks identical on every machine - an emoji
  * would render differently on each and turn to mush at this size.
  */
-function travellerIcon(label: string, working = true, waving = false) {
+function travellerIcon(label: string, working = true, waving = false, clickable = true) {
   const frame = waving ? TRAVELLER_SPRITE_WAVE : TRAVELLER_SPRITE
   const width = 34
   const height = Math.round((width * frame.length) / 16)
   const sprite = travellerSvg(width, frame)
 
-  const html = `<div style="position:relative;width:${width}px;height:${height + 22}px;cursor:pointer;
+  const html = `<div style="position:relative;width:${width}px;height:${height + 22}px;cursor:${clickable ? 'pointer' : 'default'};
     ${waving ? 'animation:tvl-wave 0.5s ease-in-out 3;' : working ? 'animation:tvl-bob 1.1s ease-in-out infinite;' : ''}">
     ${
       working
@@ -882,8 +883,28 @@ export default function AgencyMap() {
   }, [run])
 
   const runIsLive = run?.status === 'running' || run?.status === 'stopping'
-  const isResearching = Boolean(runIsLive) || Boolean(activity?.travellers.length)
-  const travellerAt = runAt ?? activity?.travellers[0] ?? activity?.lastPosition ?? null
+
+  // Mine is the walker only while it is MY run that is walking. Anyone else's
+  // run moves their traveller, not mine, and mine stays where I left him.
+  const me = activity?.me ?? null
+  const isResearching = Boolean(me?.ownsRun && (runIsLive || me.working))
+  const travellerAt = (me?.ownsRun ? runAt : null) ?? me?.at ?? null
+
+  // Everyone else, wherever they left theirs. The run's owner gets the same
+  // live-run override mine does, so their walker does not lag a poll behind.
+  const others = useMemo(
+    () =>
+      (activity?.others ?? [])
+        .map((person) => ({
+          ...person,
+          at: (person.ownsRun ? runAt : null) ?? person.at,
+          working: person.ownsRun && (runIsLive || person.working),
+        }))
+        .filter((person): person is TravellerPerson & { at: NonNullable<TravellerPerson['at']> } =>
+          Boolean(person.at),
+        ),
+    [activity?.others, runAt, runIsLive],
+  )
 
   // Follow a running research job.
   //
@@ -977,9 +998,7 @@ export default function AgencyMap() {
     void moveTraveller(ori)
       .then((position) => {
         setActivity((current) =>
-          current
-            ? { ...current, lastPosition: { ...position, status: 'unknown', at: null }, sentByHand: true }
-            : current,
+          current ? { ...current, me: { ...current.me, at: position } } : current,
         )
       })
       .catch(() => {
@@ -1250,9 +1269,7 @@ export default function AgencyMap() {
     moveTraveller(match.ori)
       .then((moved) => {
         setActivity((current) =>
-          current
-            ? { ...current, lastPosition: { ...moved, status: 'unknown', at: null }, sentByHand: true }
-            : current,
+          current ? { ...current, me: { ...current.me, at: moved } } : current,
         )
         mapRef.current?.flyTo([moved.lat, moved.lon], 11, { duration: 1.4 })
       })
@@ -1441,7 +1458,7 @@ export default function AgencyMap() {
               }
             }}
           >
-            Find the traveller
+            Find my traveller
           </Button>
           <Button
             size="middle"
@@ -1574,7 +1591,13 @@ export default function AgencyMap() {
               position={[travellerAt.lat, travellerAt.lon]}
               // Labelled only while he is working. Standing still needs no
               // caption - it is obvious he is where he last got to.
-              icon={travellerIcon(isResearching ? 'researching' : '', isResearching, waving)}
+              // Captioned "you" only once there is somebody else on the map to
+              // be confused with. Alone, standing still needs no caption.
+              icon={travellerIcon(
+                isResearching ? 'researching' : others.length ? 'you' : '',
+                isResearching,
+                waving,
+              )}
               zIndexOffset={3000}
               // No Popup on purpose. A Leaflet popup opens directly over the
               // marker it belongs to, so clicking him hid both the wave and the
@@ -1619,6 +1642,23 @@ export default function AgencyMap() {
             />
           ))}
 
+          {others.map((person) => (
+            <Marker
+              key={`tvl:${person.key}:${person.at.ori}`}
+              position={[person.at.lat, person.at.lon]}
+              icon={travellerIcon(
+                person.working ? `${person.displayName} · researching` : person.displayName,
+                person.working,
+                false,
+                false,
+              )}
+              zIndexOffset={2900}
+              // Somebody else's traveller: you can see where they are, but he is
+              // not yours to talk to or send anywhere.
+              interactive={false}
+            />
+          ))}
+
           {runPath.length > 1 ? (
             <Polyline
               positions={runPath}
@@ -1654,9 +1694,7 @@ export default function AgencyMap() {
         working={isResearching}
         onMoved={(moved) => {
           setActivity((current) =>
-            current
-              ? { ...current, lastPosition: { ...moved, status: 'unknown', at: null }, sentByHand: true }
-              : current,
+            current ? { ...current, me: { ...current.me, at: moved } } : current,
           )
           mapRef.current?.flyTo([moved.lat, moved.lon], 8, { duration: 1.6 })
         }}

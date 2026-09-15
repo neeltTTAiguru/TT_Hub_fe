@@ -2540,7 +2540,7 @@ export async function downloadCallReportPdf(
   return name
 }
 
-/** Send the traveller to a named agency. */
+/** Send your traveller to a named agency. */
 export function moveTraveller(ori: string) {
   return request<{ ori: string; name: string; state: string; county: string; lat: number; lon: number }>(
     '/le-agencies/traveller-position',
@@ -2723,7 +2723,8 @@ export function listResearchRuns(limit = 50) {
 
 /**
  * The run everyone is watching. Global, not per user - there is one run and the
- * server owns it, so two people with the hub open see the same traveller.
+ * server owns it, so two people with the hub open see the same walker: the
+ * traveller of whoever started it.
  */
 export function getActiveResearchRun() {
   return request<ResearchRunState | { run: null }>('/le-agencies/research-run/active')
@@ -2975,6 +2976,18 @@ export type AgencyBriefing = {
   }
 }
 
+/** Where one person's traveller is standing, and whose he is. */
+export type TravellerPerson = {
+  key: string
+  displayName: string
+  mine: boolean
+  // True while this person's research run is walking: their traveller is the
+  // walker, and stands wherever the run currently is.
+  ownsRun: boolean
+  working: boolean
+  at: { ori: string; name: string; state: string; county: string; lat: number; lon: number } | null
+}
+
 export type ResearchActivity = {
   now: string
   travellers: Array<{
@@ -2986,24 +2999,11 @@ export type ResearchActivity = {
     lat: number
     lon: number
   }>
-  // True when nothing has been researched yet, so lastPosition is the journey's
-  // starting point rather than somewhere it actually reached.
-  atStart?: boolean
-  // True when he is standing somewhere he was told to go rather than somewhere
-  // research took him.
-  sentByHand?: boolean
-  // Where the run last got to, or where it will set out from. Always present,
-  // so the traveller is always somewhere on the map.
-  lastPosition: {
-    ori: string
-    name: string
-    state: string
-    county: string
-    status: string
-    at: string | null
-    lat: number
-    lon: number
-  } | null
+  // The caller's own traveller. Always present - opening the map is what
+  // creates him - though `at` can be null if no agency could be found to stand on.
+  me: TravellerPerson
+  // Everyone else who has opened the map recently, wherever they left theirs.
+  others: TravellerPerson[]
   completed: Array<{
     ori: string
     name: string
@@ -3013,6 +3013,13 @@ export type ResearchActivity = {
     bwcVendor: string
   }>
   remaining: number
+}
+
+/** The caller's traveller with the tail of the last conversation. */
+export function getMyTraveller() {
+  return request<TravellerPerson & { chat: Array<{ role: 'user' | 'assistant'; content: string; at: string }> }>(
+    '/le-agencies/traveller',
+  )
 }
 
 export type BwcResearchResult = {
