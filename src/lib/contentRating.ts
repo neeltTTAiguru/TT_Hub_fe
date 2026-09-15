@@ -36,15 +36,17 @@ function wordCount(markdown: string) {
   return markdown.trim().split(/\s+/).filter(Boolean).length
 }
 
-// Full marks from the target up to a quarter over it — the ranking set is an
-// average, not a ceiling, and a slightly longer piece is not worse. Past that it
-// falls away, because at some point long stops meaning thorough and starts
-// meaning padded.
-function lengthScore(words: number, target: number) {
+// Full marks inside the band the backend's length check enforces (±15% of the
+// target by default) — the ranking set is an average, not a ceiling. Outside it
+// the score falls away with distance, because past a point long stops meaning
+// thorough and starts meaning padded, and short means thin.
+const LENGTH_TOLERANCE = 0.15
+
+function lengthScore(words: number, target: number, tolerance = LENGTH_TOLERANCE) {
   const ratio = words / target
-  if (ratio >= 1 && ratio <= 1.25) return 100
-  if (ratio > 1.25) return Math.max(50, 100 - Math.round((ratio - 1.25) * 100))
-  return Math.round(ratio * 100)
+  if (ratio >= 1 - tolerance && ratio <= 1 + tolerance) return 100
+  if (ratio > 1 + tolerance) return Math.max(50, 100 - Math.round((ratio - 1 - tolerance) * 100))
+  return Math.round((ratio / (1 - tolerance)) * 100)
 }
 
 export function rateArticle(
@@ -64,12 +66,15 @@ export function rateArticle(
 
   const words = wordCount(markdown)
   const target = run?.surferGuidelines?.targetWordCount ?? null
+  const tolerance = run?.lengthCheck?.tolerance || LENGTH_TOLERANCE
+  const min = target ? Math.round(target * (1 - tolerance)) : null
+  const max = target ? Math.round(target * (1 + tolerance)) : null
   parts.push({
     key: 'length',
     label: 'Length',
-    score: target ? lengthScore(words, target) : null,
-    detail: target
-      ? `${words.toLocaleString()} of ${target.toLocaleString()} words`
+    score: target ? lengthScore(words, target, tolerance) : null,
+    detail: target && min != null && max != null
+      ? `${words.toLocaleString()} words · Surfer range ${min.toLocaleString()}–${max.toLocaleString()}${words < min ? ` · ${(min - words).toLocaleString()} under` : words > max ? ` · ${(words - max).toLocaleString()} over` : ''}`
       : `${words.toLocaleString()} words — no Surfer target yet`,
   })
 

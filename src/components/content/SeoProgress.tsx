@@ -4,6 +4,7 @@ const STAGES = [
   { key: 'opportunity_research', label: 'Ahrefs', detail: 'Search volume and difficulty' },
   { key: 'surfer_setup', label: 'SurferSEO', detail: 'Building SERP guidelines' },
   { key: 'content_optimization', label: 'Rewrite', detail: 'Scoring and revising to the word target' },
+  { key: 'length_check', label: 'Length', detail: 'Holding to the Surfer word range' },
 ]
 
 export default function SeoProgress({

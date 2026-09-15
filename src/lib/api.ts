@@ -776,7 +776,28 @@ export type ContentOperationsRun = {
     passes: number
     notes: string
     optimizedAt: string
+    // Set by the length gate: the kept article's word count against Surfer's.
+    wordCount?: number
+    targetWordCount?: number | null
+    lengthOk?: boolean
   } | null
+  // The workflow check for length: the article measured against SurferSEO's
+  // word target with a tolerance band. `corrected` means the gate changed the
+  // article to bring it into range.
+  lengthCheck?: {
+    words: number
+    target: number | null
+    min: number | null
+    max: number | null
+    tolerance: number
+    status: 'ok' | 'short' | 'long' | 'unknown'
+    ok: boolean
+    delta: number
+    corrected?: boolean
+    checkedAt?: string
+  } | null
+  // What happened to the sitemap after this run's post went live.
+  sitemap?: SitemapRefreshResult | null
   // What Surfer says the SERP rewards: priority terms with the frequency range
   // they want, and whether each one works as a heading. Already returned with
   // every run — the report just never read it.
@@ -1207,6 +1228,67 @@ export function createContentOperationsWordPressDraft(runId: string) {
     `/content-operations/runs/${encodeURIComponent(runId)}/wordpress-draft`,
     { method: 'POST' },
   )
+}
+
+// Sitemap automation. Yoast builds the sitemap; the backend verifies a published
+// URL is in it and re-submits it to Google Search Console so the change is
+// crawled promptly. The status call reads the live sitemap, so it takes a moment.
+export type SitemapRefreshResult = {
+  sitemapUrl: string
+  reason: string
+  urls: string[]
+  ok: boolean
+  summary: string
+  verification: {
+    reachable: boolean
+    httpStatus?: number
+    totalUrls?: number
+    latestLastmod?: string
+    found: Array<{ url: string; lastmod: string }>
+    missing: string[]
+    cachedStale: boolean
+    error?: string
+  } | null
+  searchConsole: { submitted: boolean; reason?: string; error?: string; submittedAt?: string } | null
+  indexNow: { notified: boolean; count?: number; reason?: string; error?: string } | null
+  startedAt: string
+  finishedAt?: string
+}
+
+export type SitemapStatus = {
+  sitemapUrl: string
+  reachable: boolean
+  httpStatus: number
+  error: string
+  totalUrls: number
+  latestLastmod: string
+  children: Array<{ loc: string; lastmod: string; urlCount: number }>
+  searchConsole: {
+    configured: boolean
+    siteUrl?: string
+    lastSubmitted?: string
+    lastDownloaded?: string
+    isPending?: boolean
+    errors?: number
+    warnings?: number
+    submittedUrls?: number
+    indexedUrls?: number
+    error?: string
+  }
+  indexNow: { configured: boolean }
+  watcher: { enabled: boolean; intervalMs: number; lastRunAt: string; lastResult: string }
+  recent: Array<{ at: string; reason: string; ok: boolean; summary: string; urls: string[] }>
+}
+
+export function getSitemapStatus() {
+  return request<SitemapStatus>('/content-operations/integrations/sitemap/status')
+}
+
+export function refreshSitemap(payload: { urls?: string[]; scanWordPress?: boolean } = {}) {
+  return request<SitemapRefreshResult>('/content-operations/integrations/sitemap/refresh', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
 }
 
 export function publishContentOperationsWordPress(runId: string) {

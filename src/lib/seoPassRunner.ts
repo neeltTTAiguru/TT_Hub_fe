@@ -139,7 +139,12 @@ export function summarise(run: ContentOperationsRun) {
   if (o?.passes) lines.push(`- Revision passes: ${o.passes}`)
   const words = String(run.article || '').trim().split(/\s+/).filter(Boolean).length
   const target = (run as { surferGuidelines?: { targetWordCount?: number } }).surferGuidelines?.targetWordCount
-  if (words) lines.push(`- Length: ${words.toLocaleString()} words${target ? ` against a Surfer target of ${target.toLocaleString()}` : ''}`)
+  const length = run.lengthCheck
+  if (length && length.status !== 'unknown' && length.min != null && length.max != null) {
+    lines.push(`- Length: **${length.words.toLocaleString()} words** — Surfer range ${length.min.toLocaleString()}–${length.max.toLocaleString()} (target ${length.target?.toLocaleString()}): ${length.ok ? 'within range' : length.status === 'long' ? `${Math.abs(length.delta).toLocaleString()} over` : `${length.delta.toLocaleString()} under`}${length.corrected ? ' · corrected by the length check' : ''}`)
+  } else if (words) {
+    lines.push(`- Length: ${words.toLocaleString()} words${target ? ` against a Surfer target of ${target.toLocaleString()}` : ''}`)
+  }
   if (o?.notes) lines.push('', o.notes)
   for (const stage of run.stages || []) {
     if (stage.stage === 'surfer_setup' && stage.explanation?.includes('words against')) {

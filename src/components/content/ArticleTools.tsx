@@ -12,8 +12,12 @@ import {
   createContentOperationsRun,
   createContentPublishWordPressDraft,
   getContentOperationsRun,
+  getSitemapStatus,
+  refreshSitemap,
   type ContentOpportunity,
   type ContentPublishState,
+  type SitemapRefreshResult,
+  type SitemapStatus,
 } from '../../lib/api'
 import { draftTitle } from './FieldGuideArticle'
 
@@ -48,6 +52,43 @@ export default function ArticleTools() {
   const [published, setPublished] = useState<ContentPublishState | null>(null)
   const [publishing, setPublishing] = useState(false)
   const [publishError, setPublishError] = useState('')
+
+  // Sitemap: Yoast builds it, the backend tells Google about it. The panel shows
+  // what the site serves and what Google last fetched, and can force a refresh.
+  const [sitemap, setSitemap] = useState<SitemapStatus | null>(null)
+  const [sitemapLoading, setSitemapLoading] = useState(false)
+  const [sitemapRefreshing, setSitemapRefreshing] = useState(false)
+  const [sitemapResult, setSitemapResult] = useState<SitemapRefreshResult | null>(null)
+  const [sitemapError, setSitemapError] = useState('')
+
+  const loadSitemap = async () => {
+    setSitemapLoading(true)
+    setSitemapError('')
+    try {
+      setSitemap(await getSitemapStatus())
+    } catch (cause) {
+      setSitemapError(cause instanceof Error ? cause.message : 'The sitemap status could not be read.')
+    } finally {
+      setSitemapLoading(false)
+    }
+  }
+
+  const runSitemapRefresh = async () => {
+    if (sitemapRefreshing) return
+    setSitemapRefreshing(true)
+    setSitemapError('')
+    try {
+      // The published URL when there is one to verify; otherwise a scan of
+      // WordPress for anything published or edited since the last check.
+      const next = await refreshSitemap(published?.url ? { urls: [published.url] } : { scanWordPress: true })
+      setSitemapResult(next)
+      await loadSitemap()
+    } catch (cause) {
+      setSitemapError(cause instanceof Error ? cause.message : 'The sitemap could not be refreshed.')
+    } finally {
+      setSitemapRefreshing(false)
+    }
+  }
 
   useEffect(() => {
     const unsubscribe = subscribeSeoPass(() => setPass(getSeoPassState()))
@@ -134,7 +175,9 @@ export default function ArticleTools() {
       // the draft is kept as written and only the run id is recorded.
       onArticle: (article, id, finished) => {
         const scored = finished.surferOptimization?.seoScoreBefore ?? null
-        const rewrite = scored === null || scored <= REWRITE_AT_OR_BELOW
+        // A length correction is applied regardless of score: a draft that scored
+        // 90 at 140% of Surfer's word target was still over-long.
+        const rewrite = scored === null || scored <= REWRITE_AT_OR_BELOW || Boolean(finished.lengthCheck?.corrected)
         pipeline.update(rewrite ? { draft: article, runId: id } : { runId: id })
       },
     })
@@ -162,6 +205,7 @@ export default function ArticleTools() {
   }
 
   const optimisation = pass.run?.surferOptimization
+  const lengthCheck = pass.run?.lengthCheck ?? null
   const gaps = pass.run ? termGaps(pass.run) : []
   const rating = rateArticle(draft, pipeline.images, pass.run)
 
@@ -282,6 +326,20 @@ export default function ArticleTools() {
           <Text type="secondary" className="article-tool-note">
             Term coverage is Surfer's. Length and images are measured here — Surfer scores neither.
           </Text>
+          {lengthCheck && lengthCheck.status !== 'unknown' ? (
+            <Alert
+              type={lengthCheck.ok ? 'success' : 'warning'}
+              showIcon
+              message={lengthCheck.ok
+                ? `Length check passed — ${lengthCheck.words.toLocaleString()} words, inside Surfer's ${lengthCheck.min?.toLocaleString()}–${lengthCheck.max?.toLocaleString()} range${lengthCheck.corrected ? ' after correction' : ''}.`
+                : `Length check — ${lengthCheck.words.toLocaleString()} words is ${Math.abs(lengthCheck.delta).toLocaleString()} ${lengthCheck.status === 'long' ? 'over' : 'under'} Surfer's ${lengthCheck.min?.toLocaleString()}–${lengthCheck.max?.toLocaleString()} range.`}
+              description={lengthCheck.ok
+                ? undefined
+                : lengthCheck.status === 'long'
+                  ? 'Hermes could not cut it to size within its pass budget. Ask it in the chat to trim the weakest sections, or run the pass again.'
+                  : 'Hermes could not add enough honest coverage within its pass budget. Ask it in the chat to answer more of the searcher questions Surfer lists, or run the pass again.'}
+            />
+          ) : null}
           {gaps.length ? (
             <>
               <Text type="secondary" className="article-tool-note">Still below Surfer's target:</Text>
@@ -363,6 +421,58 @@ export default function ArticleTools() {
           ) : null}
         </Space>
       </div>
+      <Text type="secondary" className="article-tool-note">Sitemap &amp; Google</Text>
+      {sitemapError ? <Alert type="error" showIcon message="Sitemap" description={sitemapError} /> : null}
+      {sitemapLoading && !sitemap ? (
+        <Space size={8}><Spin size="small" /><Text type="secondary">Reading the live sitemap…</Text></Space>
+      ) : sitemap ? (
+        <ul className="article-tool-list">
+          <li>
+            <span className="article-tool-term">Sitemap</span>
+            <span className="article-tool-meta">
+              {sitemap.reachable
+                ? <Tag color="green">{sitemap.totalUrls.toLocaleString()} URLs</Tag>
+                : <Tag color="red">unreachable{sitemap.httpStatus ? ` (HTTP ${sitemap.httpStatus})` : ''}</Tag>}
+              {sitemap.latestLastmod ? <Text type="secondary" style={{ fontSize: 12 }}>updated {new Date(sitemap.latestLastmod).toLocaleString()}</Text> : null}
+            </span>
+          </li>
+          <li>
+            <span className="article-tool-term">Google Search Console</span>
+            <span className="article-tool-meta">
+              {!sitemap.searchConsole.configured
+                ? <Tag>not connected</Tag>
+                : sitemap.searchConsole.error
+                  ? <Tag color="red">error</Tag>
+                  : sitemap.searchConsole.lastDownloaded
+                    ? <Text type="secondary" style={{ fontSize: 12 }}>Google fetched it {new Date(sitemap.searchConsole.lastDownloaded).toLocaleString()}{sitemap.searchConsole.isPending ? ' · new fetch pending' : ''}</Text>
+                    : <Tag>never submitted</Tag>}
+            </span>
+            {sitemap.searchConsole.error ? <span className="article-tool-sub">{sitemap.searchConsole.error}</span> : null}
+          </li>
+          <li>
+            <span className="article-tool-term">Auto-check</span>
+            <span className="article-tool-meta">
+              {sitemap.watcher.enabled
+                ? <Text type="secondary" style={{ fontSize: 12 }}>every {Math.round(sitemap.watcher.intervalMs / 60000)} min · {sitemap.watcher.lastResult || 'waiting for first check'}</Text>
+                : <Tag>off</Tag>}
+            </span>
+          </li>
+          {(sitemapResult || sitemap.recent[0]) ? (
+            <li>
+              <span className="article-tool-term">Last refresh</span>
+              <span className="article-tool-sub">{sitemapResult?.summary || sitemap.recent[0]?.summary}</span>
+            </li>
+          ) : null}
+        </ul>
+      ) : null}
+      <Space size={8}>
+        <Button size="small" loading={sitemapRefreshing} onClick={() => void runSitemapRefresh()}>
+          {published?.url ? 'Verify this post & notify Google' : 'Refresh sitemap & notify Google'}
+        </Button>
+        {sitemap?.sitemapUrl ? (
+          <Button size="small" type="link" href={sitemap.sitemapUrl} target="_blank" rel="noreferrer">Open sitemap</Button>
+        ) : null}
+      </Space>
     </div>
   )
 
@@ -384,7 +494,11 @@ export default function ArticleTools() {
         <Popover
           key={tool.key}
           open={open === tool.key}
-          onOpenChange={(next) => (tool.key === 'ahrefs' ? openAhrefs(next) : setOpen(next ? tool.key : ''))}
+          onOpenChange={(next) => {
+            if (tool.key === 'ahrefs') return openAhrefs(next)
+            setOpen(next ? tool.key : '')
+            if (next && tool.key === 'wordpress' && !sitemap && !sitemapLoading) void loadSitemap()
+          }}
           trigger="click"
           placement="leftTop"
           title={tool.label}
