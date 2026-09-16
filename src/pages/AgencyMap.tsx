@@ -1441,10 +1441,6 @@ export default function AgencyMap() {
         />
       ) : null}
 
-         </Space>
-        </Card>
-      ) : null}
-
       <Card className="section-card">
         <Space wrap size={12} style={{ width: '100%' }}>
           {noFilters ? null : (
