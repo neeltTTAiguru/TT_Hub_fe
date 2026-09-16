@@ -916,9 +916,11 @@ export default function AgencyMap() {
 
   // Everyone else, wherever they left theirs. The run's owner gets the same
   // live-run override mine does, so their walker does not lag a poll behind.
+  // A configured account sees only its own traveller - the map is theirs,
+  // not a view of the team.
   const others = useMemo(
     () =>
-      (activity?.others ?? [])
+      (member ? [] : (activity?.others ?? []))
         .map((person) => ({
           ...person,
           at: (person.ownsRun ? runAt : null) ?? person.at,
@@ -927,7 +929,7 @@ export default function AgencyMap() {
         .filter((person): person is TravellerPerson & { at: NonNullable<TravellerPerson['at']> } =>
           Boolean(person.at),
         ),
-    [activity?.others, runAt, runIsLive],
+    [activity?.others, runAt, runIsLive, member],
   )
 
   // Follow a running research job.
@@ -1429,7 +1431,7 @@ export default function AgencyMap() {
 
       {error ? <Alert type="error" showIcon message="Could not load agencies" description={error} /> : null}
 
-      {activity?.travellers.length ? (
+      {activity?.travellers.length && (!member || me?.ownsRun) ? (
         <Alert
           type="info"
           showIcon
@@ -1748,7 +1750,7 @@ export default function AgencyMap() {
             />
           ))}
 
-          {runPath.length > 1 ? (
+          {runPath.length > 1 && (!member || me?.ownsRun) ? (
             <Polyline
               positions={runPath}
               pathOptions={{ color: TRAVELLER_COLOR, weight: 2, opacity: 0.7, dashArray: '4 5' }}
