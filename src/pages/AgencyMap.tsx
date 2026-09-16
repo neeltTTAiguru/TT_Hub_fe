@@ -10,8 +10,10 @@ import ResearchRunMenu from '../components/ResearchRunMenu'
 import ResearchRunFindings from '../components/ResearchRunFindings'
 import SdrFormModal from '../components/SdrFormModal'
 import CallLogModal from '../components/CallLogModal'
+import FollowUpEmailModal from '../components/FollowUpEmailModal'
 import CallReportModal from '../components/CallReportModal'
-import { useFullAccess } from '../lib/access'
+import CommandBoard from '../components/CommandBoard'
+import { useFullAccess, useMemberView } from '../lib/access'
 import {
   TRAVELLER_SPRITE,
   TRAVELLER_SPRITE_WAVE,
@@ -23,6 +25,7 @@ import 'leaflet.markercluster/dist/MarkerCluster.css'
 import {
   addAgencyCall,
   getCrmDealGeojson,
+  getAgencyCallLog,
   getLeAgencyGeojson,
   getLeAgencyStats,
   getResearchActivity,
@@ -565,6 +568,14 @@ function createClusterIcon(cluster: { getChildCount: () => number }) {
 
 export default function AgencyMap() {
   const fullAccess = useFullAccess()
+  // What the command board set for this account, if anything. The server
+  // intersects the same scope on every feed, so this only decides what the
+  // filter bar draws and which options it offers.
+  const member = useMemberView()
+  const scope = member?.scope
+  // A configured account gets no filter controls: its map is exactly what the
+  // board gave it. Only the utilities that do not change what is shown stay.
+  const noFilters = Boolean(member)
   const [activity, setActivity] = useState<ResearchActivity | null>(null)
   const [run, setRun] = useState<ResearchRunState | null>(null)
   const [runTick, setRunTick] = useState(0)
@@ -585,6 +596,8 @@ export default function AgencyMap() {
   // Which agencies have a qualification on file, so the button can show it
   // without fetching every agency's form up front.
   const [sdrFilled, setSdrFilled] = useState<Set<string>>(new Set())
+  // The agency whose follow-up email is being written.
+  const [emailFor, setEmailFor] = useState<{ ori: string; name: string } | null>(null)
   const [callLogFor, setCallLogFor] = useState<{
     ori: string
     name: string
@@ -604,6 +617,7 @@ export default function AgencyMap() {
   } | null>(null)
   const [chatOpen, setChatOpen] = useState(false)
   const [reportOpen, setReportOpen] = useState(false)
+
   const [briefingFor, setBriefingFor] = useState<{ ori: string; name: string } | null>(null)
   const [measureMode, setMeasureMode] = useState(false)
   const [selected, setSelected] = useState<MapPoint[]>([])
@@ -617,10 +631,19 @@ export default function AgencyMap() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
-  // Defaults to the population this map exists to find: small agencies.
-  const [maxOfficers, setMaxOfficers] = useState<number | null>(100)
-  const [state, setState] = useState<string | undefined>(undefined)
-  const [agencyType, setAgencyType] = useState<string | undefined>(undefined)
+  // Defaults to the population this map exists to find: small agencies - or
+  // to the scope's ceiling when the board set one lower, so the size menu
+  // never opens on a choice the server would ignore.
+  const [maxOfficers, setMaxOfficers] = useState<number | null>(
+    scope?.maxOfficers !== null && scope?.maxOfficers !== undefined ? Math.min(100, scope.maxOfficers) : 100,
+  )
+  // A scope of exactly one state or type starts the map there.
+  const [state, setState] = useState<string | undefined>(
+    scope?.states.length === 1 ? scope.states[0] : undefined,
+  )
+  const [agencyType, setAgencyType] = useState<string | undefined>(
+    scope?.agencyTypes.length === 1 ? scope.agencyTypes[0] : undefined,
+  )
   const [search, setSearch] = useState('')
   // The stage multi-select is gone; this is the one stage question left.
   const [customersOnly, setCustomersOnly] = useState(false)
@@ -1225,6 +1248,13 @@ export default function AgencyMap() {
                           >
                             Call Result{point.callCount ? ` (${point.callCount})` : ''}
                           </Button>
+                          <Button
+                            size="small"
+                            title="Write an email to this agency from your Gmail"
+                            onClick={() => setEmailFor({ ori: point.ori, name: point.name })}
+                          >
+                            Email
+                          </Button>
                         </Space>
                       </Space>
                     ) : null}
@@ -1408,52 +1438,94 @@ export default function AgencyMap() {
         />
       ) : null}
 
+      {member?.assignedRuns.length ? (
+        <Card className="section-card">
+          <Space direction="vertical" size={8} style={{ width: '100%' }}>
+            <Text strong>Your assignments</Text>
+            {member.assignedRuns.map((run) => (
+              <Space key={run.id} wrap size={8} align="center">
+                <Text>{run.filtersLabel || run.brief || 'All agencies'}</Text>
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  {run.completed.toLocaleString()} of {run.total.toLocaleString()} researched
+                  {run.startedAt ? ` · ${new Date(run.startedAt).toLocaleDateString()}` : ''}
+                </Text>
+                <Button size="small" onClick={() => setViewingRunId(run.id)}>
+                  View results
+                </Button>
+              </Space>
+            ))}
+            {member.limitToAssignedRuns ? (
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                The map shows the agencies these runs covered.
+              </Text>
+            ) : null}
+          </Space>
+        </Card>
+      ) : null}
+
       <Card className="section-card">
         <Space wrap size={12} style={{ width: '100%' }}>
-          <Select
-            allowClear
-            placeholder="All states"
-            style={{ width: 160 }}
-            value={state}
-            onChange={(value) => setState(value)}
-            options={STATES.map((code) => ({ value: code, label: code }))}
-            showSearch
-          />
-          <Select
-            style={{ width: 200 }}
-            value={maxOfficers}
-            onChange={(value) => setMaxOfficers(value)}
-            options={[
-              { value: 10, label: '10 or fewer officers' },
-              { value: 25, label: '25 or fewer officers' },
-              { value: 50, label: '50 or fewer officers' },
-              { value: 100, label: '100 or fewer officers' },
-              { value: null, label: 'Any size (incl. unreported)' },
-            ]}
-          />
-          <Select
-            allowClear
-            placeholder="All agency types"
-            style={{ width: 200 }}
-            value={agencyType}
-            onChange={(value) => setAgencyType(value)}
-            options={agencyTypes.map((type) => ({ value: type, label: type }))}
-          />
-          <Input.Search
-            allowClear
-            placeholder="Search agency name"
-            style={{ width: 240 }}
-            onSearch={(value) => setSearch(value)}
-          />
-          <Button
-            type={measureMode ? 'primary' : 'default'}
-            onClick={() => {
-              setMeasureMode((on) => !on)
-              setSelected([])
-            }}
-          >
-            {measureMode ? 'Measuring - click two pins' : 'Measure distance'}
-          </Button>
+          {noFilters ? null : (
+            <Select
+              allowClear
+              placeholder="All states"
+              style={{ width: 160 }}
+              value={state}
+              onChange={(value) => setState(value)}
+              // A scoped account picks from its states; everyone else from all of them.
+              options={(scope?.states.length ? scope.states : STATES).map((code) => ({ value: code, label: code }))}
+              showSearch
+            />
+          )}
+          {noFilters ? null : (
+            <Select
+              style={{ width: 200 }}
+              value={maxOfficers}
+              onChange={(value) => setMaxOfficers(value)}
+              options={[
+                { value: 10, label: '10 or fewer officers' },
+                { value: 25, label: '25 or fewer officers' },
+                { value: 50, label: '50 or fewer officers' },
+                { value: 100, label: '100 or fewer officers' },
+                { value: null, label: 'Any size (incl. unreported)' },
+              ].filter(
+                // Nothing above the scope's ceiling, and no "any size" under one.
+                (option) =>
+                  scope?.maxOfficers === null || scope?.maxOfficers === undefined
+                    ? true
+                    : option.value !== null && option.value <= scope.maxOfficers,
+              )}
+            />
+          )}
+          {noFilters ? null : (
+            <Select
+              allowClear
+              placeholder="All agency types"
+              style={{ width: 200 }}
+              value={agencyType}
+              onChange={(value) => setAgencyType(value)}
+              options={(scope?.agencyTypes.length ? scope.agencyTypes : agencyTypes).map((type) => ({ value: type, label: type }))}
+            />
+          )}
+          {noFilters ? null : (
+            <Input.Search
+              allowClear
+              placeholder="Search agency name"
+              style={{ width: 240 }}
+              onSearch={(value) => setSearch(value)}
+            />
+          )}
+          {noFilters ? null : (
+            <Button
+              type={measureMode ? 'primary' : 'default'}
+              onClick={() => {
+                setMeasureMode((on) => !on)
+                setSelected([])
+              }}
+            >
+              {measureMode ? 'Measuring - click two pins' : 'Measure distance'}
+            </Button>
+          )}
           <Button
             // Disabled rather than hidden: a button that appears and vanishes
             // as runs start and stop makes the whole bar jump around.
@@ -1466,21 +1538,25 @@ export default function AgencyMap() {
           >
             Find my traveller
           </Button>
-          <Button
-            size="middle"
-            type={customersOnly ? 'primary' : 'default'}
-            onClick={() => setCustomersOnly((on) => !on)}
-          >
-            Customers only
-          </Button>
-          <Button
-            size="middle"
-            // Reads the same filters the map is drawn from, so the report
-            // covers what is on screen rather than the whole country.
-            onClick={() => setReportOpen(true)}
-          >
-            Call report
-          </Button>
+          {noFilters ? null : (
+            <Button
+              size="middle"
+              type={customersOnly ? 'primary' : 'default'}
+              onClick={() => setCustomersOnly((on) => !on)}
+            >
+              Customers only
+            </Button>
+          )}
+          {noFilters ? null : (
+            <Button
+              size="middle"
+              // Reads the same filters the map is drawn from, so the report
+              // covers what is on screen rather than the whole country.
+              onClick={() => setReportOpen(true)}
+            >
+              Call report
+            </Button>
+          )}
           <Button
             size="middle"
             // Icon only. The bar is already long, and the glyph is the one
@@ -1808,6 +1884,8 @@ export default function AgencyMap() {
         </Space>
       </Card>
 
+      {fullAccess ? <CommandBoard states={STATES} onViewRun={setViewingRunId} /> : null}
+
       {fullAccess ? (
         <Modal
           title="New research run"
@@ -1937,6 +2015,21 @@ export default function AgencyMap() {
           </Space>
         ) : null}
       </Modal>
+
+      <FollowUpEmailModal
+        ori={emailFor?.ori ?? null}
+        agencyName={emailFor?.name ?? ''}
+        open={Boolean(emailFor)}
+        onClose={() => setEmailFor(null)}
+        onSent={(ori) => {
+          // The send is logged on the call log, so the pin's count moves.
+          void getAgencyCallLog(ori)
+            .then((result) => {
+              if (result.outreach) applyOutreach(ori, result.outreach)
+            })
+            .catch(() => undefined)
+        }}
+      />
 
       <CallLogModal
         ori={callLogFor?.ori ?? null}

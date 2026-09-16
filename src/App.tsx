@@ -14,7 +14,9 @@ import {
   Typography,
 } from 'antd'
 import { getAntdTheme } from './theme'
-import { FullAccessProvider } from './lib/access'
+import GmailPage from './pages/GmailPage'
+import { GmailGlyph } from './components/GmailPanel'
+import { FullAccessProvider, MemberViewProvider } from './lib/access'
 import Orchestrator from './pages/Orchestrator'
 import TrustedTechAssistant from './pages/TrustedTechAssistant'
 import CompetitorAnalyst from './pages/CompetitorAnalyst'
@@ -30,7 +32,7 @@ import ContentOperationsPublish from './pages/ContentOperationsPublish'
 import ContentOperationsSeo from './pages/ContentOperationsSeo'
 import Settings from './pages/Settings'
 import NotFound from './pages/NotFound'
-import { getMyAccess, setAccessTokenProvider } from './lib/api'
+import { getMyAccess, setAccessTokenProvider, type MemberView } from './lib/api'
 import trustedTechnologyPrimaryLogo from './assets/trusted-technology-primary-logo.png'
 import orchestratorLogo from './assets/agent-logos/hermes.png'
 import brainLogo from './assets/agent-logos/brain.svg'
@@ -72,6 +74,12 @@ const contentGeneratorIcon = (
 
 const agencyMapIcon = (
   <img src={agencyMapLogo} alt="" aria-hidden="true" className="agent-icon" />
+)
+
+const gmailIcon = (
+  <span className="agent-icon" style={{ color: '#c5221f' }}>
+    <GmailGlyph size={18} />
+  </span>
 )
 
 
@@ -146,6 +154,12 @@ const baseNavItems = [
     label: <Link to="/assistants/content-operations">Content Generator</Link>,
   },
   {
+    key: '/gmail',
+    title: 'Gmail',
+    icon: gmailIcon,
+    label: <Link to="/gmail">Gmail</Link>,
+  },
+  {
     key: '/agency-map',
     title: 'Agency Map',
     icon: agencyMapIcon,
@@ -164,7 +178,7 @@ const baseNavItems = [
  * Keys, not paths: they are matched against the nav items, and the Brain group
  * is a parent key with children, so leaving it out removes the whole section.
  */
-const RESTRICTED_NAV_KEYS = ['/agency-map', '/email-builder']
+const RESTRICTED_NAV_KEYS = ['/gmail', '/agency-map', '/email-builder']
 
 // Kept out of the sidebar without being deleted. The page, its route and its
 // saved chats all still work — /competitor-analyst reaches it directly — so
@@ -508,6 +522,7 @@ function AppShell({
               <Route path="/company-files" element={<CompanyFiles />} />
               <Route path="/product-images" element={<ProductImages />} />
               <Route path="/agency-map" element={<AgencyMap />} />
+              <Route path="/gmail" element={<GmailPage />} />
               <Route path="/assistants/content-operations" element={<ContentOperations />} />
               <Route path="/assistants/content-operations/seo" element={<ContentOperationsSeo />} />
               <Route path="/assistants/content-operations/publish" element={<ContentOperationsPublish />} />
@@ -523,6 +538,7 @@ function AppShell({
             // and landing on the map is a better answer than "not found".
             <Routes>
               <Route path="/agency-map" element={<AgencyMap />} />
+              <Route path="/gmail" element={<GmailPage />} />
               <Route path="/email-builder" element={<EmailCampaignBuilder />} />
               <Route path="*" element={<Navigate to="/agency-map" replace />} />
             </Routes>
@@ -727,6 +743,7 @@ function AuthenticatedApp({ isDark, onToggle }: { isDark: boolean; onToggle: () 
   // at everyone on every load; starting at `true` would flash the full one at
   // people who are not allowed it, which is the worse of the two.
   const [fullAccess, setFullAccess] = useState<boolean | null>(null)
+  const [memberView, setMemberView] = useState<MemberView | null>(null)
 
   useEffect(() => {
     setAccessTokenProvider((forceRefresh = false) =>
@@ -751,7 +768,9 @@ function AuthenticatedApp({ isDark, onToggle }: { isDark: boolean; onToggle: () 
 
     getMyAccess()
       .then((access) => {
-        if (!cancelled) setFullAccess(Boolean(access.fullAccess))
+        if (cancelled) return
+        setFullAccess(Boolean(access.fullAccess))
+        setMemberView(access.member ?? null)
       })
       .catch(() => {
         // Fails closed. If the server will not say, the map and Brevo are what
@@ -781,7 +800,9 @@ function AuthenticatedApp({ isDark, onToggle }: { isDark: boolean; onToggle: () 
 
   return (
     <FullAccessProvider value={fullAccess}>
-      <AppShell isDark={isDark} onToggle={onToggle} fullAccess={fullAccess} />
+      <MemberViewProvider value={memberView}>
+        <AppShell isDark={isDark} onToggle={onToggle} fullAccess={fullAccess} />
+      </MemberViewProvider>
     </FullAccessProvider>
   )
 }

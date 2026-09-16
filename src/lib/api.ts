@@ -629,10 +629,221 @@ export type BrowserScreenshotResponse = {
   dataUrl: string
 }
 
+/** A run as the command board and the assignments card describe it. */
+export type AssignableRun = {
+  id: string
+  status: string
+  brief: string
+  filtersLabel: string
+  total: number
+  completed: number
+  failed: number
+  foundCameras?: number
+  foundEmails?: number
+  foundPhones?: number
+  startedBy?: string
+  /** Who the daily schedule researched this run for, if it did. */
+  assignedTo?: string
+  startedAt: string | null
+  finishedAt: string | null
+}
+
+export type DailyPlanEntry = {
+  email: string
+  count: number
+  status: 'pending' | 'starting' | 'running' | 'done' | 'skipped' | 'failed'
+  runId: string
+  queued: number
+  note: string
+  startedAt: string | null
+  finishedAt: string | null
+}
+
+export type DailySchedule = {
+  enabled: boolean
+  hour: number
+  minute: number
+  timezone: string
+  pick: { states: string[]; agencyTypes: string[]; maxOfficers: number | null; camera: 'unknown' | 'not_yes' | 'any' }
+  /** Agencies left to draw from under the pick scope. */
+  pool: number
+  nextFireAt: string | null
+  days: Array<{ date: string; trigger: string; finishedAt: string | null; plan: DailyPlanEntry[] }>
+}
+
+export type MemberScope = {
+  states: string[]
+  agencyTypes: string[]
+  maxOfficers: number | null
+  /** not_yes = anything but a confirmed yes: unknown or none. */
+  camera: 'any' | 'unknown' | 'yes' | 'no' | 'not_yes'
+}
+
+/**
+ * What the command board decided a restricted account sees. Null for a
+ * full-access account, and for anyone the board has not configured. A
+ * configured account gets no filter controls: the scope is the map.
+ */
+export type MemberView = {
+  assignedRuns: AssignableRun[]
+  limitToAssignedRuns: boolean
+  scope: MemberScope
+}
+
 export type MyAccess = {
   email: string
   /** True for the accounts on the backend's FULL_ACCESS_EMAILS list. */
   fullAccess: boolean
+  member: MemberView | null
+}
+
+export type HubMember = {
+  email: string
+  name: string
+  lastSeenAt: string | null
+  fullAccess: boolean
+  assignedRunIds: string[]
+  limitToAssignedRuns: boolean
+  /** How many agencies the morning schedule researches for them. */
+  dailyResearch: number
+  gmail: { connected: boolean; address: string }
+  scope: MemberScope
+  notes: string
+  updatedBy: string
+  updatedAt: string | null
+}
+
+export type CommandBoard = {
+  members: HubMember[]
+  runs: AssignableRun[]
+  agencyTypes: string[]
+  fullAccessEmails: string[]
+  schedule: DailySchedule
+}
+
+export type HubMemberInput = Pick<
+  HubMember,
+  'name' | 'assignedRunIds' | 'limitToAssignedRuns' | 'dailyResearch' | 'scope' | 'notes'
+>
+
+export type GmailStatus = {
+  configured: boolean
+  connected: boolean
+  address: string
+  connectedAt: string | null
+  lastError: string
+}
+
+export type GmailMessageSummary = {
+  id: string
+  threadId: string
+  from: string
+  to: string
+  subject: string
+  date: string
+  snippet: string
+  unread: boolean
+}
+
+export type GmailMessage = GmailMessageSummary & {
+  messageId: string
+  references: string
+  body: string
+}
+
+export type EmailTemplate = {
+  key: string
+  subject: string
+  body: string
+  updatedBy?: string
+  placeholders: Array<[string, string]>
+}
+
+export const getGmailStatus = () => request<GmailStatus>('/gmail/status')
+export const getGmailConnectUrl = () => request<{ url: string }>('/gmail/connect')
+export const disconnectGmail = () => request<{ ok: true }>('/gmail', { method: 'DELETE' })
+
+export function getGmailInbox(options: { q?: string; pageToken?: string } = {}) {
+  const params = new URLSearchParams()
+  if (options.q) params.set('q', options.q)
+  if (options.pageToken) params.set('pageToken', options.pageToken)
+  return request<{ nextPageToken: string; messages: GmailMessageSummary[] }>(`/gmail/inbox?${params.toString()}`)
+}
+
+export const getGmailMessage = (id: string) => request<GmailMessage>(`/gmail/messages/${encodeURIComponent(id)}`)
+
+export function replyToGmailMessage(id: string, body: string) {
+  return request<{ ok: true; id: string }>(`/gmail/messages/${encodeURIComponent(id)}/reply`, {
+    method: 'POST',
+    body: JSON.stringify({ body }),
+  })
+}
+
+export const getEmailTemplate = (key: string) => request<EmailTemplate>(`/gmail/template/${key}`)
+
+export function saveEmailTemplate(key: string, input: { subject: string; body: string }) {
+  return request<EmailTemplate>(`/gmail/template/${key}`, { method: 'PUT', body: JSON.stringify(input) })
+}
+
+/** The template filled in for one agency, as the signed-in person would send it. */
+export function previewEmailTemplate(key: string, ori: string) {
+  return request<{ subject: string; body: string; to: string } & GmailStatus>(
+    `/gmail/template/${key}/preview/${encodeURIComponent(ori)}`,
+  )
+}
+
+/** A plain email to anyone from the Gmail page. */
+export function composeGmail(input: { to: string; subject: string; body: string }) {
+  return request<{ ok: true; id: string; to: string }>('/gmail/compose', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
+}
+
+export function sendAgencyEmail(input: { ori: string; to?: string; subject: string; body: string }) {
+  return request<{ ok: true; id: string; to: string }>('/gmail/send', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
+}
+
+export function saveDailySchedule(input: Partial<Pick<DailySchedule, 'enabled' | 'hour' | 'minute' | 'pick'>>) {
+  return request<DailySchedule>('/command-board/schedule', {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  })
+}
+
+/** Run today's plan now instead of at the hour. Spends today's budget. */
+export function runDailyResearchNow() {
+  return request<{ date: string; plan: DailyPlanEntry[] }>('/command-board/schedule/run-now', {
+    method: 'POST',
+  })
+}
+
+/** The roster and everything needed to configure it. Full access only. */
+export function getCommandBoard() {
+  return request<CommandBoard>('/command-board')
+}
+
+export function saveHubMember(email: string, input: HubMemberInput) {
+  return request<HubMember>(`/command-board/members/${encodeURIComponent(email)}`, {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  })
+}
+
+export function removeHubMember(email: string) {
+  return request<{ ok: true }>(`/command-board/members/${encodeURIComponent(email)}`, {
+    method: 'DELETE',
+  })
+}
+
+/** How many agencies one member's map would show under their saved rules. */
+export function previewHubMember(email: string) {
+  return request<{ agencies: number; limited: boolean; view: MemberView }>(
+    `/command-board/members/${encodeURIComponent(email)}/preview`,
+  )
 }
 
 /**

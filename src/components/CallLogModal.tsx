@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   Alert,
   Button,
+  Checkbox,
   Divider,
   Empty,
   Input,
@@ -19,6 +20,8 @@ import {
   clearAgencyCallLog,
   deleteAgencyCall,
   getAgencyCallLog,
+  previewEmailTemplate,
+  sendAgencyEmail,
   type AgencyCall,
   type AgencyOutreach,
 } from '../lib/api'
@@ -139,6 +142,43 @@ export default function CallLogModal({
   const [clearing, setClearing] = useState(false)
   const [error, setError] = useState('')
 
+  // The follow-up email, offered when the outcome is a voicemail. The
+  // template is fetched filled-in for this agency and this sender, shown so
+  // what goes out is what they read, and sent from their own Gmail after the
+  // call is saved. Their Gmail must be connected, and the agency must have an
+  // address on file - the section says which is missing rather than hiding.
+  const [followUp, setFollowUp] = useState<{
+    subject: string
+    body: string
+    to: string
+    configured: boolean
+    connected: boolean
+  } | null>(null)
+  const [sendFollowUp, setSendFollowUp] = useState(false)
+  const wantsFollowUp = draft.outcome === 'Left voicemail'
+  useEffect(() => {
+    if (!open || !ori || !wantsFollowUp) return
+    let cancelled = false
+    previewEmailTemplate('voicemail-followup', ori)
+      .then((preview) => {
+        if (cancelled) return
+        setFollowUp({
+          subject: preview.subject,
+          body: preview.body,
+          to: preview.to,
+          configured: preview.configured,
+          connected: preview.connected,
+        })
+        setSendFollowUp(Boolean(preview.connected && preview.to && preview.subject && preview.body))
+      })
+      .catch(() => {
+        if (!cancelled) setFollowUp(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [open, ori, wantsFollowUp])
+
   // Prefill what the card already knows. The number on the card is the number
   // they just dialled, and retyping it is a chance to typo it.
   useEffect(() => {
@@ -180,11 +220,23 @@ export default function CallLogModal({
       calledAt: draft.calledAt ? new Date(draft.calledAt).toISOString() : undefined,
       followUpAt: draft.followUpAt ? new Date(draft.followUpAt).toISOString() : null,
     })
-      .then((result) => {
+      .then(async (result) => {
         setCalls(result.calls || [])
         setDraft({ ...emptyDraft(), phone: phone || '' })
         onChanged?.(ori, result.outreach ?? summarise(result.calls || []))
         message.success('Call logged.')
+        if (wantsFollowUp && sendFollowUp && followUp) {
+          try {
+            const sent = await sendAgencyEmail({ ori, subject: followUp.subject, body: followUp.body })
+            message.success(`Follow-up email sent to ${sent.to}.`)
+            const refreshed = await getAgencyCallLog(ori)
+            setCalls(refreshed.calls || [])
+            onChanged?.(ori, refreshed.outreach ?? summarise(refreshed.calls || []))
+          } catch (err: unknown) {
+            message.error(err instanceof Error ? err.message : 'The call was logged but the email did not send.')
+          }
+        }
+        setSendFollowUp(false)
       })
       .catch((err: unknown) => {
         message.error(err instanceof Error ? err.message : 'Could not save that call.')
@@ -432,6 +484,56 @@ export default function CallLogModal({
             placeholder="What they told you, in their words. Who the gatekeeper is, when the budget lands, which vendor they mentioned, what to open with next time."
           />
         </div>
+
+        {wantsFollowUp ? (
+          <div>
+            <Checkbox
+              checked={sendFollowUp}
+              disabled={!followUp || !followUp.connected || !followUp.to || !followUp.subject}
+              onChange={(event) => setSendFollowUp(event.target.checked)}
+            >
+              <Text strong>Send the follow-up email when I save</Text>
+            </Checkbox>
+            {!followUp ? (
+              <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 4 }}>
+                Loading the template...
+              </Text>
+            ) : !followUp.configured ? (
+              <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 4 }}>
+                Gmail is not set up on the server yet.
+              </Text>
+            ) : !followUp.connected ? (
+              <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 4 }}>
+                Connect your Gmail (Gmail in the sidebar) to send this from your own address.
+              </Text>
+            ) : !followUp.to ? (
+              <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 4 }}>
+                {agencyName} has no email address on file, so there is nowhere to send it.
+              </Text>
+            ) : !followUp.subject ? (
+              <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 4 }}>
+                No follow-up template has been written yet. An administrator sets it on the command board.
+              </Text>
+            ) : (
+              <div style={{ marginTop: 8 }}>
+                <Text type="secondary" style={{ fontSize: 12, display: 'block' }}>
+                  To {followUp.to}
+                </Text>
+                <Input
+                  style={{ marginTop: 4 }}
+                  value={followUp.subject}
+                  onChange={(event) => setFollowUp((f) => (f ? { ...f, subject: event.target.value } : f))}
+                />
+                <Input.TextArea
+                  style={{ marginTop: 6 }}
+                  rows={6}
+                  value={followUp.body}
+                  onChange={(event) => setFollowUp((f) => (f ? { ...f, body: event.target.value } : f))}
+                />
+              </div>
+            )}
+          </div>
+        ) : null}
       </Space>
     </Modal>
   )
