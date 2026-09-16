@@ -66,7 +66,14 @@ export default function LeadsBoard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runs])
 
-  const ordered = [...runs].sort((a, b) => (b.startedAt || '').localeCompare(a.startedAt || ''))
+  // One block per morning: a top-up is a second run on the same day and
+  // belongs with the first, not under its own heading.
+  const days = new Map<string, AssignableRun[]>()
+  for (const run of [...runs].sort((a, b) => (b.startedAt || '').localeCompare(a.startedAt || ''))) {
+    const key = run.startedAt ? new Date(run.startedAt).toDateString() : 'undated'
+    days.set(key, [...(days.get(key) ?? []), run])
+  }
+  const ordered = [...days.values()]
 
   const columns = [
     {
@@ -173,21 +180,25 @@ export default function LeadsBoard({
             Your leads
           </Title>
           <Text type="secondary" style={{ fontSize: 12 }}>
-            What the traveller found for you, newest morning first. Every one of these is also a
-            pin on the map above.
+            Agencies the traveller researched for you with no known camera status - the ones a
+            call can settle. Newest morning first; every one is also a pin on the map above.
           </Text>
         </div>
-        {ordered.map((run) => {
-          const result = findings[run.id]
-          // Not researched: nothing to show. Has cameras: ruled out, not a lead.
-          const rows = (result?.rows ?? []).filter((row) => row.cameras !== 'Not researched' && row.cameras !== 'Yes')
+        {ordered.map((group) => {
+          const loaded = group.every((run) => findings[run.id])
+          // A lead is an unknown: nothing published either way, so a call
+          // can find out. A yes is ruled out; a no is on the map but not here.
+          const rows = group
+            .flatMap((run) => findings[run.id]?.rows ?? [])
+            .filter((row) => row.cameras === 'Unknown')
+          const running = group.some((run) => run.status === 'running')
           return (
-            <div key={run.id}>
+            <div key={group[0].id}>
               <Space wrap size={10} align="center" style={{ marginBottom: 8 }}>
-                <Text strong>{dateOf(run.startedAt)}</Text>
+                <Text strong>{dateOf(group[0].startedAt)}</Text>
                 <Text type="secondary" style={{ fontSize: 12 }}>
-                  {result ? `${rows.length} leads` : 'Loading...'}
-                  {run.status === 'running' ? ' · still researching' : ''}
+                  {loaded ? `${rows.length} leads` : 'Loading...'}
+                  {running ? ' · still researching' : ''}
                 </Text>
               </Space>
               <Table
@@ -195,7 +206,7 @@ export default function LeadsBoard({
                 rowKey="ori"
                 columns={columns}
                 dataSource={rows}
-                loading={!result}
+                loading={!loaded}
                 pagination={rows.length > 25 ? { pageSize: 25, size: 'small' } : false}
                 scroll={{ x: 800 }}
               />

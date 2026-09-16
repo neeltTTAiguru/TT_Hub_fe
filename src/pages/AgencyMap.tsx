@@ -1552,6 +1552,7 @@ export default function AgencyMap() {
         </Space>
       </Card>
 
+      {member ? null : (
       <Row gutter={16}>
         <Col xs={12} md={6}>
           <Card className="section-card">
@@ -1574,6 +1575,7 @@ export default function AgencyMap() {
           </Card>
         </Col>
       </Row>
+      )}
 
       {measureMode ? (
         <Card className="section-card">
@@ -1633,14 +1635,16 @@ export default function AgencyMap() {
             <Spin tip="Loading agencies..." />
           </div>
         ) : null}
-        <ResearchRunMenu
-          runs={runs}
-          active={run}
-          canRun={fullAccess}
-          onCreate={() => setCreatingRun(true)}
-          onView={setViewingRunId}
-          onChanged={() => setRunTick((n) => n + 1)}
-        />
+        {member ? null : (
+          <ResearchRunMenu
+            runs={runs}
+            active={run}
+            canRun={fullAccess}
+            onCreate={() => setCreatingRun(true)}
+            onView={setViewingRunId}
+            onChanged={() => setRunTick((n) => n + 1)}
+          />
+        )}
         {fullAccess ? (
           <TravellerRoster
             me={me ? { ...me, at: travellerAt, working: isResearching } : null}
@@ -1772,6 +1776,7 @@ export default function AgencyMap() {
       />
       </Card>
 
+      {member ? null : (
       <Card className="section-card" title="Legend">
         <Space direction="vertical" size={10} style={{ width: '100%' }}>
           <Space wrap size={18}>
@@ -1865,6 +1870,7 @@ export default function AgencyMap() {
           </Text>
         </Space>
       </Card>
+      )}
 
       {member?.assignedRuns.length ? (
         <LeadsBoard

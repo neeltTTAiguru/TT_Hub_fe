@@ -483,19 +483,10 @@ export default function CommandBoard({
 
               <Space wrap size={8} align="center">
                 <Text type="secondary" style={{ fontSize: 12 }}>
-                  Picks are random, never researched, from:
+                  Picks are random yellow pins - camera status unknown, never researched - and each
+                  person's number is leads delivered: agencies still unknown after research. Ones
+                  found to have cameras are replaced. From:
                 </Text>
-                <Select
-                  size="small"
-                  style={{ width: 200 }}
-                  value={schedule.pick.camera}
-                  onChange={(value) => updateSchedule({ pick: { ...schedule.pick, camera: value } })}
-                  options={[
-                    { value: 'unknown', label: 'Camera status unknown' },
-                    { value: 'not_yes', label: 'No cameras or unknown' },
-                    { value: 'any', label: 'Any camera status' },
-                  ]}
-                />
                 <Select
                   mode="multiple"
                   allowClear
@@ -575,24 +566,21 @@ export default function CommandBoard({
                       {today ? (
                         <Text type="secondary" style={{ fontSize: 12 }}>
                           Last morning {today.date}:{' '}
-                          {today.plan.map((e) => `${nameOf(e.email)} ${e.queued || e.count} ${e.status}`).join(' · ') || 'nobody had a daily number'}
+                          {today.plan.map((e) => `${nameOf(e.email)} ${e.leads ?? 0}/${e.count} ${e.status}`).join(' · ') || 'nobody had a daily number'}
                         </Text>
                       ) : null}
                     </Space>
                   )
                 }
-                const total = today.plan.reduce((n, e) => n + (e.queued || e.count), 0)
-                const done = today.plan.reduce((n, e) => {
-                  const run = e.runId ? runsById.get(e.runId) : undefined
-                  if (run) return n + run.completed + run.failed
-                  return n + (['done', 'skipped', 'failed'].includes(e.status) ? e.queued || 0 : 0)
-                }, 0)
+                // Leads against target, which is what the morning is for.
+                const total = today.plan.reduce((n, e) => n + e.count, 0)
+                const done = today.plan.reduce((n, e) => n + Math.min(e.leads ?? 0, e.count), 0)
                 const finished = Boolean(today.finishedAt)
                 return (
                   <Space direction="vertical" size={4} style={{ width: '100%' }}>
                     <Text style={{ fontSize: 12 }}>
                       <Text strong style={{ fontSize: 12 }}>Today{today.trigger === 'manual' ? ' (run by hand)' : ''}:</Text>{' '}
-                      {finished ? 'finished' : 'in progress'} - {done} of {total} agencies
+                      {finished ? 'finished' : 'in progress'} - {done} of {total} leads
                     </Text>
                     <Progress
                       percent={total ? Math.round((done / total) * 100) : 0}
@@ -603,7 +591,11 @@ export default function CommandBoard({
                     <Space wrap size={12}>
                       {today.plan.map((e) => {
                         const run = e.runId ? runsById.get(e.runId) : undefined
-                        const progress = run ? `${run.completed + run.failed}/${run.total}` : `${e.queued || e.count}`
+                        // Leads delivered against the target; the run in flight in brackets.
+                        const progress =
+                          e.status === 'pending'
+                            ? `${e.count}`
+                            : `${e.leads ?? 0}/${e.count} leads${run && e.status === 'running' ? ` (${run.completed + run.failed}/${run.total} this round)` : ''}`
                         return (
                           <Space key={e.email} size={6}>
                             <Text style={{ fontSize: 12 }}>{nameOf(e.email)}</Text>
@@ -626,7 +618,7 @@ export default function CommandBoard({
                     </Space>
                     {schedule.days.slice(1, 4).map((d) => (
                       <Text key={d.date} type="secondary" style={{ fontSize: 12 }}>
-                        {d.date}: {d.plan.map((e) => `${nameOf(e.email)} ${e.queued || e.count} ${e.status}`).join(' · ') || 'nobody had a daily number'}
+                        {d.date}: {d.plan.map((e) => `${nameOf(e.email)} ${e.leads ?? 0}/${e.count} ${e.status}`).join(' · ') || 'nobody had a daily number'}
                       </Text>
                     ))}
                   </Space>

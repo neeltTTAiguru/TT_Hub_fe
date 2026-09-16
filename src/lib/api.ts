@@ -654,6 +654,10 @@ export type DailyPlanEntry = {
   status: 'pending' | 'starting' | 'running' | 'done' | 'skipped' | 'failed'
   runId: string
   queued: number
+  /** Leads delivered so far - `count` is the target for this. */
+  leads?: number
+  rounds?: number
+  runIds?: string[]
   note: string
   /** How the leads-ready email went, or why it did not go. */
   notified?: string
