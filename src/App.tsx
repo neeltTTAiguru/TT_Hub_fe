@@ -178,7 +178,7 @@ const baseNavItems = [
  * Keys, not paths: they are matched against the nav items, and the Brain group
  * is a parent key with children, so leaving it out removes the whole section.
  */
-const RESTRICTED_NAV_KEYS = ['/gmail', '/agency-map', '/email-builder']
+const RESTRICTED_NAV_KEYS = ['/gmail', '/agency-map']
 
 // Kept out of the sidebar without being deleted. The page, its route and its
 // saved chats all still work — /competitor-analyst reaches it directly — so
@@ -539,7 +539,6 @@ function AppShell({
             <Routes>
               <Route path="/agency-map" element={<AgencyMap />} />
               <Route path="/gmail" element={<GmailPage />} />
-              <Route path="/email-builder" element={<EmailCampaignBuilder />} />
               <Route path="*" element={<Navigate to="/agency-map" replace />} />
             </Routes>
           )}
@@ -773,7 +772,7 @@ function AuthenticatedApp({ isDark, onToggle }: { isDark: boolean; onToggle: () 
         setMemberView(access.member ?? null)
       })
       .catch(() => {
-        // Fails closed. If the server will not say, the map and Brevo are what
+        // Fails closed. If the server will not say, the map and Gmail are what
         // this session gets - and those two pages fetch their own data, so a
         // blip here shows a working hub rather than an empty one.
         if (!cancelled) setFullAccess(false)
