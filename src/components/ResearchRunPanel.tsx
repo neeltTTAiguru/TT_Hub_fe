@@ -105,6 +105,11 @@ export default function ResearchRunPanel({
   const [maxOfficers, setMaxOfficers] = useState<number | null>(mapFilters.maxOfficers ?? null)
   const [nameSearch, setNameSearch] = useState(mapFilters.search ?? '')
   const [camera, setCamera] = useState<CameraChoice>('any')
+  // Blank means everything that matches. A number is "the first N of them", in
+  // the traveller's journey order - so "25 sheriffs in TX" is a real run, not
+  // a filter you have to fake with a name search.
+  const [howMany, setHowMany] = useState<number | null>(null)
+  const limit = howMany !== null && howMany > 0 ? Math.floor(howMany) : undefined
 
   const runQuery = useMemo<LeAgencyQuery>(() => {
     const query: LeAgencyQuery = {}
@@ -128,7 +133,7 @@ export default function ResearchRunPanel({
     let cancelled = false
     setCounting(true)
     const timer = setTimeout(() => {
-      previewResearchRun(runQuery, { skipResearched, includeOffMap })
+      previewResearchRun(runQuery, { skipResearched, includeOffMap, limit })
         .then((result) => {
           if (!cancelled) setLive(result)
         })
@@ -143,7 +148,7 @@ export default function ResearchRunPanel({
       cancelled = true
       clearTimeout(timer)
     }
-  }, [runQuery, skipResearched, includeOffMap])
+  }, [runQuery, skipResearched, includeOffMap, limit])
 
   const matchesMap =
     (mapFilters.state ? [mapFilters.state] : []).join(',') === runStates.join(',') &&
@@ -164,7 +169,7 @@ export default function ResearchRunPanel({
 
   const review = () => {
     setReviewing(true)
-    previewResearchRun(runQuery, { skipResearched, includeOffMap })
+    previewResearchRun(runQuery, { skipResearched, includeOffMap, limit })
       .then(setPreview)
       .catch((err: unknown) => {
         message.error(err instanceof Error ? err.message : 'Could not price this run.')
@@ -174,13 +179,13 @@ export default function ResearchRunPanel({
 
   const isLive = run?.status === 'running' || run?.status === 'stopping'
 
-  const start = (limit?: number) => {
+  const start = (cap: number | undefined = limit) => {
     setStarting(true)
-    startResearchRun(runQuery, { skipResearched, includeOffMap, brief, limit })
+    startResearchRun(runQuery, { skipResearched, includeOffMap, brief, limit: cap })
       .then(() => {
         setPreview(null)
         message.success(
-          limit === 1
+          cap === 1
             ? 'Testing on one agency. Watch the traveller on the map.'
             : 'Run started. It keeps going if you close the tab.',
         )
@@ -322,7 +327,24 @@ export default function ResearchRunPanel({
                 onChange={(event) => setNameSearch(event.target.value)}
               />
             </div>
+            <div>
+              {label('How many agencies')}
+              <InputNumber
+                min={1}
+                precision={0}
+                style={{ width: 140 }}
+                placeholder="All of them"
+                value={howMany}
+                onChange={(value) => setHowMany(value ?? null)}
+              />
+            </div>
           </Space>
+          {limit ? (
+            <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 8 }}>
+              The first {limit.toLocaleString()} that match, in the order the traveller would reach
+              them. Clear it to research everything in scope.
+            </Text>
+          ) : null}
           {minOfficers !== null || maxOfficers !== null ? (
             <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 8 }}>
               Setting a size range excludes the agencies that never reported an officer count.
@@ -366,7 +388,9 @@ export default function ResearchRunPanel({
               ? 'Counting...'
               : live === null
                 ? 'You get the scope and the cost first. Nothing starts until you confirm.'
-                : `${live.queue.toLocaleString()} agencies in scope. You get the full cost before anything starts.`}
+                : live.limit && live.eligible > live.queue
+                  ? `${live.queue.toLocaleString()} of ${live.eligible.toLocaleString()} agencies in scope. You get the full cost before anything starts.`
+                  : `${live.queue.toLocaleString()} agencies in scope. You get the full cost before anything starts.`}
           </Text>
         </Space>
       </Space>
@@ -400,6 +424,13 @@ export default function ResearchRunPanel({
             <Descriptions column={1} size="small" bordered>
               <Descriptions.Item label="Agencies in this run">
                 <Text strong>{preview.queue.toLocaleString()}</Text>
+                {preview.limit && preview.eligible > preview.queue ? (
+                  <Text type="secondary">
+                    {' '}
+                    - capped at {preview.limit.toLocaleString()} of the{' '}
+                    {preview.eligible.toLocaleString()} that match
+                  </Text>
+                ) : null}
                 {preview.alreadyDone ? (
                   <Text type="secondary">
                     {' '}

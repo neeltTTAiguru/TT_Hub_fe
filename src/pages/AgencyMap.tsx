@@ -1163,13 +1163,18 @@ export default function AgencyMap() {
 
                     {point.ori ? (
                       <Space direction="vertical" size={6} style={{ marginTop: 6 }}>
-                        <Button
-                          size="small"
-                          type="primary"
-                          onClick={() => openBriefing(point.ori, point.name)}
-                        >
-                          Research this agency
-                        </Button>
+                        {/* Researching one agency spends money the same way a
+                            run does, so it stays with the full-access accounts.
+                            The server refuses everyone else regardless. */}
+                        {fullAccess ? (
+                          <Button
+                            size="small"
+                            type="primary"
+                            onClick={() => openBriefing(point.ori, point.name)}
+                          >
+                            Research this agency
+                          </Button>
+                        ) : null}
                         {/* Set it by hand when research finds nothing but you
                             know the answer. A person's word beats an empty
                             search, and it is recorded as a person's word. */}

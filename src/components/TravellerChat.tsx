@@ -9,6 +9,7 @@ import {
   type TravellerChatReply,
 } from '../lib/api'
 import { travellerSvg } from './travellerSprite'
+import { useFullAccess } from '../lib/access'
 
 const { Text } = Typography
 
@@ -75,6 +76,7 @@ export default function TravellerChat({
   onMoved: (moved: NonNullable<TravellerChatReply['moved']>) => void
   onOpenBriefing: (ori: string, name: string) => void
 }) {
+  const fullAccess = useFullAccess()
   const [log, setLog] = useState<Array<{ role: 'user' | 'assistant'; content: string }>>([])
   const [draft, setDraft] = useState('')
   const [busy, setBusy] = useState(false)
@@ -323,12 +325,18 @@ export default function TravellerChat({
               </Descriptions>
 
               <Space wrap size={8}>
-                <Button type="primary" size="small" loading={busy} onClick={() => void research()}>
-                  Research cameras
-                </Button>
-                <Button size="small" onClick={() => onOpenBriefing(agency.ori, agency.agencyName)}>
-                  Full briefing
-                </Button>
+                {/* Both of these research the agency on the spot, which is
+                    billed like a run - so the same accounts see them. */}
+                {fullAccess ? (
+                  <>
+                    <Button type="primary" size="small" loading={busy} onClick={() => void research()}>
+                      Research cameras
+                    </Button>
+                    <Button size="small" onClick={() => onOpenBriefing(agency.ori, agency.agencyName)}>
+                      Full briefing
+                    </Button>
+                  </>
+                ) : null}
                 {agency.contacts?.website ? (
                   <Button
                     size="small"

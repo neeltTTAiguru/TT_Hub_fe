@@ -2582,7 +2582,11 @@ export function getLeAgencyStats(query: LeAgencyQuery = {}) {
 export type ResearchRunPreview = {
   matched: number
   alreadyDone: number
+  /** How many could be researched under these filters, before any cap. */
+  eligible: number
+  /** How many this run would actually visit - `eligible`, or the cap if smaller. */
   queue: number
+  limit: number | null
   offMap: number
   includeOffMap: boolean
   needEmail: number
@@ -2599,7 +2603,7 @@ export type ResearchRunPreview = {
  */
 export function previewResearchRun(
   filters: LeAgencyQuery = {},
-  options: { skipResearched?: boolean; includeOffMap?: boolean } = {},
+  options: { skipResearched?: boolean; includeOffMap?: boolean; limit?: number } = {},
 ) {
   // Encoded through buildLeAgencyParams rather than sent as a raw object: the
   // backend's filter builder reads query-string values, so `hasOfficerCount`
@@ -2612,6 +2616,7 @@ export function previewResearchRun(
       filters: encoded,
       skipResearched: options.skipResearched !== false,
       includeOffMap: options.includeOffMap === true,
+      limit: options.limit,
     }),
   })
 }
