@@ -75,6 +75,12 @@ export default function LeadsBoard({
   }
   const ordered = [...days.values()]
 
+  // One morning on screen at a time, newest first, with arrows to step back.
+  // A list of every morning stacked up would be a wall after a fortnight.
+  const [dayIndex, setDayIndex] = useState(0)
+  const idx = Math.min(dayIndex, Math.max(ordered.length - 1, 0))
+  const current = ordered[idx]
+
   const columns = [
     {
       title: 'Agency',
@@ -170,49 +176,57 @@ export default function LeadsBoard({
     },
   ]
 
-  if (!ordered.length) return null
+  if (!current) return null
+
+  const loaded = current.every((run) => findings[run.id])
+  // A lead is an unknown: nothing published either way, so a call can
+  // settle it. A yes is ruled out; a no is on the map but not here.
+  const rows = current
+    .flatMap((run) => findings[run.id]?.rows ?? [])
+    .filter((row) => row.cameras === 'Unknown')
+  const running = current.some((run) => run.status === 'running')
 
   return (
     <Card className="section-card">
-      <Space direction="vertical" size={18} style={{ width: '100%' }}>
+      <Space direction="vertical" size={14} style={{ width: '100%' }}>
         <div>
           <Title level={5} style={{ marginBottom: 4 }}>
             Your leads
           </Title>
           <Text type="secondary" style={{ fontSize: 12 }}>
             Agencies the traveller researched for you with no known camera status - the ones a
-            call can settle. Newest morning first; every one is also a pin on the map above.
+            call can settle. Every one is also a pin on the map above.
           </Text>
         </div>
-        {ordered.map((group) => {
-          const loaded = group.every((run) => findings[run.id])
-          // A lead is an unknown: nothing published either way, so a call
-          // can find out. A yes is ruled out; a no is on the map but not here.
-          const rows = group
-            .flatMap((run) => findings[run.id]?.rows ?? [])
-            .filter((row) => row.cameras === 'Unknown')
-          const running = group.some((run) => run.status === 'running')
-          return (
-            <div key={group[0].id}>
-              <Space wrap size={10} align="center" style={{ marginBottom: 8 }}>
-                <Text strong>{dateOf(group[0].startedAt)}</Text>
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  {loaded ? `${rows.length} leads` : 'Loading...'}
-                  {running ? ' · still researching' : ''}
-                </Text>
-              </Space>
-              <Table
-                size="small"
-                rowKey="ori"
-                columns={columns}
-                dataSource={rows}
-                loading={!loaded}
-                pagination={rows.length > 25 ? { pageSize: 25, size: 'small' } : false}
-                scroll={{ x: 800 }}
-              />
-            </div>
-          )
-        })}
+
+        <Space wrap size={10} align="center" style={{ justifyContent: 'space-between', width: '100%' }}>
+          <Space size={8} align="center">
+            <Button size="small" disabled={idx >= ordered.length - 1} onClick={() => setDayIndex(idx + 1)}>
+              ← Earlier
+            </Button>
+            <Text strong style={{ fontSize: 15 }}>
+              {dateOf(current[0].startedAt)}
+            </Text>
+            <Button size="small" disabled={idx <= 0} onClick={() => setDayIndex(idx - 1)}>
+              {idx === 1 ? 'Latest →' : 'Later →'}
+            </Button>
+          </Space>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            {loaded ? `${rows.length} leads` : 'Loading...'}
+            {running ? ' · still researching' : ''}
+            {ordered.length > 1 ? ` · morning ${idx + 1} of ${ordered.length}` : ''}
+          </Text>
+        </Space>
+
+        <Table
+          size="small"
+          rowKey="ori"
+          columns={columns}
+          dataSource={rows}
+          loading={!loaded}
+          pagination={rows.length > 25 ? { pageSize: 25, size: 'small' } : false}
+          scroll={{ x: 800 }}
+        />
       </Space>
     </Card>
   )
