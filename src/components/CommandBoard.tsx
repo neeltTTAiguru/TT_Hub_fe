@@ -536,6 +536,19 @@ export default function CommandBoard({
                     .filter((m) => m.gmail.connected)
                     .map((m) => ({ value: m.email, label: `${m.name || m.email} (${m.gmail.address})` }))}
                 />
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  cc
+                </Text>
+                <Select
+                  mode="tags"
+                  size="small"
+                  style={{ width: 300 }}
+                  placeholder="Nobody"
+                  tokenSeparators={[',', ' ']}
+                  value={schedule.notifyCc}
+                  onChange={(value) => updateSchedule({ notifyCc: value })}
+                  options={(board?.members ?? []).map((m) => ({ value: m.email, label: m.email }))}
+                />
                 {schedule.notifyFrom && !board?.members.find((m) => m.email === schedule.notifyFrom)?.gmail.connected ? (
                   <Text type="warning" style={{ fontSize: 12 }}>
                     {schedule.notifyFrom} has no Gmail connected, so no email goes out.

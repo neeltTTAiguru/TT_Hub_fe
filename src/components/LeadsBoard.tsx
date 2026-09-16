@@ -179,7 +179,8 @@ export default function LeadsBoard({
         </div>
         {ordered.map((run) => {
           const result = findings[run.id]
-          const rows = (result?.rows ?? []).filter((row) => row.cameras !== 'Not researched')
+          // Not researched: nothing to show. Has cameras: ruled out, not a lead.
+          const rows = (result?.rows ?? []).filter((row) => row.cameras !== 'Not researched' && row.cameras !== 'Yes')
           return (
             <div key={run.id}>
               <Space wrap size={10} align="center" style={{ marginBottom: 8 }}>
