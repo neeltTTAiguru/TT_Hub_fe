@@ -655,6 +655,8 @@ export type DailyPlanEntry = {
   runId: string
   queued: number
   note: string
+  /** How the leads-ready email went, or why it did not go. */
+  notified?: string
   startedAt: string | null
   finishedAt: string | null
 }
@@ -665,6 +667,8 @@ export type DailySchedule = {
   minute: number
   timezone: string
   pick: { states: string[]; agencyTypes: string[]; maxOfficers: number | null; camera: 'unknown' | 'not_yes' | 'any' }
+  /** Whose Gmail the leads-ready email goes from. */
+  notifyFrom: string
   /** Agencies left to draw from under the pick scope. */
   pool: number
   nextFireAt: string | null
@@ -807,7 +811,7 @@ export function sendAgencyEmail(input: { ori: string; to?: string; subject: stri
   })
 }
 
-export function saveDailySchedule(input: Partial<Pick<DailySchedule, 'enabled' | 'hour' | 'minute' | 'pick'>>) {
+export function saveDailySchedule(input: Partial<Pick<DailySchedule, 'enabled' | 'hour' | 'minute' | 'pick' | 'notifyFrom'>>) {
   return request<DailySchedule>('/command-board/schedule', {
     method: 'PUT',
     body: JSON.stringify(input),

@@ -11,6 +11,7 @@ import ResearchRunFindings from '../components/ResearchRunFindings'
 import SdrFormModal from '../components/SdrFormModal'
 import CallLogModal from '../components/CallLogModal'
 import FollowUpEmailModal from '../components/FollowUpEmailModal'
+import LeadsBoard from '../components/LeadsBoard'
 import CallReportModal from '../components/CallReportModal'
 import CommandBoard from '../components/CommandBoard'
 import { useFullAccess, useMemberView } from '../lib/access'
@@ -1440,28 +1441,7 @@ export default function AgencyMap() {
         />
       ) : null}
 
-      {member?.assignedRuns.length ? (
-        <Card className="section-card">
-          <Space direction="vertical" size={8} style={{ width: '100%' }}>
-            <Text strong>Your assignments</Text>
-            {member.assignedRuns.map((run) => (
-              <Space key={run.id} wrap size={8} align="center">
-                <Text>{run.filtersLabel || run.brief || 'All agencies'}</Text>
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  {run.completed.toLocaleString()} of {run.total.toLocaleString()} researched
-                  {run.startedAt ? ` · ${new Date(run.startedAt).toLocaleDateString()}` : ''}
-                </Text>
-                <Button size="small" onClick={() => setViewingRunId(run.id)}>
-                  View results
-                </Button>
-              </Space>
-            ))}
-            {member.limitToAssignedRuns ? (
-              <Text type="secondary" style={{ fontSize: 12 }}>
-                The map shows the agencies these runs covered.
-              </Text>
-            ) : null}
-          </Space>
+         </Space>
         </Card>
       ) : null}
 
@@ -1885,6 +1865,20 @@ export default function AgencyMap() {
           </Text>
         </Space>
       </Card>
+
+      {member?.assignedRuns.length ? (
+        <LeadsBoard
+          runs={member.assignedRuns}
+          onLocate={(ori) => {
+            const point = points.find((p) => p.ori === ori)
+            if (point) mapRef.current?.flyTo([point.lat, point.lon], 12, { duration: 1.2 })
+            else message.info('That agency is not on your map right now.')
+          }}
+          onCallResult={(ori, name, phone, chiefName, chiefTitle) =>
+            setCallResultFor({ ori, name, phone, chiefName, chiefTitle })
+          }
+        />
+      ) : null}
 
       {fullAccess ? <CommandBoard states={STATES} onViewRun={setViewingRunId} /> : null}
 

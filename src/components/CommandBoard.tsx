@@ -521,6 +521,28 @@ export default function CommandBoard({
                 </Text>
               </Space>
 
+              <Space wrap size={8} align="center">
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  When each person's run finishes, email them their leads from:
+                </Text>
+                <Select
+                  size="small"
+                  allowClear
+                  placeholder="Nobody - no email"
+                  style={{ width: 280 }}
+                  value={schedule.notifyFrom || undefined}
+                  onChange={(value) => updateSchedule({ notifyFrom: value || '' }, true)}
+                  options={(board?.members ?? [])
+                    .filter((m) => m.gmail.connected)
+                    .map((m) => ({ value: m.email, label: `${m.name || m.email} (${m.gmail.address})` }))}
+                />
+                {schedule.notifyFrom && !board?.members.find((m) => m.email === schedule.notifyFrom)?.gmail.connected ? (
+                  <Text type="warning" style={{ fontSize: 12 }}>
+                    {schedule.notifyFrom} has no Gmail connected, so no email goes out.
+                  </Text>
+                ) : null}
+              </Space>
+
               {(() => {
                 const today = schedule.days[0]
                 const nameOf = (email: string) =>
@@ -575,9 +597,10 @@ export default function CommandBoard({
                             <Tag color={STATUS_COLOUR[e.status] || 'default'} style={{ marginInlineEnd: 0 }}>
                               {e.status}
                             </Tag>
-                            <Text type="secondary" style={{ fontSize: 12 }}>
+                            <Text type="secondary" style={{ fontSize: 12 }} title={e.notified || ''}>
                               {progress}
                               {e.note ? ` - ${e.note}` : ''}
+                              {e.notified ? (e.notified.startsWith('Emailed') ? ' · emailed' : ' · not emailed') : ''}
                             </Text>
                             {e.runId ? (
                               <Button size="small" type="link" style={{ padding: 0, height: 'auto' }} onClick={() => onViewRun(e.runId)}>
