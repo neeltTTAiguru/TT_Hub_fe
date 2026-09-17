@@ -1291,6 +1291,8 @@ export default function AgencyMap() {
   // Deliberately skipped while a run is going: the runner owns his position
   // then, and sending him somewhere else would either fight the run or be
   // overwritten within seconds, which looks broken either way.
+  // Where the map starts on the page, so "Show on map" can scroll to it.
+  const mapCardRef = useRef<HTMLDivElement | null>(null)
   const searchedRef = useRef('')
   useEffect(() => {
     const term = search.trim()
@@ -1485,14 +1487,15 @@ export default function AgencyMap() {
               options={(scope?.agencyTypes.length ? scope.agencyTypes : agencyTypes).map((type) => ({ value: type, label: type }))}
             />
           )}
-          {noFilters ? null : (
-            <Input.Search
-              allowClear
-              placeholder="Search agency name"
-              style={{ width: 240 }}
-              onSearch={(value) => setSearch(value)}
-            />
-          )}
+          {/* Everyone gets this one. It changes nothing about what is shown -
+              it finds a pin among what is already there - and for a scoped
+              account that is how they find one of their own leads. */}
+          <Input.Search
+            allowClear
+            placeholder={noFilters ? 'Find one of your leads' : 'Search agency name'}
+            style={{ width: 240 }}
+            onSearch={(value) => setSearch(value)}
+          />
           {noFilters ? null : (
             <Button
               type={measureMode ? 'primary' : 'default'}
@@ -1648,6 +1651,7 @@ export default function AgencyMap() {
             onFly={(at) => mapRef.current?.flyTo([at.lat, at.lon], 11, { duration: 1.4 })}
           />
         ) : null}
+        <div ref={mapCardRef} />
         <MapContainer
           center={US_CENTER}
           zoom={US_ZOOM}
@@ -1873,8 +1877,27 @@ export default function AgencyMap() {
           runs={member.assignedRuns}
           onLocate={(ori) => {
             const point = points.find((p) => p.ori === ori)
-            if (point) mapRef.current?.flyTo([point.lat, point.lon], 12, { duration: 1.2 })
-            else message.info('That agency is not on your map right now.')
+            if (!point) {
+              message.info('That agency is not on your map right now.')
+              return
+            }
+            // The board sits under a 600px map: flying the map somewhere the
+            // reader cannot see looked like nothing happened. Bring the map
+            // on screen first, then fly, and walk the traveller over so the
+            // pin is unmistakable among its neighbours.
+            mapCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+            mapRef.current?.flyTo([point.lat, point.lon], 13, { duration: 1.2 })
+            if (!runIsLive) {
+              moveTraveller(ori)
+                .then((moved) =>
+                  setActivity((current) =>
+                    current ? { ...current, me: { ...current.me, at: moved } } : current,
+                  ),
+                )
+                .catch(() => {
+                  /* he stays put; the map has still flown there */
+                })
+            }
           }}
           onCallResult={(ori, name, phone, chiefName, chiefTitle) =>
             setCallResultFor({ ori, name, phone, chiefName, chiefTitle })

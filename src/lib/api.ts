@@ -3037,7 +3037,7 @@ export type ResearchRunFindingRow = {
   type: string
   county: string
   state: string
-  cameras: 'Yes' | 'No' | 'Unknown' | 'Not researched'
+  cameras: 'Yes' | 'No' | 'Planned' | 'Unknown' | 'Not researched'
   cameraSource: string
   reasoning: string
   caveat: string

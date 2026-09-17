@@ -12,6 +12,7 @@ const { Text, Title } = Typography
 const CAMERA_COLOUR: Record<string, string> = {
   Yes: 'red',
   No: 'green',
+  Planned: 'orange',
   Unknown: 'gold',
   'Not researched': 'default',
 }
@@ -179,11 +180,13 @@ export default function LeadsBoard({
   if (!current) return null
 
   const loaded = current.every((run) => findings[run.id])
-  // A lead is an unknown: nothing published either way, so a call can
-  // settle it. A yes is ruled out; a no is on the map but not here.
+  // A lead is an agency not yet running cameras: an unknown - nothing
+  // published either way - or a purchase only planned, which is the call to
+  // make before the order goes out. A yes is ruled out; a no is on the map
+  // but not here.
   const rows = current
     .flatMap((run) => findings[run.id]?.rows ?? [])
-    .filter((row) => row.cameras === 'Unknown')
+    .filter((row) => row.cameras === 'Unknown' || row.cameras === 'Planned')
   const running = current.some((run) => run.status === 'running')
 
   return (
@@ -194,8 +197,8 @@ export default function LeadsBoard({
             Your leads
           </Title>
           <Text type="secondary" style={{ fontSize: 12 }}>
-            Agencies the traveller researched for you with no known camera status - the ones a
-            call can settle. Every one is also a pin on the map above.
+            Agencies the traveller researched for you that are not running cameras yet - unknown,
+            or a purchase only planned. Every one is also a pin on the map above.
           </Text>
         </div>
 

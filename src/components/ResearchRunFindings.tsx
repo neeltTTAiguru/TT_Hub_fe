@@ -9,10 +9,10 @@ import {
 
 const { Text } = Typography
 
-const VERDICTS: ResearchRunFindingRow['cameras'][] = ['Yes', 'No', 'Unknown', 'Not researched']
+const VERDICTS: ResearchRunFindingRow['cameras'][] = ['Yes', 'No', 'Planned', 'Unknown', 'Not researched']
 
 const verdictColor = (verdict: ResearchRunFindingRow['cameras']) =>
-  verdict === 'Yes' ? 'red' : verdict === 'No' ? 'green' : verdict === 'Unknown' ? 'gold' : 'default'
+  verdict === 'Yes' ? 'red' : verdict === 'No' ? 'green' : verdict === 'Planned' ? 'orange' : verdict === 'Unknown' ? 'gold' : 'default'
 
 const when = (value: string | null) => (value ? new Date(value).toLocaleDateString() : '')
 
