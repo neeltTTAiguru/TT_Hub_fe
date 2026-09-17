@@ -123,6 +123,14 @@ const CALL_LATER_COLOR = '#ff2d95'
 const TRAVELLER_COLOR = '#1f6f8f'
 
 
+// The two cluster-layer methods this page uses, typed here because the
+// cluster plugin's own typings are not installed (react-leaflet-cluster
+// refers to them, but the production build has no @types for them).
+type ClusterLayer = L.Layer & {
+  hasLayer: (layer: L.Layer) => boolean
+  zoomToShowLayer: (layer: L.Marker, callback?: () => void) => void
+}
+
 type MapPoint = {
   kind: 'agency' | 'deal'
   id: string
@@ -1302,7 +1310,7 @@ export default function AgencyMap() {
   // pin is folded into a numbered cluster, and only the cluster layer can
   // unfold it (zoomToShowLayer) so its popup has something to attach to.
   const markerRefs = useRef(new Map<string, L.Marker>())
-  const clusterRef = useRef<L.MarkerClusterGroup | null>(null)
+  const clusterRef = useRef<ClusterLayer | null>(null)
   const searchedRef = useRef('')
 
   /**
@@ -1737,7 +1745,7 @@ export default function AgencyMap() {
           />
           <MarkerClusterGroup
             key={`clusters:${[...hiddenCategories].sort().join(',')}`}
-            ref={clusterRef}
+            ref={clusterRef as never}
             chunkedLoading
             maxClusterRadius={50}
             iconCreateFunction={createClusterIcon}
