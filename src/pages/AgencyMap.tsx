@@ -185,14 +185,12 @@ function categoryFor(point: {
   callLater?: boolean
 }): PinCategory {
   if (point.isTest) return 'test'
+  // Same order as colorFor, or the legend tallies would not match the screen:
+  // cameras first, then the outreach colours, then the rest.
+  if (point.bwcTrusted === 'has_bwc' || (point.bwcTrusted !== 'no_bwc' && point.bwcStatus === 'yes')) return 'bwc'
   if (point.callLater) return 'callLater'
-  // Claimed before the camera rows on purpose - a contacted agency is coloured
-  // light blue, so it has to be counted and filtered as one, or the legend
-  // tallies would not match what is on the screen.
   if (point.contacted) return 'contacted'
-  if (point.bwcTrusted === 'has_bwc') return 'bwc'
   if (point.bwcTrusted === 'no_bwc') return 'noBwc'
-  if (point.bwcStatus === 'yes') return 'bwc'
   if (point.bwcStatus === 'no') return 'noBwc'
   // planned and purchased_not_deployed land here: nothing is deployed yet, so
   // the map does not claim they have cameras. The card still says which it is.
@@ -282,13 +280,15 @@ function colorFor(
   callLater = false,
 ) {
   if (isTest) return TEST_COLOR
+  // Cameras beat everything. An agency that has them is not a lead, however
+  // many calls were logged before that came out - marking "Has BWC" by hand
+  // or a research run finding them turns the pin red, full stop.
+  if (bwcTrusted === 'has_bwc' || (bwcTrusted !== 'no_bwc' && bwcStatus === 'yes')) return BWC_COLOR
   if (callLater) return CALL_LATER_COLOR
-  // Outreach outranks camera status: once somebody has rung them, the pin is
-  // answering "have we spoken to this agency" instead.
+  // Outreach outranks the remaining camera states: once somebody has rung
+  // them, the pin is answering "have we spoken to this agency" instead.
   if (contacted) return CONTACTED_COLOR
-  if (bwcTrusted === 'has_bwc') return BWC_COLOR
   if (bwcTrusted === 'no_bwc') return NO_BWC_COLOR
-  if (bwcStatus === 'yes') return BWC_COLOR
   if (bwcStatus === 'no') return NO_BWC_COLOR
   return UNKNOWN_BWC_COLOR
 }
@@ -1827,7 +1827,6 @@ export default function AgencyMap() {
       />
       </Card>
 
-      {member ? null : (
       <Card className="section-card" title="Legend">
         <Space direction="vertical" size={10} style={{ width: '100%' }}>
           <Space wrap size={18}>
@@ -1866,7 +1865,10 @@ export default function AgencyMap() {
                 striped: boolean
                 emphasis?: boolean
               }>
-            ).map((item) => {
+            )
+              // A scoped account never sees a test agency; no row for one.
+              .filter((item) => !member || item.key !== 'test')
+              .map((item) => {
               const hidden = hiddenCategories.has(item.key)
               return (
                 // The click lives on the row, not the Checkbox: antd's own
@@ -1911,17 +1913,16 @@ export default function AgencyMap() {
           </Space>
 
           <Text type="secondary" style={{ fontSize: 12 }}>
-            Untick a box to hide those pins. Light blue = an SDR has logged a call, and it takes
-            precedence over the camera colour - open the pin to see its camera status. Red = has
-            cameras, green = confirmed none, amber = nobody has published either way. Stripes = already in HubSpot, and a larger ticked
-            green pin is a current customer. Camera status comes from four sources of differing strength - a
-            documented sighting, an agency's own survey answer, a camera grant, or a state mandate.
-            A mandate is a legal duty, not a verified purchase. Open a pin to see which applies to
-            that agency, and how its location was placed.
+            Untick a box to hide those pins. Red = has cameras, and it beats every other colour -
+            whether marked by hand or found by a research run. Pink = call later, light blue = an
+            SDR has logged a call, green = confirmed no cameras, amber = nobody has published
+            either way.
+            {member
+              ? ' Open a pin for the agency card.'
+              : ' Stripes = already in HubSpot, and a larger ticked green pin is a current customer. Camera status comes from four sources of differing strength - a documented sighting, an agency\'s own survey answer, a camera grant, or a state mandate. A mandate is a legal duty, not a verified purchase. Open a pin to see which applies to that agency, and how its location was placed.'}
           </Text>
         </Space>
       </Card>
-      )}
 
       {member?.assignedRuns.length ? (
         <LeadsBoard
