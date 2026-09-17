@@ -11,7 +11,7 @@ import ResearchRunFindings from '../components/ResearchRunFindings'
 import SdrFormModal from '../components/SdrFormModal'
 import CallLogModal from '../components/CallLogModal'
 import FollowUpEmailModal from '../components/FollowUpEmailModal'
-import LeadsBoard from '../components/LeadsBoard'
+import LeadsBoard, { type LeadCallState } from '../components/LeadsBoard'
 import CallReportModal from '../components/CallReportModal'
 import CommandBoard from '../components/CommandBoard'
 import { useFullAccess, useMemberView } from '../lib/access'
@@ -154,6 +154,7 @@ type MapPoint = {
   callLater: boolean
   callCount: number
   lastCalledAt: string | null
+  lastCallOutcome: string
   bwcVendor: string
   lines: string[]
   approximate: boolean
@@ -762,6 +763,7 @@ export default function AgencyMap() {
       isTest: Boolean(f.properties.isTest),
       contacted: Boolean(f.properties.contacted),
       callLater: f.properties.lastCallOutcome === CALL_LATER_OUTCOME,
+      lastCallOutcome: f.properties.lastCallOutcome || '',
       callCount: f.properties.callCount ?? 0,
       lastCalledAt: f.properties.lastCalledAt ?? null,
       lines: [
@@ -846,6 +848,7 @@ export default function AgencyMap() {
         callLater: false,
         callCount: 0,
         lastCalledAt: null,
+        lastCallOutcome: '',
         lines: [
           'HubSpot deal',
           f.properties.owner ? `Owner: ${f.properties.owner}` : '',
@@ -895,6 +898,24 @@ export default function AgencyMap() {
     () => [...visibleAgencyPoints, ...dealPoints],
     [visibleAgencyPoints, dealPoints],
   )
+
+  // Per agency, whether and how it has been called - for the leads board.
+  // From every agency point, not just the visible ones: hiding "Reached out"
+  // in the legend must not make a done lead look undone.
+  const callStateByOri = useMemo(() => {
+    const map = new Map<string, LeadCallState>()
+    for (const point of agencyPoints) {
+      if (point.callCount > 0 || point.callLater) {
+        map.set(point.ori, {
+          callCount: point.callCount,
+          lastCalledAt: point.lastCalledAt,
+          lastOutcome: point.lastCallOutcome,
+          callLater: point.callLater,
+        })
+      }
+    }
+    return map
+  }, [agencyPoints])
 
   // A live run is the authority on where he is standing. The activity feed
   // derives his position from research timestamps, which is right when nobody
@@ -1927,6 +1948,10 @@ export default function AgencyMap() {
       {member?.assignedRuns.length ? (
         <LeadsBoard
           runs={member.assignedRuns}
+          // What the map already knows about each agency's calls, live: the
+          // board reads "done" from here, so logging a call marks the row
+          // the moment the pin changes colour.
+          callState={callStateByOri}
           onLocate={showAgency}
           onCallResult={(ori, name, phone, chiefName, chiefTitle) =>
             setCallResultFor({ ori, name, phone, chiefName, chiefTitle })

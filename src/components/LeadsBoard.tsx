@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Button, Card, Space, Table, Tag, Typography } from 'antd'
+import { Button, Card, Checkbox, Space, Table, Tag, Typography } from 'antd'
 import {
   getResearchRunFindings,
   type AssignableRun,
@@ -17,6 +17,17 @@ const CAMERA_COLOUR: Record<string, string> = {
   'Not researched': 'default',
 }
 
+/** What the map knows about calls to one agency. Absent means never called. */
+export type LeadCallState = {
+  callCount: number
+  lastCalledAt: string | null
+  lastOutcome: string
+  callLater: boolean
+}
+
+const shortDate = (value: string | null) =>
+  value ? new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : ''
+
 const dateOf = (value: string | null) =>
   value
     ? new Date(value).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })
@@ -32,10 +43,13 @@ const dateOf = (value: string | null) =>
  */
 export default function LeadsBoard({
   runs,
+  callState,
   onLocate,
   onCallResult,
 }: {
   runs: AssignableRun[]
+  /** Call state by ORI, live from the map. */
+  callState: Map<string, LeadCallState>
   /** Fly the map to this agency and open its pin. */
   onLocate: (ori: string) => void
   onCallResult: (ori: string, name: string, phone: string, chiefName: string, chiefTitle: string) => void
@@ -79,6 +93,9 @@ export default function LeadsBoard({
   // One morning on screen at a time, newest first, with arrows to step back.
   // A list of every morning stacked up would be a wall after a fortnight.
   const [dayIndex, setDayIndex] = useState(0)
+  // Done leads stay listed - a person wants to see what they got through -
+  // but sink to the bottom, and can be hidden to leave just the work left.
+  const [hideDone, setHideDone] = useState(false)
   const idx = Math.min(dayIndex, Math.max(ordered.length - 1, 0))
   const current = ordered[idx]
 
@@ -157,6 +174,37 @@ export default function LeadsBoard({
       ),
     },
     {
+      title: 'Status',
+      key: 'status',
+      width: 170,
+      render: (_: unknown, row: ResearchRunFindingRow) => {
+        const state = callState.get(row.ori)
+        if (!state) {
+          return (
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              To do
+            </Text>
+          )
+        }
+        return (
+          <Space direction="vertical" size={0}>
+            <Tag color={state.callLater ? 'magenta' : 'green'} style={{ marginInlineEnd: 0 }}>
+              {state.callLater ? 'Call later' : 'Done'}
+            </Tag>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {[
+                state.callCount > 1 ? `${state.callCount} calls` : 'Called',
+                shortDate(state.lastCalledAt),
+                state.lastOutcome && !state.callLater ? state.lastOutcome : '',
+              ]
+                .filter(Boolean)
+                .join(' · ')}
+            </Text>
+          </Space>
+        )
+      },
+    },
+    {
       title: '',
       key: 'actions',
       width: 200,
@@ -184,9 +232,13 @@ export default function LeadsBoard({
   // published either way - or a purchase only planned, which is the call to
   // make before the order goes out. A yes is ruled out; a no is on the map
   // but not here.
-  const rows = current
+  const leads = current
     .flatMap((run) => findings[run.id]?.rows ?? [])
     .filter((row) => row.cameras === 'Unknown' || row.cameras === 'Planned')
+  const isDone = (row: ResearchRunFindingRow) => callState.has(row.ori)
+  const doneCount = leads.filter(isDone).length
+  // Work left first, done underneath, each in the run's own order.
+  const rows = [...leads.filter((row) => !isDone(row)), ...(hideDone ? [] : leads.filter(isDone))]
   const running = current.some((run) => run.status === 'running')
 
   return (
@@ -210,15 +262,25 @@ export default function LeadsBoard({
             <Text strong style={{ fontSize: 15 }}>
               {dateOf(current[0].startedAt)}
             </Text>
+            {current.some((run) => run.handedOffFrom) ? (
+              <Tag color="blue" style={{ marginInlineEnd: 0 }}>
+                {[...new Set(current.map((run) => run.handedOffFrom).filter(Boolean))].map((who) => `${who}'s leads`).join(' · ')}
+              </Tag>
+            ) : null}
             <Button size="small" disabled={idx <= 0} onClick={() => setDayIndex(idx - 1)}>
               {idx === 1 ? 'Latest →' : 'Later →'}
             </Button>
           </Space>
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            {loaded ? `${rows.length} leads` : 'Loading...'}
-            {running ? ' · still researching' : ''}
-            {ordered.length > 1 ? ` · morning ${idx + 1} of ${ordered.length}` : ''}
-          </Text>
+          <Space size={12} align="center">
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {loaded ? `${leads.length} leads · ${doneCount} done · ${leads.length - doneCount} to do` : 'Loading...'}
+              {running ? ' · still researching' : ''}
+              {ordered.length > 1 ? ` · morning ${idx + 1} of ${ordered.length}` : ''}
+            </Text>
+            <Checkbox checked={hideDone} onChange={(event) => setHideDone(event.target.checked)}>
+              <Text style={{ fontSize: 12 }}>Hide done</Text>
+            </Checkbox>
+          </Space>
         </Space>
 
         <Table
@@ -226,6 +288,7 @@ export default function LeadsBoard({
           rowKey="ori"
           columns={columns}
           dataSource={rows}
+          rowClassName={(row) => (isDone(row) ? 'lead-done' : '')}
           loading={!loaded}
           pagination={rows.length > 25 ? { pageSize: 25, size: 'small' } : false}
           scroll={{ x: 800 }}

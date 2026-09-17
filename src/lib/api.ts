@@ -644,6 +644,10 @@ export type AssignableRun = {
   startedBy?: string
   /** Who the daily schedule researched this run for, if it did. */
   assignedTo?: string
+  /** People it was handed off to, on top of its owner. */
+  sharedWith?: string[]
+  /** On a member's own view: the name of whose leads these were, if not theirs. */
+  handedOffFrom?: string
   startedAt: string | null
   finishedAt: string | null
 }
@@ -855,6 +859,22 @@ export function saveHubMember(email: string, input: HubMemberInput) {
     method: 'PUT',
     body: JSON.stringify(input),
   })
+}
+
+/** Put a run's leads on other people's maps and boards, keeping the owner's. */
+export function handOffRun(runId: string, to: string[]) {
+  return request<{ id: string; from: string; to: Array<{ email: string; name: string }> }>(
+    `/command-board/runs/${encodeURIComponent(runId)}/handoff`,
+    { method: 'POST', body: JSON.stringify({ to }) },
+  )
+}
+
+/** Take a handed-off run back off one person's map. */
+export function takeBackRun(runId: string, email: string) {
+  return request<{ ok: true }>(
+    `/command-board/runs/${encodeURIComponent(runId)}/handoff/${encodeURIComponent(email)}`,
+    { method: 'DELETE' },
+  )
 }
 
 export function removeHubMember(email: string) {

@@ -338,7 +338,7 @@ function AppShell({
               src={trustedTechnologyPrimaryLogo}
               alt="Trusted Technology Solutions"
             />
-            <div className="brand-subtitle">Smart Hub</div>
+            <div className="brand-subtitle">Trusted Tech Central</div>
           </div>
         </div>
         {reordering ? (
@@ -484,7 +484,7 @@ function AppShell({
                 <path d="M2 4.5h14M2 9h14M2 13.5h14" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
               </svg>
             </button>
-            <Text strong>Trusted Tech Smart Hub</Text>
+            <Text strong>Trusted Tech Central</Text>
           </span>
           <div className="theme-toggle">
             {user?.name ? <Text type="secondary">Signed in as {user.name}</Text> : null}
@@ -599,7 +599,7 @@ function LoginScreen() {
       <Card className="auth-card">
         <Space direction="vertical" size={24} style={{ width: '100%' }}>
           <Title level={1} className="auth-title">
-            Trusted Tech Smart Hub
+            Trusted Tech Central
           </Title>
           <Text type="secondary" className="auth-copy">
             Sign in with Auth0 to access Trusted Tech products and protected workflows.
