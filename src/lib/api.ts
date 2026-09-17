@@ -723,6 +723,8 @@ export type HubMember = {
   includeCalled: boolean
   /** How many agencies the morning schedule researches for them. */
   dailyResearch: number
+  /** Their morning switched off for now; the number is kept. */
+  dailyPaused: boolean
   gmail: { connected: boolean; address: string }
   scope: MemberScope
   notes: string
@@ -740,7 +742,7 @@ export type CommandBoard = {
 
 export type HubMemberInput = Pick<
   HubMember,
-  'name' | 'assignedRunIds' | 'limitToAssignedRuns' | 'includeCalled' | 'dailyResearch' | 'scope' | 'notes'
+  'name' | 'assignedRunIds' | 'limitToAssignedRuns' | 'includeCalled' | 'dailyResearch' | 'dailyPaused' | 'scope' | 'notes'
 >
 
 export type GmailStatus = {

@@ -75,6 +75,7 @@ const blank = (email: string): HubMember => ({
   limitToAssignedRuns: false,
   includeCalled: false,
   dailyResearch: 0,
+  dailyPaused: false,
   gmail: { connected: false, address: '' },
   scope: { states: [], agencyTypes: [], maxOfficers: null, camera: 'any' },
   notes: '',
@@ -217,6 +218,7 @@ export default function CommandBoard({
             limitToAssignedRuns: next.limitToAssignedRuns,
             includeCalled: next.includeCalled,
             dailyResearch: next.dailyResearch,
+            dailyPaused: next.dailyPaused,
             scope: next.scope,
             notes: next.notes,
           })
@@ -274,7 +276,7 @@ export default function CommandBoard({
   const restricted = (board?.members ?? []).filter((m) => !m.fullAccess)
   const admins = (board?.members ?? []).filter((m) => m.fullAccess)
   const schedule = board?.schedule
-  const dailyTotal = restricted.reduce((n, m) => n + (m.dailyResearch || 0), 0)
+  const dailyTotal = restricted.reduce((n, m) => n + (m.dailyPaused ? 0 : m.dailyResearch || 0), 0)
 
   const columns = [
     {
@@ -309,15 +311,30 @@ export default function CommandBoard({
       key: 'daily',
       width: 110,
       render: (_: unknown, m: HubMember) => (
-        <InputNumber
-          size="small"
-          min={0}
-          max={500}
-          precision={0}
-          style={{ width: 90 }}
-          value={m.dailyResearch}
-          onChange={(value) => update(m.email, (x) => ({ ...x, dailyResearch: value ?? 0 }))}
-        />
+        <Space direction="vertical" size={4}>
+          <InputNumber
+            size="small"
+            min={0}
+            max={500}
+            precision={0}
+            style={{ width: 90 }}
+            value={m.dailyResearch}
+            disabled={m.dailyPaused}
+            onChange={(value) => update(m.email, (x) => ({ ...x, dailyResearch: value ?? 0 }))}
+          />
+          {/* Off for now, number kept - out sick, on leave. The others run as normal. */}
+          <Space size={6}>
+            <Switch
+              size="small"
+              checked={!m.dailyPaused}
+              disabled={!m.dailyResearch}
+              onChange={(on) => update(m.email, (x) => ({ ...x, dailyPaused: !on }))}
+            />
+            <Text type={m.dailyPaused ? 'warning' : 'secondary'} style={{ fontSize: 11 }}>
+              {m.dailyPaused ? 'Paused' : m.dailyResearch ? 'On' : 'Off'}
+            </Text>
+          </Space>
+        </Space>
       ),
     },
     {
@@ -555,7 +572,7 @@ export default function CommandBoard({
                   options={Array.from({ length: 24 }, (_, hour) => ({ value: hour, label: hourLabel(hour, 0) }))}
                 />
                 <Text type="secondary" style={{ fontSize: 12 }}>
-                  Pacific · {dailyTotal} agencies a day across {restricted.filter((m) => m.dailyResearch > 0).length}{' '}
+                  Pacific · {dailyTotal} agencies a day across {restricted.filter((m) => m.dailyResearch > 0 && !m.dailyPaused).length}{' '}
                   people
                   {schedule.enabled && schedule.nextFireAt
                     ? ` · next ${new Date(schedule.nextFireAt).toLocaleString()}`
