@@ -1118,6 +1118,10 @@ export default function AgencyMap() {
             {points.map((point) => (
               <Marker
                 key={point.id}
+                ref={(m) => {
+                  if (m) markerRefs.current.set(point.ori, m)
+                  else markerRefs.current.delete(point.ori)
+                }}
                 position={[point.lat, point.lon]}
                 icon={
                   isCustomerStage(point.stage)
@@ -1293,7 +1297,52 @@ export default function AgencyMap() {
   // overwritten within seconds, which looks broken either way.
   // Where the map starts on the page, so "Show on map" can scroll to it.
   const mapCardRef = useRef<HTMLDivElement | null>(null)
+  // The live Leaflet marker for each agency, and the cluster layer they sit
+  // in. Needed to open a pin by ORI: at any zoom short of the last one the
+  // pin is folded into a numbered cluster, and only the cluster layer can
+  // unfold it (zoomToShowLayer) so its popup has something to attach to.
+  const markerRefs = useRef(new Map<string, L.Marker>())
+  const clusterRef = useRef<L.MarkerClusterGroup | null>(null)
   const searchedRef = useRef('')
+
+  /**
+   * Put one agency on screen with its card open.
+   *
+   * Scrolls the map into view (the leads board sits under 600px of map, so
+   * a fly-to that happens off screen looks like nothing happened), lets the
+   * cluster layer zoom until the pin is its own marker, opens the popup, and
+   * walks the traveller over. The same path for "Show on map" and the search
+   * box, so they cannot behave differently.
+   */
+  const showAgency = (ori: string) => {
+    const point = points.find((p) => p.ori === ori)
+    if (!point) {
+      message.info('That agency is not on your map right now.')
+      return false
+    }
+    mapCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    const marker = markerRefs.current.get(ori)
+    const cluster = clusterRef.current
+    const open = () => marker?.openPopup()
+    if (marker && cluster && cluster.hasLayer(marker)) {
+      cluster.zoomToShowLayer(marker, open)
+    } else {
+      mapRef.current?.flyTo([point.lat, point.lon], 13, { duration: 1.2 })
+      if (marker) mapRef.current?.once('moveend', open)
+    }
+    if (!runIsLive) {
+      moveTraveller(ori)
+        .then((moved) =>
+          setActivity((current) =>
+            current ? { ...current, me: { ...current.me, at: moved } } : current,
+          ),
+        )
+        .catch(() => {
+          /* he stays put; the pin is still open */
+        })
+    }
+    return true
+  }
   useEffect(() => {
     const term = search.trim()
     if (!term || term === searchedRef.current) return
@@ -1307,16 +1356,9 @@ export default function AgencyMap() {
     if (!match) return
 
     searchedRef.current = term
-    moveTraveller(match.ori)
-      .then((moved) => {
-        setActivity((current) =>
-          current ? { ...current, me: { ...current.me, at: moved } } : current,
-        )
-        mapRef.current?.flyTo([moved.lat, moved.lon], 11, { duration: 1.4 })
-      })
-      .catch(() => {
-        // A search that cannot place him is not worth interrupting the user for.
-      })
+    showAgency(match.ori)
+    // showAgency reads the latest points and refs; it is not a dependency.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search, agencyPoints, runIsLive])
 
   // The run's trail, polled from the server rather than tracked in this tab.
@@ -1695,6 +1737,7 @@ export default function AgencyMap() {
           />
           <MarkerClusterGroup
             key={`clusters:${[...hiddenCategories].sort().join(',')}`}
+            ref={clusterRef}
             chunkedLoading
             maxClusterRadius={50}
             iconCreateFunction={createClusterIcon}
@@ -1875,30 +1918,7 @@ export default function AgencyMap() {
       {member?.assignedRuns.length ? (
         <LeadsBoard
           runs={member.assignedRuns}
-          onLocate={(ori) => {
-            const point = points.find((p) => p.ori === ori)
-            if (!point) {
-              message.info('That agency is not on your map right now.')
-              return
-            }
-            // The board sits under a 600px map: flying the map somewhere the
-            // reader cannot see looked like nothing happened. Bring the map
-            // on screen first, then fly, and walk the traveller over so the
-            // pin is unmistakable among its neighbours.
-            mapCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-            mapRef.current?.flyTo([point.lat, point.lon], 13, { duration: 1.2 })
-            if (!runIsLive) {
-              moveTraveller(ori)
-                .then((moved) =>
-                  setActivity((current) =>
-                    current ? { ...current, me: { ...current.me, at: moved } } : current,
-                  ),
-                )
-                .catch(() => {
-                  /* he stays put; the map has still flown there */
-                })
-            }
-          }}
+          onLocate={showAgency}
           onCallResult={(ori, name, phone, chiefName, chiefTitle) =>
             setCallResultFor({ ori, name, phone, chiefName, chiefTitle })
           }
