@@ -3,21 +3,24 @@ import {
   Button,
   Card,
   Checkbox,
+  Col,
+  Collapse,
   Input,
   InputNumber,
   Modal,
   Popconfirm,
   Progress,
+  Row,
   Select,
   Space,
   Switch,
-  Table,
   Tag,
   Typography,
   message,
 } from 'antd'
 import {
   getCommandBoard,
+  removeHubMember,
   runDailyResearchNow,
   getEmailTemplate,
   saveDailySchedule,
@@ -275,199 +278,273 @@ export default function CommandBoard({
   const schedule = board?.schedule
   const dailyTotal = restricted.reduce((n, m) => n + (m.dailyPaused ? 0 : m.dailyResearch || 0), 0)
 
-  const columns = [
-    {
-      title: 'Person',
-      key: 'person',
-      width: 200,
-      render: (_: unknown, m: HubMember) => (
-        <Space direction="vertical" size={0}>
-          <Text strong style={{ fontSize: 13 }}>
-            {m.name || m.email}
-          </Text>
-          {m.name ? (
-            <Text type="secondary" style={{ fontSize: 11 }}>
-              {m.email}
-            </Text>
-          ) : null}
-          <Text type="secondary" style={{ fontSize: 11 }}>
-            {saving[m.email]
-              ? 'Saving...'
-              : m.lastSeenAt
-                ? `Signed in ${day(m.lastSeenAt)}`
-                : 'Not signed in since the board went up'}
-          </Text>
-          <Text type={m.gmail.connected ? 'success' : 'secondary'} style={{ fontSize: 11 }}>
-            {m.gmail.connected ? `Gmail: ${m.gmail.address}` : 'Gmail not connected'}
-          </Text>
-        </Space>
-      ),
-    },
-    {
-      title: 'Daily research',
-      key: 'daily',
-      width: 110,
-      render: (_: unknown, m: HubMember) => (
-        <Space direction="vertical" size={4}>
-          <InputNumber
-            size="small"
-            min={0}
-            max={500}
-            precision={0}
-            style={{ width: 90 }}
-            value={m.dailyResearch}
-            disabled={m.dailyPaused}
-            onChange={(value) => update(m.email, (x) => ({ ...x, dailyResearch: value ?? 0 }))}
-          />
-          {/* Off for now, number kept - out sick, on leave. The others run as normal. */}
-          <Space size={6}>
-            <Switch
-              size="small"
-              checked={!m.dailyPaused}
-              disabled={!m.dailyResearch}
-              onChange={(on) => update(m.email, (x) => ({ ...x, dailyPaused: !on }))}
-            />
-            <Text type={m.dailyPaused ? 'warning' : 'secondary'} style={{ fontSize: 11 }}>
-              {m.dailyPaused ? 'Paused' : m.dailyResearch ? 'On' : 'Off'}
-            </Text>
-          </Space>
-        </Space>
-      ),
-    },
-    {
-      title: 'Map scope',
-      key: 'scope',
-      width: 330,
-      render: (_: unknown, m: HubMember) => (
-        <Space direction="vertical" size={4} style={{ width: '100%' }}>
-          <Space size={4} style={{ width: '100%' }}>
-            <Select
-              mode="multiple"
-              allowClear
-              showSearch
-              size="small"
-              maxTagCount="responsive"
-              style={{ width: 150 }}
-              placeholder="All states"
-              value={m.scope.states}
-              onChange={(value) => update(m.email, (x) => ({ ...x, scope: { ...x.scope, states: value } }))}
-              options={states.map((code) => ({ value: code, label: code }))}
-            />
-            <Select
-              mode="multiple"
-              allowClear
-              size="small"
-              maxTagCount="responsive"
-              style={{ width: 160 }}
-              placeholder="All types"
-              value={m.scope.agencyTypes}
-              onChange={(value) => update(m.email, (x) => ({ ...x, scope: { ...x.scope, agencyTypes: value } }))}
-              options={(board?.agencyTypes ?? []).map((type) => ({ value: type, label: type }))}
-            />
-          </Space>
-          <Space size={4}>
-            <Select
-              size="small"
-              style={{ width: 150 }}
-              value={m.scope.maxOfficers}
-              onChange={(value) => update(m.email, (x) => ({ ...x, scope: { ...x.scope, maxOfficers: value } }))}
-              options={SIZE_OPTIONS}
-            />
-            <Select
-              size="small"
-              style={{ width: 160 }}
-              value={m.scope.camera}
-              onChange={(value) => update(m.email, (x) => ({ ...x, scope: { ...x.scope, camera: value } }))}
-              options={CAMERA_OPTIONS}
-            />
-          </Space>
-        </Space>
-      ),
-    },
-    {
-      title: 'Their research runs',
-      key: 'runs',
-      render: (_: unknown, m: HubMember) => {
-        const theirs = m.assignedRunIds
-          .map((id) => runsById.get(id))
-          .filter((run): run is AssignableRun => Boolean(run))
-          .sort((a, b) => (b.startedAt || '').localeCompare(a.startedAt || ''))
-        return (
-          <Space direction="vertical" size={4} style={{ width: '100%' }}>
-            {theirs.length ? (
-              theirs.slice(0, 8).map((run) => (
-                <Space key={run.id} size={6} wrap>
-                  <Text style={{ fontSize: 12 }}>{day(run.startedAt)}</Text>
-                  <Tag color={STATUS_COLOUR[run.status] || 'default'} style={{ marginInlineEnd: 0 }}>
-                    {run.status}
-                  </Tag>
-                  <Text type="secondary" style={{ fontSize: 12 }}>
-                    {run.completed}/{run.total}
-                    {run.foundCameras ? ` · ${run.foundCameras} cameras` : ''}
-                    {run.foundEmails ? ` · ${run.foundEmails} emails` : ''}
-                    {run.assignedTo ? '' : ' · assigned by hand'}
-                  </Text>
-                  <Button size="small" type="link" style={{ padding: 0, height: 'auto' }} onClick={() => onViewRun(run.id)}>
-                    View
-                  </Button>
-                </Space>
-              ))
-            ) : (
-              <Text type="secondary" style={{ fontSize: 12 }}>
-                None yet
+  // A person whose row exists only because they signed in once - no name, no
+  // number, never configured. Kept out of the way rather than deleted: the
+  // row is how they would be set up if they do join.
+  const isUnset = (m: HubMember) =>
+    !m.name && !m.dailyResearch && !m.assignedRunIds.length && !m.scope.states.length && !m.scope.agencyTypes.length
+
+  const [expandedRuns, setExpandedRuns] = useState<Record<string, boolean>>({})
+
+  const field = (label: string, control: React.ReactNode) => (
+    <div>
+      <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 2 }}>
+        {label}
+      </Text>
+      {control}
+    </div>
+  )
+
+  const personCard = (m: HubMember) => {
+    const theirs = m.assignedRunIds
+      .map((id) => runsById.get(id))
+      .filter((run): run is AssignableRun => Boolean(run))
+      .sort((a, b) => (b.startedAt || '').localeCompare(a.startedAt || ''))
+    const open = expandedRuns[m.email]
+    const shown = open ? theirs : theirs.slice(0, 3)
+    const agencies = theirs.reduce((n, run) => n + run.total, 0)
+    const covering = m.coveringFor
+      .map((email) => board?.members.find((x) => x.email === email)?.name || email)
+      .filter(Boolean)
+
+    return (
+      <Card key={m.email} size="small" className="section-card">
+        <Space direction="vertical" size={12} style={{ width: '100%' }}>
+          {/* Who, and how they are doing - one line. */}
+          <Space wrap align="center" style={{ width: '100%', justifyContent: 'space-between' }}>
+            <Space wrap size={10} align="center">
+              <Text strong style={{ fontSize: 15 }}>
+                {m.name || m.email}
               </Text>
-            )}
-            {theirs.length > 8 ? (
-              <Text type="secondary" style={{ fontSize: 11 }}>
-                and {theirs.length - 8} more
-              </Text>
-            ) : null}
-            <Space size={4} wrap>
-              <Select
-                mode="multiple"
-                allowClear
-                size="small"
-                maxTagCount={0}
-                style={{ width: 170 }}
-                placeholder="Assign a run by hand"
-                value={m.assignedRunIds}
-                onChange={(value) => update(m.email, (x) => ({ ...x, assignedRunIds: value }))}
-                options={runOptions}
-                optionFilterProp="label"
-              />
-              <Checkbox
-                checked={m.limitToAssignedRuns}
-                onChange={(event) => update(m.email, (x) => ({ ...x, limitToAssignedRuns: event.target.checked }))}
-              >
-                <Text style={{ fontSize: 11 }}>Map shows only these</Text>
-              </Checkbox>
-              <Checkbox
-                checked={m.includeCalled}
-                onChange={(event) => update(m.email, (x) => ({ ...x, includeCalled: event.target.checked }))}
-              >
-                <Text style={{ fontSize: 11 }}>Plus every Reached out / Call later agency</Text>
-              </Checkbox>
-              {/* Somebody out sick: switch their leads onto this person's map
-                  and board for now. Nothing is copied - clear it and they
-                  are gone again. */}
-              <Select
-                mode="multiple"
-                allowClear
-                size="small"
-                style={{ width: 170 }}
-                placeholder="Covering for nobody"
-                value={m.coveringFor}
-                onChange={(value) => update(m.email, (x) => ({ ...x, coveringFor: value }))}
-                options={(board?.members || [])
-                  .filter((x) => x.email !== m.email && !x.fullAccess)
-                  .map((x) => ({ value: x.email, label: `Covering for ${x.name || x.email}` }))}
-              />
+              {m.name ? (
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  {m.email}
+                </Text>
+              ) : null}
+              <Tag style={{ marginInlineEnd: 0 }}>
+                {m.lastSeenAt ? `Signed in ${day(m.lastSeenAt)}` : 'Never signed in'}
+              </Tag>
+              <Tag color={m.gmail.connected ? 'success' : 'default'} style={{ marginInlineEnd: 0 }}>
+                {m.gmail.connected ? 'Gmail connected' : 'Gmail not connected'}
+              </Tag>
+              {m.dailyPaused ? (
+                <Tag color="warning" style={{ marginInlineEnd: 0 }}>
+                  Morning paused
+                </Tag>
+              ) : null}
+              {covering.length ? (
+                <Tag color="blue" style={{ marginInlineEnd: 0 }}>
+                  Covering for {covering.join(', ')}
+                </Tag>
+              ) : null}
             </Space>
+            <Text type="secondary" style={{ fontSize: 11 }}>
+              {saving[m.email] ? 'Saving...' : ''}
+            </Text>
           </Space>
-        )
-      },
-    },
-  ]
+
+          <Row gutter={[20, 12]}>
+            {/* 1. Morning research */}
+            <Col xs={24} sm={12} lg={5}>
+              <Space direction="vertical" size={8} style={{ width: '100%' }}>
+                <Text strong style={{ fontSize: 12 }}>
+                  Morning research
+                </Text>
+                {field(
+                  'Leads a day',
+                  <InputNumber
+                    size="small"
+                    min={0}
+                    max={500}
+                    precision={0}
+                    style={{ width: 90 }}
+                    value={m.dailyResearch}
+                    disabled={m.dailyPaused}
+                    onChange={(value) => update(m.email, (x) => ({ ...x, dailyResearch: value ?? 0 }))}
+                  />,
+                )}
+                <Space size={8}>
+                  <Switch
+                    size="small"
+                    checked={!m.dailyPaused}
+                    disabled={!m.dailyResearch}
+                    onChange={(on) => update(m.email, (x) => ({ ...x, dailyPaused: !on }))}
+                  />
+                  <Text type={m.dailyPaused ? 'warning' : 'secondary'} style={{ fontSize: 12 }}>
+                    {m.dailyPaused ? 'Paused - number kept' : m.dailyResearch ? 'Runs every morning' : 'Not in the morning'}
+                  </Text>
+                </Space>
+              </Space>
+            </Col>
+
+            {/* 2. Map scope */}
+            <Col xs={24} sm={12} lg={7}>
+              <Space direction="vertical" size={8} style={{ width: '100%' }}>
+                <Text strong style={{ fontSize: 12 }}>
+                  Map scope
+                </Text>
+                {field(
+                  'States',
+                  <Select
+                    mode="multiple"
+                    allowClear
+                    showSearch
+                    size="small"
+                    maxTagCount="responsive"
+                    style={{ width: '100%' }}
+                    placeholder="All states"
+                    value={m.scope.states}
+                    onChange={(value) => update(m.email, (x) => ({ ...x, scope: { ...x.scope, states: value } }))}
+                    options={states.map((code) => ({ value: code, label: code }))}
+                  />,
+                )}
+                {field(
+                  'Agency types',
+                  <Select
+                    mode="multiple"
+                    allowClear
+                    size="small"
+                    maxTagCount="responsive"
+                    style={{ width: '100%' }}
+                    placeholder="All types"
+                    value={m.scope.agencyTypes}
+                    onChange={(value) => update(m.email, (x) => ({ ...x, scope: { ...x.scope, agencyTypes: value } }))}
+                    options={(board?.agencyTypes ?? []).map((type) => ({ value: type, label: type }))}
+                  />,
+                )}
+                <Row gutter={8}>
+                  <Col span={12}>
+                    {field(
+                      'Size',
+                      <Select
+                        size="small"
+                        style={{ width: '100%' }}
+                        value={m.scope.maxOfficers}
+                        onChange={(value) => update(m.email, (x) => ({ ...x, scope: { ...x.scope, maxOfficers: value } }))}
+                        options={SIZE_OPTIONS}
+                      />,
+                    )}
+                  </Col>
+                  <Col span={12}>
+                    {field(
+                      'Cameras',
+                      <Select
+                        size="small"
+                        style={{ width: '100%' }}
+                        value={m.scope.camera}
+                        onChange={(value) => update(m.email, (x) => ({ ...x, scope: { ...x.scope, camera: value } }))}
+                        options={CAMERA_OPTIONS}
+                      />,
+                    )}
+                  </Col>
+                </Row>
+              </Space>
+            </Col>
+
+            {/* 3. What else is on their map */}
+            <Col xs={24} sm={12} lg={6}>
+              <Space direction="vertical" size={8} style={{ width: '100%' }}>
+                <Text strong style={{ fontSize: 12 }}>
+                  Also on their map
+                </Text>
+                <Checkbox
+                  checked={m.limitToAssignedRuns}
+                  onChange={(event) => update(m.email, (x) => ({ ...x, limitToAssignedRuns: event.target.checked }))}
+                >
+                  <Text style={{ fontSize: 12 }}>Only their leads - no scope</Text>
+                </Checkbox>
+                <Checkbox
+                  checked={m.includeCalled}
+                  onChange={(event) => update(m.email, (x) => ({ ...x, includeCalled: event.target.checked }))}
+                >
+                  <Text style={{ fontSize: 12 }}>Every Reached out / Call later agency</Text>
+                </Checkbox>
+                {field(
+                  'Covering for',
+                  <Select
+                    mode="multiple"
+                    allowClear
+                    size="small"
+                    style={{ width: '100%' }}
+                    placeholder="Nobody"
+                    value={m.coveringFor}
+                    onChange={(value) => update(m.email, (x) => ({ ...x, coveringFor: value }))}
+                    options={(board?.members || [])
+                      .filter((x) => x.email !== m.email && !x.fullAccess && !isUnset(x))
+                      .map((x) => ({ value: x.email, label: x.name || x.email }))}
+                  />,
+                )}
+                {field(
+                  'Assign a run by hand',
+                  <Select
+                    mode="multiple"
+                    allowClear
+                    size="small"
+                    maxTagCount={0}
+                    style={{ width: '100%' }}
+                    placeholder={m.assignedRunIds.length ? `${m.assignedRunIds.length} assigned` : 'None'}
+                    value={m.assignedRunIds}
+                    onChange={(value) => update(m.email, (x) => ({ ...x, assignedRunIds: value }))}
+                    options={runOptions}
+                    optionFilterProp="label"
+                  />,
+                )}
+              </Space>
+            </Col>
+
+            {/* 4. Their runs */}
+            <Col xs={24} sm={12} lg={6}>
+              <Space direction="vertical" size={6} style={{ width: '100%' }}>
+                <Text strong style={{ fontSize: 12 }}>
+                  Research runs
+                  {theirs.length ? (
+                    <Text type="secondary" style={{ fontSize: 12, fontWeight: 400 }}>
+                      {' '}· {theirs.length} run{theirs.length === 1 ? '' : 's'} · {agencies.toLocaleString()} agencies
+                    </Text>
+                  ) : null}
+                </Text>
+                {shown.length ? (
+                  shown.map((run) => (
+                    <Space key={run.id} size={6} wrap>
+                      <Text style={{ fontSize: 12 }}>{day(run.startedAt)}</Text>
+                      <Tag color={STATUS_COLOUR[run.status] || 'default'} style={{ marginInlineEnd: 0 }}>
+                        {run.status}
+                      </Tag>
+                      <Text type="secondary" style={{ fontSize: 12 }}>
+                        {run.completed}/{run.total}
+                        {run.foundCameras ? ` · ${run.foundCameras} cameras` : ''}
+                        {run.assignedTo ? '' : ' · by hand'}
+                      </Text>
+                      <Button size="small" type="link" style={{ padding: 0, height: 'auto' }} onClick={() => onViewRun(run.id)}>
+                        View
+                      </Button>
+                    </Space>
+                  ))
+                ) : (
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    None yet
+                  </Text>
+                )}
+                {theirs.length > 3 ? (
+                  <Button
+                    size="small"
+                    type="link"
+                    style={{ padding: 0, height: 'auto', alignSelf: 'flex-start' }}
+                    onClick={() => setExpandedRuns((e) => ({ ...e, [m.email]: !open }))}
+                  >
+                    {open ? 'Show fewer' : `Show all ${theirs.length}`}
+                  </Button>
+                ) : null}
+              </Space>
+            </Col>
+          </Row>
+        </Space>
+      </Card>
+    )
+  }
+
+  const team = restricted.filter((m) => !isUnset(m))
+  const unset = restricted.filter(isUnset)
 
   return (
     <Card className="section-card">
@@ -670,16 +747,61 @@ export default function CommandBoard({
           </Card>
         ) : null}
 
-        <Table
-          size="small"
-          rowKey="email"
-          loading={loading}
-          columns={columns}
-          dataSource={restricted}
-          pagination={false}
-          scroll={{ x: 1300 }}
-          locale={{ emptyText: 'Nobody without full access has used the hub yet.' }}
-        />
+        {loading && !board ? (
+          <Text type="secondary">Loading...</Text>
+        ) : team.length ? (
+          team.map(personCard)
+        ) : (
+          <Text type="secondary">Nobody without full access has used the hub yet.</Text>
+        )}
+
+        {unset.length ? (
+          <Collapse
+            size="small"
+            items={[
+              {
+                key: 'unset',
+                label: (
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    {unset.length} account{unset.length === 1 ? '' : 's'} signed in but never set up
+                  </Text>
+                ),
+                children: (
+                  <Space direction="vertical" size={6}>
+                    {unset.map((m) => (
+                      <Space key={m.email} size={10} wrap>
+                        <Text style={{ fontSize: 12 }}>{m.email}</Text>
+                        <Text type="secondary" style={{ fontSize: 12 }}>
+                          {m.lastSeenAt ? `signed in ${day(m.lastSeenAt)}` : 'never signed in'}
+                        </Text>
+                        <Input
+                          size="small"
+                          placeholder="Give them a name to set them up"
+                          style={{ width: 220 }}
+                          onPressEnter={(event) =>
+                            update(m.email, (x) => ({ ...x, name: (event.target as HTMLInputElement).value.trim() }))
+                          }
+                        />
+                        <Popconfirm
+                          title="Remove this account from the board?"
+                          onConfirm={() =>
+                            removeHubMember(m.email)
+                              .then(reload)
+                              .catch((err: unknown) => message.error(err instanceof Error ? err.message : 'Could not remove.'))
+                          }
+                        >
+                          <Button size="small" type="link" danger style={{ padding: 0, height: 'auto' }}>
+                            Remove
+                          </Button>
+                        </Popconfirm>
+                      </Space>
+                    ))}
+                  </Space>
+                ),
+              },
+            ]}
+          />
+        ) : null}
 
         <Space wrap>
           <Input
