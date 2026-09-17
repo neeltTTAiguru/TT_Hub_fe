@@ -18,9 +18,7 @@ import {
 } from 'antd'
 import {
   getCommandBoard,
-  handOffRun,
   runDailyResearchNow,
-  takeBackRun,
   getEmailTemplate,
   saveDailySchedule,
   saveEmailTemplate,
@@ -73,6 +71,7 @@ const blank = (email: string): HubMember => ({
   fullAccess: false,
   assignedRunIds: [],
   limitToAssignedRuns: false,
+  coveringFor: [],
   includeCalled: false,
   dailyResearch: 0,
   dailyPaused: false,
@@ -106,9 +105,6 @@ export default function CommandBoard({
   onViewRun: (runId: string) => void
 }) {
   const [board, setBoard] = useState<Board | null>(null)
-  // The hand-off in progress: whose run, to whom. One at a time is plenty.
-  const [handoff, setHandoff] = useState<{ from: HubMember; runId: string; to: string[] } | null>(null)
-  const [handingOff, setHandingOff] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [newEmail, setNewEmail] = useState('')
@@ -216,6 +212,7 @@ export default function CommandBoard({
             name: next.name,
             assignedRunIds: next.assignedRunIds,
             limitToAssignedRuns: next.limitToAssignedRuns,
+            coveringFor: next.coveringFor,
             includeCalled: next.includeCalled,
             dailyResearch: next.dailyResearch,
             dailyPaused: next.dailyPaused,
@@ -409,42 +406,10 @@ export default function CommandBoard({
                     {run.foundCameras ? ` · ${run.foundCameras} cameras` : ''}
                     {run.foundEmails ? ` · ${run.foundEmails} emails` : ''}
                     {run.assignedTo ? '' : ' · assigned by hand'}
-                    {run.assignedTo && run.assignedTo !== m.email
-                      ? ` · handed off from ${board?.members.find((x) => x.email === run.assignedTo)?.name || run.assignedTo}`
-                      : ''}
-                    {run.assignedTo === m.email && run.sharedWith?.length
-                      ? ` · also with ${run.sharedWith.map((e) => board?.members.find((x) => x.email === e)?.name || e).join(', ')}`
-                      : ''}
                   </Text>
                   <Button size="small" type="link" style={{ padding: 0, height: 'auto' }} onClick={() => onViewRun(run.id)}>
                     View
                   </Button>
-                  {run.assignedTo === m.email ? (
-                    <Button
-                      size="small"
-                      type="link"
-                      style={{ padding: 0, height: 'auto' }}
-                      onClick={() => setHandoff({ from: m, runId: run.id, to: [] })}
-                    >
-                      Hand off
-                    </Button>
-                  ) : run.assignedTo ? (
-                    <Popconfirm
-                      title={`Take these leads back off ${m.name || m.email}'s map?`}
-                      onConfirm={() =>
-                        takeBackRun(run.id, m.email)
-                          .then(() => {
-                            message.success('Taken back.')
-                            reload()
-                          })
-                          .catch((err: unknown) => message.error(err instanceof Error ? err.message : 'Could not take it back.'))
-                      }
-                    >
-                      <Button size="small" type="link" style={{ padding: 0, height: 'auto' }}>
-                        Take back
-                      </Button>
-                    </Popconfirm>
-                  ) : null}
                 </Space>
               ))
             ) : (
@@ -482,6 +447,21 @@ export default function CommandBoard({
               >
                 <Text style={{ fontSize: 11 }}>Plus every Reached out / Call later agency</Text>
               </Checkbox>
+              {/* Somebody out sick: switch their leads onto this person's map
+                  and board for now. Nothing is copied - clear it and they
+                  are gone again. */}
+              <Select
+                mode="multiple"
+                allowClear
+                size="small"
+                style={{ width: 170 }}
+                placeholder="Covering for nobody"
+                value={m.coveringFor}
+                onChange={(value) => update(m.email, (x) => ({ ...x, coveringFor: value }))}
+                options={(board?.members || [])
+                  .filter((x) => x.email !== m.email && !x.fullAccess)
+                  .map((x) => ({ value: x.email, label: `Covering for ${x.name || x.email}` }))}
+              />
             </Space>
           </Space>
         )
@@ -489,54 +469,8 @@ export default function CommandBoard({
     },
   ]
 
-  const handoffRun = handoff ? runsById.get(handoff.runId) : null
-  const submitHandoff = () => {
-    if (!handoff || !handoff.to.length) return
-    setHandingOff(true)
-    handOffRun(handoff.runId, handoff.to)
-      .then((result) => {
-        message.success(`Handed off to ${result.to.map((t) => t.name || t.email).join(' and ')}.`)
-        setHandoff(null)
-        reload()
-      })
-      .catch((err: unknown) => message.error(err instanceof Error ? err.message : 'Could not hand off.'))
-      .finally(() => setHandingOff(false))
-  }
-
   return (
     <Card className="section-card">
-      <Modal
-        title={handoff ? `Hand off ${handoff.from.name || handoff.from.email}'s leads` : 'Hand off leads'}
-        open={Boolean(handoff)}
-        onCancel={() => setHandoff(null)}
-        okText="Hand off"
-        okButtonProps={{ disabled: !handoff?.to.length, loading: handingOff }}
-        onOk={submitHandoff}
-      >
-        {handoff && handoffRun ? (
-          <Space direction="vertical" size={10} style={{ width: '100%' }}>
-            <Text>
-              {day(handoffRun.startedAt)} - {handoffRun.total} agencies
-              {handoffRun.brief ? ` (${handoffRun.brief})` : ''}
-            </Text>
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              The leads go on each person's map and leads board, marked "from {handoff.from.name || handoff.from.email}".
-              {' '}{handoff.from.name || 'They'} keep{handoff.from.name ? 's' : ''} them too. Give the same run to two
-              people and each sees the other's calls land as Done, so they split it as they go.
-            </Text>
-            <Select
-              mode="multiple"
-              style={{ width: '100%' }}
-              placeholder="Who should get them?"
-              value={handoff.to}
-              onChange={(to) => setHandoff((h) => (h ? { ...h, to } : h))}
-              options={(board?.members || [])
-                .filter((x) => x.email !== handoff.from.email && !handoffRun.sharedWith?.includes(x.email))
-                .map((x) => ({ value: x.email, label: x.name ? `${x.name} (${x.email})` : x.email }))}
-            />
-          </Space>
-        ) : null}
-      </Modal>
       <Space direction="vertical" size={14} style={{ width: '100%' }}>
         <div>
           <Title level={5} style={{ marginBottom: 4 }}>

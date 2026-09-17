@@ -262,9 +262,9 @@ export default function LeadsBoard({
             <Text strong style={{ fontSize: 15 }}>
               {dateOf(current[0].startedAt)}
             </Text>
-            {current.some((run) => run.handedOffFrom) ? (
+            {current.some((run) => run.coveringFor) ? (
               <Tag color="blue" style={{ marginInlineEnd: 0 }}>
-                {[...new Set(current.map((run) => run.handedOffFrom).filter(Boolean))].map((who) => `${who}'s leads`).join(' · ')}
+                Covering: {[...new Set(current.map((run) => run.coveringFor).filter(Boolean))].map((who) => `${who}'s leads`).join(' · ')}
               </Tag>
             ) : null}
             <Button size="small" disabled={idx <= 0} onClick={() => setDayIndex(idx - 1)}>
