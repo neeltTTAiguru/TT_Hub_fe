@@ -582,6 +582,16 @@ export default function CommandBoard({
                   onChange={(hour) => updateSchedule({ hour }, true)}
                   options={Array.from({ length: 24 }, (_, hour) => ({ value: hour, label: hourLabel(hour, 0) }))}
                 />
+                <Select
+                  mode="multiple"
+                  size="small"
+                  maxTagCount="responsive"
+                  style={{ width: 210 }}
+                  placeholder="Every day"
+                  value={schedule.weekdays}
+                  onChange={(weekdays) => updateSchedule({ weekdays }, true)}
+                  options={['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((label, value) => ({ value, label }))}
+                />
                 <Text type="secondary" style={{ fontSize: 12 }}>
                   Pacific · {dailyTotal} agencies a day across {restricted.filter((m) => m.dailyResearch > 0 && !m.dailyPaused).length}{' '}
                   people

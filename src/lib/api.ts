@@ -672,6 +672,8 @@ export type DailySchedule = {
   hour: number
   minute: number
   timezone: string
+  /** Weekdays it runs on, 0 = Sunday ... 6 = Saturday. Empty means every day. */
+  weekdays: number[]
   pick: { states: string[]; agencyTypes: string[]; maxOfficers: number | null; camera: 'unknown' | 'not_yes' | 'any' }
   /** Whose Gmail the leads-ready email goes from. */
   notifyFrom: string
