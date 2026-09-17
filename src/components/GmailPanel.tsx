@@ -1,5 +1,16 @@
 import { useEffect, useState } from 'react'
-import { Button, Card, Input, List, Modal, Space, Spin, Tag, Typography, message } from 'antd'
+import { Button, Card, Input, Modal, Space, Spin, Tooltip, Typography, message } from 'antd'
+import {
+  EditOutlined,
+  FileTextOutlined,
+  InboxOutlined,
+  LeftOutlined,
+  ReloadOutlined,
+  RightOutlined,
+  SendOutlined,
+  StarFilled,
+  StarOutlined,
+} from '@ant-design/icons'
 import {
   composeGmail,
   disconnectGmail,
@@ -8,6 +19,7 @@ import {
   getGmailMessage,
   getGmailStatus,
   replyToGmailMessage,
+  type GmailFolder,
   type GmailMessage,
   type GmailMessageSummary,
   type GmailStatus,
@@ -23,21 +35,40 @@ export const GmailGlyph = ({ size = 18 }: { size?: number }) => (
 )
 
 const sender = (from: string) => from.replace(/<.*>/, '').replace(/"/g, '').trim() || from
+
+// Gmail's own rule: a time for today, "Sep 16" for this year, a date otherwise.
 const when = (date: string) => {
   const d = new Date(date)
   if (Number.isNaN(d.getTime())) return ''
-  const today = new Date().toDateString() === d.toDateString()
-  return today ? d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : d.toLocaleDateString()
+  const now = new Date()
+  if (now.toDateString() === d.toDateString()) return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+  if (now.getFullYear() === d.getFullYear()) return d.toLocaleDateString([], { month: 'short', day: 'numeric' })
+  return d.toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' })
 }
 
+const PAGE = 50
+
+const FOLDERS: Array<{ key: GmailFolder; label: string; icon: React.ReactNode }> = [
+  { key: 'inbox', label: 'Inbox', icon: <InboxOutlined /> },
+  { key: 'starred', label: 'Starred', icon: <StarOutlined /> },
+  { key: 'sent', label: 'Sent', icon: <SendOutlined /> },
+  { key: 'drafts', label: 'Drafts', icon: <FileTextOutlined /> },
+]
+
 /**
- * The person's own inbox, as a page of the hub.
+ * The person's own inbox, laid out the way Gmail lays it out.
  *
- * Read and reply, nothing else: no archive, no delete, no labels. It is here
- * so a reply from an agency is one click from the map the call was logged
- * on, not so anyone lives in it. Connecting is theirs to do - the hub never
- * has a mailbox of its own. Also where the consent flow lands the browser,
- * with ?gmail=connected|denied|failed, read once and cleared.
+ * A rail of folders and Compose on the left; on the right a toolbar with
+ * refresh and "1-50 of N", then one row per email - sender, subject, snippet,
+ * date - with unread in bold. Open a row and the message takes the list's
+ * place, with the reply box under it.
+ *
+ * Read and reply, nothing else: the connection is read + send only, so there
+ * is no archive, delete, mark-read or star-toggling here. Drawing those
+ * controls without the permission to act on them would be worse than not
+ * having them. Connecting is theirs to do - the hub never has a mailbox of
+ * its own. Also where the consent flow lands the browser, with
+ * ?gmail=connected|denied|failed, read once and cleared.
  */
 export default function GmailPanel() {
   const [status, setStatus] = useState<GmailStatus | null>(null)
@@ -65,7 +96,13 @@ export default function GmailPanel() {
       cancelled = true
     }
   }, [])
+
+  const [folder, setFolder] = useState<GmailFolder>('inbox')
   const [messages, setMessages] = useState<GmailMessageSummary[]>([])
+  const [total, setTotal] = useState(0)
+  // Gmail pages forward with tokens only. To go back, remember the token each
+  // page was fetched with; page N's "previous" is the token that fetched N-1.
+  const [tokens, setTokens] = useState<string[]>([''])
   const [nextPage, setNextPage] = useState('')
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(false)
@@ -92,37 +129,58 @@ export default function GmailPanel() {
       .finally(() => setComposeSending(false))
   }
 
-  const load = (q = query, pageToken = '') => {
+  const load = (opts: { folder?: GmailFolder; q?: string; pageToken?: string; tokens?: string[] } = {}) => {
+    const f = opts.folder ?? folder
+    const q = opts.q ?? query
+    const pageToken = opts.pageToken ?? ''
     setLoading(true)
-    getGmailInbox({ q, pageToken })
+    setReading(null)
+    getGmailInbox({ q, pageToken, folder: f })
       .then((page) => {
-        setMessages((current) => (pageToken ? [...current, ...page.messages] : page.messages))
+        setMessages(page.messages)
+        setTotal(page.total)
         setNextPage(page.nextPageToken)
+        setTokens(opts.tokens ?? [''])
+        setLoaded(true)
       })
-      .catch((err: unknown) => message.error(err instanceof Error ? err.message : 'Could not load your inbox.'))
+      .catch((err: unknown) => message.error(err instanceof Error ? err.message : 'Could not load your mail.'))
       .finally(() => setLoading(false))
   }
 
   useEffect(() => {
     if (!status?.connected) return
     let cancelled = false
-    getGmailInbox({})
+    getGmailInbox({ folder: 'inbox' })
       .then((page) => {
         if (cancelled) return
         setMessages(page.messages)
+        setTotal(page.total)
         setNextPage(page.nextPageToken)
         setLoaded(true)
       })
       .catch((err: unknown) => {
         if (!cancelled) message.error(err instanceof Error ? err.message : 'Could not load your inbox.')
       })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
     return () => {
       cancelled = true
     }
   }, [status?.connected])
+
+  const openFolder = (next: GmailFolder) => {
+    setFolder(next)
+    setQuery('')
+    load({ folder: next, q: '' })
+  }
+  const search = (value: string) => {
+    setQuery(value)
+    load({ q: value })
+  }
+  const goNext = () => load({ pageToken: nextPage, tokens: [...tokens, nextPage] })
+  const goPrev = () => {
+    if (tokens.length < 2) return
+    const back = tokens.slice(0, -1)
+    load({ pageToken: back[back.length - 1], tokens: back })
+  }
 
   const connect = () => {
     setBusy(true)
@@ -170,6 +228,143 @@ export default function GmailPanel() {
       .finally(() => setSending(false))
   }
 
+  // "1-50 of 1,091", from the page's place in the token trail.
+  const first = (tokens.length - 1) * PAGE + 1
+  const last = first + messages.length - 1
+  const range = messages.length ? `${first}–${last} of ${Math.max(total, last).toLocaleString()}` : ''
+
+  // In Sent the person worth showing is who it went to, not who sent it.
+  const who = (item: GmailMessageSummary) => (folder === 'sent' ? `To: ${sender(item.to || '')}` : sender(item.from))
+
+  const rail = (
+    <Space direction="vertical" size={4} style={{ width: 170, flex: '0 0 170px' }}>
+      <Button type="primary" icon={<EditOutlined />} block onClick={() => setComposing(true)} style={{ marginBottom: 8 }}>
+        Compose
+      </Button>
+      {FOLDERS.map((f) => (
+        <Button
+          key={f.key}
+          type={folder === f.key ? 'primary' : 'text'}
+          ghost={folder === f.key}
+          icon={f.icon}
+          block
+          style={{ justifyContent: 'flex-start' }}
+          onClick={() => openFolder(f.key)}
+        >
+          {f.label}
+        </Button>
+      ))}
+    </Space>
+  )
+
+  const toolbar = (
+    <Space style={{ width: '100%', justifyContent: 'space-between' }} wrap>
+      <Space size={6}>
+        <Tooltip title="Refresh">
+          <Button size="small" icon={<ReloadOutlined />} loading={loading} onClick={() => load({ tokens: [''] })} />
+        </Tooltip>
+        <Input.Search
+          allowClear
+          size="small"
+          placeholder="Search mail (from:, subject:, newer_than:7d)"
+          style={{ width: 320 }}
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          onSearch={search}
+        />
+      </Space>
+      <Space size={4}>
+        <Text type="secondary" style={{ fontSize: 12 }}>
+          {range}
+        </Text>
+        <Tooltip title="Newer">
+          <Button size="small" type="text" icon={<LeftOutlined />} disabled={tokens.length < 2 || loading} onClick={goPrev} />
+        </Tooltip>
+        <Tooltip title="Older">
+          <Button size="small" type="text" icon={<RightOutlined />} disabled={!nextPage || loading} onClick={goNext} />
+        </Tooltip>
+      </Space>
+    </Space>
+  )
+
+  const list = (
+    <div>
+      {messages.map((item) => (
+        <div
+          key={item.id}
+          role="button"
+          tabIndex={0}
+          onClick={() => openMessage(item.id)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') openMessage(item.id)
+          }}
+          style={{
+            display: 'grid',
+            gridTemplateColumns: '20px 180px minmax(0, 1fr) 72px',
+            gap: 12,
+            alignItems: 'center',
+            padding: '8px 4px',
+            cursor: 'pointer',
+            borderBottom: '1px solid rgba(0,0,0,0.06)',
+            fontWeight: item.unread ? 600 : 400,
+          }}
+        >
+          <span aria-label={item.starred ? 'Starred' : ''} style={{ lineHeight: 0 }}>
+            {item.starred ? <StarFilled style={{ color: '#f5b400' }} /> : <StarOutlined style={{ opacity: 0.35 }} />}
+          </span>
+          <Text ellipsis style={{ fontSize: 13, fontWeight: 'inherit' }}>
+            {who(item)}
+          </Text>
+          <Text ellipsis style={{ fontSize: 13, fontWeight: 'inherit' }}>
+            {item.subject || '(no subject)'}
+            {item.snippet ? (
+              <Text type="secondary" style={{ fontSize: 13, fontWeight: 400 }}>
+                {' '}
+                - {item.snippet}
+              </Text>
+            ) : null}
+          </Text>
+          <Text style={{ fontSize: 12, textAlign: 'right', whiteSpace: 'nowrap', fontWeight: 'inherit' }}>
+            {when(item.date)}
+          </Text>
+        </div>
+      ))}
+      {!messages.length && loaded ? (
+        <Text type="secondary" style={{ display: 'block', padding: 16 }}>
+          Nothing here.
+        </Text>
+      ) : null}
+    </div>
+  )
+
+  const reader = reading ? (
+    <Space direction="vertical" size={12} style={{ width: '100%' }}>
+      <Button size="small" icon={<LeftOutlined />} onClick={() => setReading(null)}>
+        Back
+      </Button>
+      <div>
+        <Title level={5} style={{ margin: 0 }}>
+          {reading.subject || '(no subject)'}
+        </Title>
+        <Text type="secondary" style={{ fontSize: 12 }}>
+          {reading.from} · to {reading.to || 'me'} · {when(reading.date)}
+        </Text>
+      </div>
+      <div style={{ whiteSpace: 'pre-wrap', fontSize: 13, maxHeight: '55vh', overflow: 'auto' }}>
+        {reading.body || '(no readable text in this email)'}
+      </div>
+      <Input.TextArea
+        rows={4}
+        placeholder={`Reply to ${sender(reading.from)}`}
+        value={reply}
+        onChange={(event) => setReply(event.target.value)}
+      />
+      <Button type="primary" loading={sending} disabled={!reply.trim()} onClick={send}>
+        Send reply
+      </Button>
+    </Space>
+  ) : null
+
   return (
     <Card
       className="section-card"
@@ -183,14 +378,9 @@ export default function GmailPanel() {
       }
       extra={
         status?.connected ? (
-          <Space size={8}>
-            <Button size="small" type="primary" onClick={() => setComposing(true)}>
-              Compose
-            </Button>
-            <Button size="small" loading={busy} onClick={disconnect}>
-              Disconnect
-            </Button>
-          </Space>
+          <Button size="small" loading={busy} onClick={disconnect}>
+            Disconnect
+          </Button>
         ) : null
       }
     >
@@ -256,77 +446,16 @@ export default function GmailPanel() {
             Connect Gmail
           </Button>
         </Space>
-      ) : reading ? (
-        <Space direction="vertical" size={12} style={{ width: '100%' }}>
-          <Button size="small" onClick={() => setReading(null)}>
-            Back to inbox
-          </Button>
-          <div>
-            <Text strong style={{ display: 'block' }}>
-              {reading.subject || '(no subject)'}
-            </Text>
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              {reading.from} · {when(reading.date)}
-            </Text>
-          </div>
-          <div style={{ whiteSpace: 'pre-wrap', fontSize: 13, maxHeight: '55vh', overflow: 'auto' }}>
-            {reading.body || '(no readable text in this email)'}
-          </div>
-          <Input.TextArea
-            rows={4}
-            placeholder={`Reply to ${sender(reading.from)}`}
-            value={reply}
-            onChange={(event) => setReply(event.target.value)}
-          />
-          <Button type="primary" loading={sending} disabled={!reply.trim()} onClick={send}>
-            Send reply
-          </Button>
-        </Space>
       ) : (
-        <Space direction="vertical" size={10} style={{ width: '100%' }}>
-          <Input.Search
-            allowClear
-            placeholder="Search your inbox (Gmail syntax works: from:, subject:, newer_than:7d)"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            onSearch={(value) => load(value)}
-          />
-          {!loaded && !messages.length ? (
-            <Spin />
-          ) : (
-            <List
-              size="small"
-              dataSource={messages}
-              locale={{ emptyText: 'Nothing here.' }}
-              renderItem={(item) => (
-                <List.Item style={{ cursor: 'pointer', paddingInline: 0 }} onClick={() => openMessage(item.id)}>
-                  <Space direction="vertical" size={0} style={{ width: '100%' }}>
-                    <Space size={8} style={{ width: '100%', justifyContent: 'space-between' }}>
-                      <Text strong={item.unread} style={{ fontSize: 13 }}>
-                        {sender(item.from)}
-                      </Text>
-                      <Text type="secondary" style={{ fontSize: 11, whiteSpace: 'nowrap' }}>
-                        {when(item.date)}
-                      </Text>
-                    </Space>
-                    <Text strong={item.unread} style={{ fontSize: 13 }}>
-                      {item.subject || '(no subject)'}
-                      {item.unread ? <Tag style={{ marginInlineStart: 6 }}>new</Tag> : null}
-                    </Text>
-                    <Text type="secondary" style={{ fontSize: 12 }} ellipsis>
-                      {item.snippet}
-                    </Text>
-                  </Space>
-                </List.Item>
-              )}
-            />
-          )}
-          {nextPage ? (
-            <Button size="small" loading={loading} onClick={() => load(query, nextPage)}>
-              Older
-            </Button>
-          ) : null}
-        </Space>
+        <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
+          {rail}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <Space direction="vertical" size={10} style={{ width: '100%' }}>
+              {reader ? null : toolbar}
+              {!loaded && !messages.length ? <Spin /> : reader ?? list}
+            </Space>
+          </div>
+        </div>
       )}
     </Card>
   )

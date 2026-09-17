@@ -756,7 +756,10 @@ export type GmailMessageSummary = {
   date: string
   snippet: string
   unread: boolean
+  starred: boolean
 }
+
+export type GmailFolder = 'inbox' | 'starred' | 'sent' | 'drafts'
 
 export type GmailMessage = GmailMessageSummary & {
   messageId: string
@@ -776,11 +779,14 @@ export const getGmailStatus = () => request<GmailStatus>('/gmail/status')
 export const getGmailConnectUrl = () => request<{ url: string }>('/gmail/connect')
 export const disconnectGmail = () => request<{ ok: true }>('/gmail', { method: 'DELETE' })
 
-export function getGmailInbox(options: { q?: string; pageToken?: string } = {}) {
+export function getGmailInbox(options: { q?: string; pageToken?: string; folder?: GmailFolder } = {}) {
   const params = new URLSearchParams()
   if (options.q) params.set('q', options.q)
   if (options.pageToken) params.set('pageToken', options.pageToken)
-  return request<{ nextPageToken: string; messages: GmailMessageSummary[] }>(`/gmail/inbox?${params.toString()}`)
+  if (options.folder) params.set('folder', options.folder)
+  return request<{ nextPageToken: string; total: number; messages: GmailMessageSummary[] }>(
+    `/gmail/inbox?${params.toString()}`,
+  )
 }
 
 export const getGmailMessage = (id: string) => request<GmailMessage>(`/gmail/messages/${encodeURIComponent(id)}`)
