@@ -791,6 +791,11 @@ export function getGmailInbox(options: { q?: string; pageToken?: string; folder?
 
 export const getGmailMessage = (id: string) => request<GmailMessage>(`/gmail/messages/${encodeURIComponent(id)}`)
 
+/** People to suggest for a To field: team, recent correspondents, agency contacts. */
+export type GmailContact = { name: string; email: string; source: 'Team' | 'Recent' | 'Agency' }
+export const suggestGmailContacts = (q: string) =>
+  request<GmailContact[]>(`/gmail/contacts?q=${encodeURIComponent(q)}`)
+
 export function replyToGmailMessage(id: string, body: string) {
   return request<{ ok: true; id: string }>(`/gmail/messages/${encodeURIComponent(id)}/reply`, {
     method: 'POST',

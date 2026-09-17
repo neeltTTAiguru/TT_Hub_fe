@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { Button, Card, Input, Modal, Space, Spin, Tooltip, Typography, message } from 'antd'
+import { useEffect, useRef, useState } from 'react'
+import { AutoComplete, Button, Card, Input, Modal, Space, Spin, Tooltip, Typography, message } from 'antd'
 import {
   EditOutlined,
   FileTextOutlined,
@@ -19,6 +19,8 @@ import {
   getGmailMessage,
   getGmailStatus,
   replyToGmailMessage,
+  suggestGmailContacts,
+  type GmailContact,
   type GmailFolder,
   type GmailMessage,
   type GmailMessageSummary,
@@ -117,6 +119,25 @@ export default function GmailPanel() {
   const [composing, setComposing] = useState(false)
   const [compose, setCompose] = useState({ to: '', subject: '', body: '' })
   const [composeSending, setComposeSending] = useState(false)
+
+  // Who the To field offers as you type: the team, people this mailbox has
+  // written to or heard from, agency contacts on file. Debounced - a request
+  // per keystroke would be one Gmail scan per letter of "todd".
+  const [suggestions, setSuggestions] = useState<GmailContact[]>([])
+  const suggestTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const suggest = (value: string) => {
+    if (suggestTimer.current) clearTimeout(suggestTimer.current)
+    const q = value.trim()
+    if (q.length < 2) {
+      setSuggestions([])
+      return
+    }
+    suggestTimer.current = setTimeout(() => {
+      suggestGmailContacts(q)
+        .then((people) => setSuggestions(people))
+        .catch(() => setSuggestions([]))
+    }, 200)
+  }
   const sendCompose = () => {
     setComposeSending(true)
     composeGmail({ to: compose.to.trim(), subject: compose.subject.trim(), body: compose.body.trim() })
@@ -405,12 +426,35 @@ export default function GmailPanel() {
         ]}
       >
         <Space direction="vertical" size={8} style={{ width: '100%' }}>
-          <Input
-            addonBefore="To"
-            placeholder="someone@example.com"
-            value={compose.to}
-            onChange={(event) => setCompose((c) => ({ ...c, to: event.target.value }))}
-          />
+          <Space.Compact style={{ width: '100%' }}>
+            <span className="ant-input-group-addon" style={{ display: 'inline-flex', alignItems: 'center', padding: '0 11px' }}>
+              To
+            </span>
+            <AutoComplete
+              style={{ flex: 1 }}
+              value={compose.to}
+              placeholder="someone@example.com"
+              options={suggestions.map((p) => ({
+                value: p.email,
+                label: (
+                  <Space size={6}>
+                    <Text>{p.name || p.email}</Text>
+                    {p.name ? (
+                      <Text type="secondary" style={{ fontSize: 12 }}>
+                        {p.email}
+                      </Text>
+                    ) : null}
+                    <Text type="secondary" style={{ fontSize: 11 }}>
+                      · {p.source}
+                    </Text>
+                  </Space>
+                ),
+              }))}
+              onSearch={suggest}
+              onChange={(value) => setCompose((c) => ({ ...c, to: value }))}
+              onSelect={(value: string) => setCompose((c) => ({ ...c, to: value }))}
+            />
+          </Space.Compact>
           <Input
             addonBefore="Subject"
             value={compose.subject}
