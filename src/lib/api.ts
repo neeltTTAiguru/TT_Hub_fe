@@ -697,6 +697,7 @@ export type MemberScope = {
 export type MemberView = {
   assignedRuns: AssignableRun[]
   limitToAssignedRuns: boolean
+  includeCalled: boolean
   scope: MemberScope
 }
 
@@ -714,6 +715,8 @@ export type HubMember = {
   fullAccess: boolean
   assignedRunIds: string[]
   limitToAssignedRuns: boolean
+  /** Also every agency anyone has called: the Reached out and Call later pins. */
+  includeCalled: boolean
   /** How many agencies the morning schedule researches for them. */
   dailyResearch: number
   gmail: { connected: boolean; address: string }
@@ -733,7 +736,7 @@ export type CommandBoard = {
 
 export type HubMemberInput = Pick<
   HubMember,
-  'name' | 'assignedRunIds' | 'limitToAssignedRuns' | 'dailyResearch' | 'scope' | 'notes'
+  'name' | 'assignedRunIds' | 'limitToAssignedRuns' | 'includeCalled' | 'dailyResearch' | 'scope' | 'notes'
 >
 
 export type GmailStatus = {

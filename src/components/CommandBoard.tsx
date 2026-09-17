@@ -71,6 +71,7 @@ const blank = (email: string): HubMember => ({
   fullAccess: false,
   assignedRunIds: [],
   limitToAssignedRuns: false,
+  includeCalled: false,
   dailyResearch: 0,
   gmail: { connected: false, address: '' },
   scope: { states: [], agencyTypes: [], maxOfficers: null, camera: 'any' },
@@ -209,6 +210,7 @@ export default function CommandBoard({
             name: next.name,
             assignedRunIds: next.assignedRunIds,
             limitToAssignedRuns: next.limitToAssignedRuns,
+            includeCalled: next.includeCalled,
             dailyResearch: next.dailyResearch,
             scope: next.scope,
             notes: next.notes,
@@ -419,6 +421,12 @@ export default function CommandBoard({
                 onChange={(event) => update(m.email, (x) => ({ ...x, limitToAssignedRuns: event.target.checked }))}
               >
                 <Text style={{ fontSize: 11 }}>Map shows only these</Text>
+              </Checkbox>
+              <Checkbox
+                checked={m.includeCalled}
+                onChange={(event) => update(m.email, (x) => ({ ...x, includeCalled: event.target.checked }))}
+              >
+                <Text style={{ fontSize: 11 }}>Plus every Reached out / Call later agency</Text>
               </Checkbox>
             </Space>
           </Space>
