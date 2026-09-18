@@ -14,6 +14,7 @@ import FollowUpEmailModal from '../components/FollowUpEmailModal'
 import LeadsBoard, { type LeadCallState } from '../components/LeadsBoard'
 import CallReportModal from '../components/CallReportModal'
 import CommandBoard from '../components/CommandBoard'
+import AgencyDownloadModal, { type DownloadRow } from '../components/AgencyDownloadModal'
 import { useFullAccess, useMemberView } from '../lib/access'
 import {
   TRAVELLER_SPRITE,
@@ -197,6 +198,19 @@ function categoryFor(point: {
   // the map does not claim they have cameras. The card still says which it is.
   return 'unknownBwc'
 }
+
+/**
+ * The legend, in the order it is drawn. One row per PinCategory; the download
+ * dialog reuses the same rows so its choices are the legend's, word for word.
+ */
+const LEGEND_ROWS: Array<{ key: PinCategory; label: string; color: string; striped: boolean; emphasis?: boolean }> = [
+  { key: 'callLater', label: 'Call later', color: CALL_LATER_COLOR, striped: false },
+  { key: 'contacted', label: 'Reached out', color: CONTACTED_COLOR, striped: false },
+  { key: 'bwc', label: 'Has body-worn cameras', color: BWC_COLOR, striped: false },
+  { key: 'noBwc', label: 'Confirmed no cameras', color: NO_BWC_COLOR, striped: false },
+  { key: 'unknownBwc', label: 'Unknown', color: UNKNOWN_BWC_COLOR, striped: false },
+  { key: 'test', label: 'Test agency', color: TEST_COLOR, striped: false },
+]
 
 /**
  * Our own research verdict, stated on every card.
@@ -627,6 +641,7 @@ export default function AgencyMap() {
   } | null>(null)
   const [chatOpen, setChatOpen] = useState(false)
   const [reportOpen, setReportOpen] = useState(false)
+  const [downloadOpen, setDownloadOpen] = useState(false)
 
   const [briefingFor, setBriefingFor] = useState<{ ori: string; name: string } | null>(null)
   const [measureMode, setMeasureMode] = useState(false)
@@ -872,6 +887,16 @@ export default function AgencyMap() {
     for (const point of agencyPoints) counts[categoryFor(point)] += 1
     return counts
   }, [agencyPoints])
+
+  // Every plotted agency with its legend row, for the download dialog. From
+  // the full set, not the visible one: the dialog picks its own rows.
+  const downloadRows: DownloadRow[] = useMemo(() => {
+    const byOri = new Map(features.map((feature) => [feature.properties.ori, feature]))
+    return agencyPoints.flatMap((point) => {
+      const feature = byOri.get(point.ori)
+      return feature ? [{ category: categoryFor(point), feature }] : []
+    })
+  }, [agencyPoints, features])
 
   const visibleAgencyPoints = useMemo(
     () =>
@@ -1848,45 +1873,18 @@ export default function AgencyMap() {
       />
       </Card>
 
-      <Card className="section-card" title="Legend">
+      <Card
+        className="section-card"
+        title="Legend"
+        extra={
+          <Button size="small" onClick={() => setDownloadOpen(true)} disabled={agencyPoints.length === 0}>
+            Download
+          </Button>
+        }
+      >
         <Space direction="vertical" size={10} style={{ width: '100%' }}>
           <Space wrap size={18}>
-            {(
-              [
-                {
-                  key: 'callLater',
-                  label: 'Call later',
-                  color: CALL_LATER_COLOR,
-                  striped: false,
-                },
-                {
-                  key: 'contacted',
-                  label: 'Reached out',
-                  color: CONTACTED_COLOR,
-                  striped: false,
-                },
-                { key: 'bwc', label: 'Has body-worn cameras', color: BWC_COLOR, striped: false },
-                {
-                  key: 'noBwc',
-                  label: 'Confirmed no cameras',
-                  color: NO_BWC_COLOR,
-                  striped: false,
-                },
-                {
-                  key: 'unknownBwc',
-                  label: 'Unknown',
-                  color: UNKNOWN_BWC_COLOR,
-                  striped: false,
-                },
-                { key: 'test', label: 'Test agency', color: TEST_COLOR, striped: false },
-              ] as Array<{
-                key: PinCategory
-                label: string
-                color: string
-                striped: boolean
-                emphasis?: boolean
-              }>
-            )
+            {LEGEND_ROWS
               // A scoped account never sees a test agency; no row for one.
               .filter((item) => !member || item.key !== 'test')
               .map((item) => {
@@ -2091,6 +2089,17 @@ export default function AgencyMap() {
         ) : null}
       </Modal>
 
+      <AgencyDownloadModal
+        open={downloadOpen}
+        onClose={() => setDownloadOpen(false)}
+        categories={LEGEND_ROWS
+          .filter((row) => !member || row.key !== 'test')
+          .map((row) => ({ key: row.key, label: row.label, color: row.color, count: categoryCounts[row.key] }))}
+        rows={downloadRows}
+        initialSelected={LEGEND_ROWS
+          .filter((row) => (!member || row.key !== 'test') && !hiddenCategories.has(row.key))
+          .map((row) => row.key)}
+      />
       <FollowUpEmailModal
         ori={emailFor?.ori ?? null}
         agencyName={emailFor?.name ?? ''}
