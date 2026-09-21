@@ -348,7 +348,7 @@ export default function CommandBoard({
               {!m.fullAccess ? (
                 <Popconfirm
                   title={`Run ${m.name || m.email}'s morning research now?`}
-                  description={`Finds ${m.dailyResearch} new leads (their leads a day) from their own map scope right away - drawing again until it has them - and emails them the list when it finishes. Today's scheduled morning still runs.`}
+                  description={`Finds ${m.dailyResearch} new leads (their leads a day) from their own map scope right away - topping up like the morning if a draw comes back short - and emails them the list when it finishes. Today's scheduled morning still runs.`}
                   onConfirm={() => miniRun(m.email)}
                 >
                   <Button size="small" loading={miniRunning[m.email]} disabled={!m.dailyResearch}>
