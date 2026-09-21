@@ -861,6 +861,14 @@ export function runDailyResearchNow() {
   })
 }
 
+/** A few leads for one person right now, outside the morning plan. */
+export function startMiniRun(email: string, count: number) {
+  return request<{ runId: string; queued: number; brief: string }>(
+    `/command-board/members/${encodeURIComponent(email)}/mini-run`,
+    { method: 'POST', body: JSON.stringify({ count }) },
+  )
+}
+
 /** The roster and everything needed to configure it. Full access only. */
 export function getCommandBoard() {
   return request<CommandBoard>('/command-board')

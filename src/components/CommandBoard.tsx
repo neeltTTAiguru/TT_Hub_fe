@@ -26,6 +26,7 @@ import {
   saveDailySchedule,
   saveEmailTemplate,
   saveHubMember,
+  startMiniRun,
   type AssignableRun,
   type CommandBoard as Board,
   type DailySchedule,
@@ -34,6 +35,10 @@ import {
 } from '../lib/api'
 
 const { Text, Title } = Typography
+
+/** A mini run is a top-up, not a second morning; the server caps it the same. */
+const MINI_RUN_DEFAULT = 5
+const MINI_RUN_MAX = 50
 
 const SIZE_OPTIONS = [
   { value: null, label: 'Any size' },
@@ -113,6 +118,10 @@ export default function CommandBoard({
   const [newEmail, setNewEmail] = useState('')
   const [saving, setSaving] = useState<Record<string, boolean>>({})
   const [runningNow, setRunningNow] = useState(false)
+  // The mini-run top-up per person: how many they asked for, and whether it
+  // is on its way. Kept per email so two rows cannot share a spinner.
+  const [miniCount, setMiniCount] = useState<Record<string, number>>({})
+  const [miniRunning, setMiniRunning] = useState<Record<string, boolean>>({})
   const [tick, setTick] = useState(0)
 
   // The voicemail follow-up, as it will be sent from each person's Gmail.
@@ -250,6 +259,20 @@ export default function CommandBoard({
     )
   }
 
+  const miniRun = (email: string) => {
+    const count = miniCount[email] ?? MINI_RUN_DEFAULT
+    setMiniRunning((s) => ({ ...s, [email]: true }))
+    startMiniRun(email, count)
+      .then((result) => {
+        message.success(`Mini run started: ${result.queued} agencies for ${email}.`)
+        reload()
+      })
+      .catch((err: unknown) => {
+        message.error(err instanceof Error ? err.message : 'Could not start the mini run.')
+      })
+      .finally(() => setMiniRunning((s) => ({ ...s, [email]: false })))
+  }
+
   const runNow = () => {
     setRunningNow(true)
     runDailyResearchNow()
@@ -327,6 +350,30 @@ export default function CommandBoard({
               <Tag color={m.gmail.connected ? 'success' : 'default'} style={{ marginInlineEnd: 0 }}>
                 {m.gmail.connected ? 'Gmail connected' : 'Gmail not connected'}
               </Tag>
+              {/* A top-up outside the morning: a number and a button, same draw as the morning. */}
+              {!m.fullAccess ? (
+                <Space size={4} align="center">
+                  <InputNumber
+                    size="small"
+                    min={1}
+                    max={MINI_RUN_MAX}
+                    value={miniCount[m.email] ?? MINI_RUN_DEFAULT}
+                    onChange={(value) =>
+                      setMiniCount((s) => ({ ...s, [m.email]: typeof value === 'number' ? value : MINI_RUN_DEFAULT }))
+                    }
+                    style={{ width: 64 }}
+                  />
+                  <Popconfirm
+                    title="Start a mini run?"
+                    description={`Researches ${miniCount[m.email] ?? MINI_RUN_DEFAULT} random agencies from ${m.name || m.email}'s own map scope right now and puts them on their map. Not part of today's morning budget.`}
+                    onConfirm={() => miniRun(m.email)}
+                  >
+                    <Button size="small" loading={miniRunning[m.email]}>
+                      Mini run
+                    </Button>
+                  </Popconfirm>
+                </Space>
+              ) : null}
               {m.dailyPaused ? (
                 <Tag color="warning" style={{ marginInlineEnd: 0 }}>
                   Morning paused
