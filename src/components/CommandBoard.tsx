@@ -36,10 +36,6 @@ import {
 
 const { Text, Title } = Typography
 
-/** A mini run is a top-up, not a second morning; the server caps it the same. */
-const MINI_RUN_DEFAULT = 5
-const MINI_RUN_MAX = 50
-
 const SIZE_OPTIONS = [
   { value: null, label: 'Any size' },
   { value: 10, label: '10 or fewer' },
@@ -118,9 +114,8 @@ export default function CommandBoard({
   const [newEmail, setNewEmail] = useState('')
   const [saving, setSaving] = useState<Record<string, boolean>>({})
   const [runningNow, setRunningNow] = useState(false)
-  // The mini-run top-up per person: how many they asked for, and whether it
-  // is on its way. Kept per email so two rows cannot share a spinner.
-  const [miniCount, setMiniCount] = useState<Record<string, number>>({})
+  // Whose morning is being run from the board right now. Per email so two
+  // rows cannot share a spinner.
   const [miniRunning, setMiniRunning] = useState<Record<string, boolean>>({})
   const [tick, setTick] = useState(0)
 
@@ -260,11 +255,10 @@ export default function CommandBoard({
   }
 
   const miniRun = (email: string) => {
-    const count = miniCount[email] ?? MINI_RUN_DEFAULT
     setMiniRunning((s) => ({ ...s, [email]: true }))
-    startMiniRun(email, count)
+    startMiniRun(email)
       .then((result) => {
-        message.success(`Mini run started: ${result.queued} agencies for ${email}.`)
+        message.success(`Started: ${result.queued} agencies for ${email}. They get the leads email when it finishes.`)
         reload()
       })
       .catch((err: unknown) => {
@@ -350,29 +344,17 @@ export default function CommandBoard({
               <Tag color={m.gmail.connected ? 'success' : 'default'} style={{ marginInlineEnd: 0 }}>
                 {m.gmail.connected ? 'Gmail connected' : 'Gmail not connected'}
               </Tag>
-              {/* A top-up outside the morning: a number and a button, same draw as the morning. */}
+              {/* Their morning, run from here: leads-a-day, their own scope, leads email at the end. */}
               {!m.fullAccess ? (
-                <Space size={4} align="center">
-                  <InputNumber
-                    size="small"
-                    min={1}
-                    max={MINI_RUN_MAX}
-                    value={miniCount[m.email] ?? MINI_RUN_DEFAULT}
-                    onChange={(value) =>
-                      setMiniCount((s) => ({ ...s, [m.email]: typeof value === 'number' ? value : MINI_RUN_DEFAULT }))
-                    }
-                    style={{ width: 64 }}
-                  />
-                  <Popconfirm
-                    title="Start a mini run?"
-                    description={`Researches ${miniCount[m.email] ?? MINI_RUN_DEFAULT} random agencies from ${m.name || m.email}'s own map scope right now and puts them on their map. Not part of today's morning budget.`}
-                    onConfirm={() => miniRun(m.email)}
-                  >
-                    <Button size="small" loading={miniRunning[m.email]}>
-                      Mini run
-                    </Button>
-                  </Popconfirm>
-                </Space>
+                <Popconfirm
+                  title={`Run ${m.name || m.email}'s morning research now?`}
+                  description={`Researches ${m.dailyResearch} agencies (their leads a day) from their own map scope right away, and emails them the leads when it finishes. Today's scheduled morning still runs.`}
+                  onConfirm={() => miniRun(m.email)}
+                >
+                  <Button size="small" loading={miniRunning[m.email]} disabled={!m.dailyResearch}>
+                    Mini run
+                  </Button>
+                </Popconfirm>
               ) : null}
               {m.dailyPaused ? (
                 <Tag color="warning" style={{ marginInlineEnd: 0 }}>
