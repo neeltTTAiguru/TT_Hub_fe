@@ -734,11 +734,32 @@ export type HubMember = {
   updatedAt: string | null
 }
 
+/** One press of Mini run: the first draw and every top-up after it. */
+export type MiniRunSummary = {
+  chainId: string
+  email: string
+  /** The number asked for - their leads a day at the time. */
+  target: number
+  leads: number
+  rounds: number
+  status: 'running' | 'done' | 'failed'
+  /** The round in flight (or the last one). */
+  round: { completed: number; total: number; status: string }
+  runId: string
+  runIds: string[]
+  startedBy: string
+  startedAt: string
+  finishedAt: string | null
+  /** How the leads email went, or why it did not go. */
+  notified: string
+}
+
 export type CommandBoard = {
   members: HubMember[]
   runs: AssignableRun[]
   agencyTypes: string[]
   fullAccessEmails: string[]
+  miniRuns: MiniRunSummary[]
   schedule: DailySchedule
 }
 

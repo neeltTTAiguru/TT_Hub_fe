@@ -178,12 +178,13 @@ export default function CommandBoard({
     setTick((n) => n + 1)
   }
 
-  // While a morning is in progress the board follows it, so the status bar
-  // moves without anyone pressing Refresh.
+  // While a morning or a mini run is in progress the board follows it, so
+  // the status bar moves without anyone pressing Refresh.
   const inFlight = Boolean(
-    board?.schedule.days[0] &&
+    (board?.schedule.days[0] &&
       !board.schedule.days[0].finishedAt &&
-      board.schedule.days[0].plan.some((entry) => ['pending', 'starting', 'running'].includes(entry.status)),
+      board.schedule.days[0].plan.some((entry) => ['pending', 'starting', 'running'].includes(entry.status))) ||
+      board?.miniRuns?.some((chain) => chain.status === 'running'),
   )
   useEffect(() => {
     if (!inFlight) return
@@ -782,6 +783,62 @@ export default function CommandBoard({
                   </Space>
                 )
               })()}
+            </Space>
+          </Card>
+        ) : null}
+
+        {/* 2. Mini runs - the same board as the morning, for runs pressed by hand. */}
+        {board?.miniRuns?.length ? (
+          <Card size="small" className="section-card">
+            <Space direction="vertical" size={8} style={{ width: '100%' }}>
+              <Space wrap size={12} align="center">
+                <Text strong>Mini runs</Text>
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  Pressed from a person's row · their leads a day, from their own scope · topped up like the morning
+                </Text>
+              </Space>
+              {board.miniRuns.map((chain) => {
+                const nameOf = (email: string) =>
+                  restricted.find((m) => m.email === email)?.name || email.split('@')[0]
+                const done = Math.min(chain.leads, chain.target)
+                const running = chain.status === 'running'
+                // Leads against the number asked for; the round in flight in brackets.
+                const progress = `${chain.leads}/${chain.target} leads${
+                  running ? ` (${chain.round.completed}/${chain.round.total} this round${chain.rounds > 1 ? `, top-up ${chain.rounds}` : ''})` : chain.rounds > 1 ? ` in ${chain.rounds} rounds` : ''
+                }`
+                return (
+                  <Space key={chain.chainId} direction="vertical" size={2} style={{ width: '100%' }}>
+                    <Space wrap size={6} align="center">
+                      <Text style={{ fontSize: 12 }}>
+                        {day(chain.startedAt)} {nameOf(chain.email)}
+                      </Text>
+                      <Tag color={STATUS_COLOUR[chain.status] || 'default'} style={{ marginInlineEnd: 0 }}>
+                        {chain.status}
+                      </Tag>
+                      <Text type="secondary" style={{ fontSize: 12 }} title={chain.notified || ''}>
+                        {progress}
+                        {chain.notified && chain.notified !== 'settling'
+                          ? chain.notified.startsWith('Emailed')
+                            ? ' · emailed'
+                            : chain.notified.startsWith('Not emailed')
+                              ? ' · not emailed'
+                              : ` · ${chain.notified}`
+                          : ''}
+                        {chain.startedBy ? ` · by ${chain.startedBy.split('@')[0]}` : ''}
+                      </Text>
+                      <Button size="small" type="link" style={{ padding: 0, height: 'auto' }} onClick={() => onViewRun(chain.runId)}>
+                        View
+                      </Button>
+                    </Space>
+                    <Progress
+                      percent={chain.target ? Math.round((done / chain.target) * 100) : 0}
+                      status={chain.status === 'failed' ? 'exception' : running ? 'active' : 'success'}
+                      size="small"
+                      style={{ maxWidth: 520, marginBottom: 0 }}
+                    />
+                  </Space>
+                )
+              })}
             </Space>
           </Card>
         ) : null}
