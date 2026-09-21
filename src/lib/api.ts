@@ -10,6 +10,15 @@ export function setAccessTokenProvider(provider: null | ((forceRefresh?: boolean
   accessTokenProvider = provider
 }
 
+// The member a full-access account is looking through (the map's Views
+// menu), sent on every request so the server scopes the feeds as it would
+// for them. Ignored by the server for anyone without full access.
+let viewAsEmail: string | null = null
+
+export function setViewAsEmail(email: string | null) {
+  viewAsEmail = email
+}
+
 type ApiErrorPayload = {
   message?: string
 }
@@ -936,6 +945,7 @@ async function request<T>(path: string, init?: RequestInit, options?: { timeoutM
   const buildHeaders = async (forceRefresh = false) => {
     const headers = new Headers(init?.headers)
     headers.set('Content-Type', 'application/json')
+    if (viewAsEmail) headers.set('X-View-As', viewAsEmail)
 
     if (accessTokenProvider) {
       const token = await accessTokenProvider(forceRefresh)

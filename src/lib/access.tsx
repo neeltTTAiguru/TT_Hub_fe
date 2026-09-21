@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react'
-import type { MemberView } from './api'
+import type { HubMember, MemberView } from './api'
 
 /**
  * Whether this account has the whole hub, as the server reported it.
@@ -32,4 +32,26 @@ export const MemberViewProvider = MemberViewContext.Provider
 
 export function useMemberView() {
   return useContext(MemberViewContext)
+}
+
+/**
+ * The map's Views menu: which member a full-access account is looking
+ * through, if any. `select(null)` is back to your own map. The member view
+ * above switches to theirs while this is set, and the map remounts, so its
+ * filter defaults come from their scope rather than yours.
+ */
+export type ViewAs = {
+  /** The member being looked through, or null for your own view. */
+  member: Pick<HubMember, 'email' | 'name'> | null
+  /** A switch is in flight: their rules are being fetched. */
+  pending: boolean
+  select: (email: string | null) => void
+}
+
+const ViewAsContext = createContext<ViewAs>({ member: null, pending: false, select: () => {} })
+
+export const ViewAsProvider = ViewAsContext.Provider
+
+export function useViewAs() {
+  return useContext(ViewAsContext)
 }

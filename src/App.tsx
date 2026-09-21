@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAuth0 } from '@auth0/auth0-react'
 import { BrowserRouter, Link, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import {
@@ -8,6 +8,7 @@ import {
   ConfigProvider,
   Layout,
   Menu,
+  message,
   Space,
   Spin,
   Switch,
@@ -16,7 +17,7 @@ import {
 import { getAntdTheme } from './theme'
 import GmailPage from './pages/GmailPage'
 import { GmailGlyph } from './components/GmailPanel'
-import { FullAccessProvider, MemberViewProvider } from './lib/access'
+import { FullAccessProvider, MemberViewProvider, ViewAsProvider, useViewAs, type ViewAs } from './lib/access'
 import Orchestrator from './pages/Orchestrator'
 import TrustedTechAssistant from './pages/TrustedTechAssistant'
 import CompetitorAnalyst from './pages/CompetitorAnalyst'
@@ -32,7 +33,7 @@ import ContentOperationsPublish from './pages/ContentOperationsPublish'
 import ContentOperationsSeo from './pages/ContentOperationsSeo'
 import Settings from './pages/Settings'
 import NotFound from './pages/NotFound'
-import { getMyAccess, setAccessTokenProvider, type MemberView } from './lib/api'
+import { getMyAccess, previewHubMember, setAccessTokenProvider, setViewAsEmail, type MemberView } from './lib/api'
 import trustedTechnologyPrimaryLogo from './assets/trusted-technology-primary-logo.png'
 import orchestratorLogo from './assets/agent-logos/hermes.png'
 import brainLogo from './assets/agent-logos/brain.svg'
@@ -255,6 +256,7 @@ function AppShell({
 }) {
   const location = useLocation()
   const { user, logout } = useAuth0()
+  const viewAs = useViewAs()
   const [navCollapsed, setNavCollapsed] = useState(false)
   const [navOrder, setNavOrder] = useState<string[]>(() => loadNavOrder())
   const [reordering, setReordering] = useState(false)
@@ -521,7 +523,7 @@ function AppShell({
               <Route path="/ahrefs-assistant" element={<TrustedTechAhrefsAssistant />} />
               <Route path="/company-files" element={<CompanyFiles />} />
               <Route path="/product-images" element={<ProductImages />} />
-              <Route path="/agency-map" element={<AgencyMap />} />
+              <Route path="/agency-map" element={<AgencyMap key={viewAs.member?.email ?? 'me'} />} />
               <Route path="/gmail" element={<GmailPage />} />
               <Route path="/assistants/content-operations" element={<ContentOperations />} />
               <Route path="/assistants/content-operations/seo" element={<ContentOperationsSeo />} />
@@ -743,6 +745,42 @@ function AuthenticatedApp({ isDark, onToggle }: { isDark: boolean; onToggle: () 
   // people who are not allowed it, which is the worse of the two.
   const [fullAccess, setFullAccess] = useState<boolean | null>(null)
   const [memberView, setMemberView] = useState<MemberView | null>(null)
+  // The map's Views menu: a full-access account looking through one member's
+  // rules. Their view and the header that scopes the feeds are switched
+  // together, once their rules have arrived, so the map never remounts on a
+  // half-applied view.
+  const [viewAs, setViewAs] = useState<{ member: ViewAs['member']; view: MemberView } | null>(null)
+  const [viewAsPending, setViewAsPending] = useState(false)
+  const viewAsRequest = useRef(0)
+
+  const selectViewAs = useCallback((email: string | null) => {
+    const ticket = ++viewAsRequest.current
+    if (!email) {
+      setViewAsEmail(null)
+      setViewAs(null)
+      setViewAsPending(false)
+      return
+    }
+    setViewAsPending(true)
+    previewHubMember(email)
+      .then((preview) => {
+        if (ticket !== viewAsRequest.current) return
+        setViewAsEmail(email)
+        setViewAs({ member: { email, name: '' }, view: preview.view })
+      })
+      .catch((error) => {
+        if (ticket !== viewAsRequest.current) return
+        message.error(error instanceof Error ? error.message : 'Could not load that view.')
+      })
+      .finally(() => {
+        if (ticket === viewAsRequest.current) setViewAsPending(false)
+      })
+  }, [])
+
+  const viewAsValue = useMemo<ViewAs>(
+    () => ({ member: viewAs?.member ?? null, pending: viewAsPending, select: selectViewAs }),
+    [viewAs, viewAsPending, selectViewAs],
+  )
 
   useEffect(() => {
     setAccessTokenProvider((forceRefresh = false) =>
@@ -757,6 +795,7 @@ function AuthenticatedApp({ isDark, onToggle }: { isDark: boolean; onToggle: () 
 
     return () => {
       setAccessTokenProvider(null)
+      setViewAsEmail(null)
       setIsTokenProviderReady(false)
     }
   }, [getAccessTokenSilently])
@@ -799,8 +838,10 @@ function AuthenticatedApp({ isDark, onToggle }: { isDark: boolean; onToggle: () 
 
   return (
     <FullAccessProvider value={fullAccess}>
-      <MemberViewProvider value={memberView}>
-        <AppShell isDark={isDark} onToggle={onToggle} fullAccess={fullAccess} />
+      <MemberViewProvider value={fullAccess && viewAs ? viewAs.view : memberView}>
+        <ViewAsProvider value={viewAsValue}>
+          <AppShell isDark={isDark} onToggle={onToggle} fullAccess={fullAccess} />
+        </ViewAsProvider>
       </MemberViewProvider>
     </FullAccessProvider>
   )

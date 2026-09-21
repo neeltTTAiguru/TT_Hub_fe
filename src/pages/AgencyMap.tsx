@@ -5,6 +5,7 @@ import MarkerClusterGroup from 'react-leaflet-cluster'
 import AgencyBriefingPanel from '../components/AgencyBriefingPanel'
 import TravellerChat from '../components/TravellerChat'
 import TravellerRoster from '../components/TravellerRoster'
+import ViewsMenu from '../components/ViewsMenu'
 import ResearchRunPanel from '../components/ResearchRunPanel'
 import ResearchRunMenu from '../components/ResearchRunMenu'
 import ResearchRunFindings from '../components/ResearchRunFindings'
@@ -1740,6 +1741,8 @@ export default function AgencyMap() {
             onChanged={() => setRunTick((n) => n + 1)}
           />
         )}
+        {/* Sits under Research runs, or in its place while looking through a member's view. */}
+        {fullAccess ? <ViewsMenu top={member ? 10 : 50} /> : null}
         {fullAccess ? (
           <TravellerRoster
             me={me ? { ...me, at: travellerAt, working: isResearching } : null}
