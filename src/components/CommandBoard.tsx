@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { DownOutlined } from '@ant-design/icons'
 import {
   Button,
   Card,
   Checkbox,
   Col,
   Collapse,
+  Dropdown,
   Input,
   InputNumber,
   Modal,
@@ -302,7 +304,6 @@ export default function CommandBoard({
   const isUnset = (m: HubMember) =>
     !m.name && !m.dailyResearch && !m.assignedRunIds.length && !m.scope.states.length && !m.scope.agencyTypes.length
 
-  const [expandedRuns, setExpandedRuns] = useState<Record<string, boolean>>({})
 
   const field = (label: string, control: React.ReactNode) => (
     <div>
@@ -318,8 +319,6 @@ export default function CommandBoard({
       .map((id) => runsById.get(id))
       .filter((run): run is AssignableRun => Boolean(run))
       .sort((a, b) => (b.startedAt || '').localeCompare(a.startedAt || ''))
-    const open = expandedRuns[m.email]
-    const shown = open ? theirs : theirs.slice(0, 3)
     const agencies = theirs.reduce((n, run) => n + run.total, 0)
     const covering = m.coveringFor
       .map((email) => board?.members.find((x) => x.email === email)?.name || email)
@@ -522,7 +521,7 @@ export default function CommandBoard({
               </Space>
             </Col>
 
-            {/* 4. Their runs */}
+            {/* 4. Their runs - every one, in a menu; pick one to open it. */}
             <Col xs={24} sm={12} lg={6}>
               <Space direction="vertical" size={6} style={{ width: '100%' }}>
                 <Text strong style={{ fontSize: 12 }}>
@@ -533,38 +532,39 @@ export default function CommandBoard({
                     </Text>
                   ) : null}
                 </Text>
-                {shown.length ? (
-                  shown.map((run) => (
-                    <Space key={run.id} size={6} wrap>
-                      <Text style={{ fontSize: 12 }}>{day(run.startedAt)}</Text>
-                      <Tag color={STATUS_COLOUR[run.status] || 'default'} style={{ marginInlineEnd: 0 }}>
-                        {run.status}
-                      </Tag>
-                      <Text type="secondary" style={{ fontSize: 12 }}>
-                        {run.completed}/{run.total}
-                        {run.foundCameras ? ` · ${run.foundCameras} cameras` : ''}
-                        {run.assignedTo ? '' : ' · by hand'}
-                      </Text>
-                      <Button size="small" type="link" style={{ padding: 0, height: 'auto' }} onClick={() => onViewRun(run.id)}>
-                        View
-                      </Button>
-                    </Space>
-                  ))
+                {theirs.length ? (
+                  <Dropdown
+                    trigger={['click']}
+                    menu={{
+                      style: { maxHeight: 360, overflowY: 'auto' },
+                      onClick: ({ key }) => onViewRun(String(key)),
+                      items: theirs.map((run) => ({
+                        key: run.id,
+                        label: (
+                          <Space size={6} wrap>
+                            <Text style={{ fontSize: 12 }}>{day(run.startedAt)}</Text>
+                            <Tag color={STATUS_COLOUR[run.status] || 'default'} style={{ marginInlineEnd: 0 }}>
+                              {run.status}
+                            </Tag>
+                            <Text type="secondary" style={{ fontSize: 12 }}>
+                              {run.completed}/{run.total}
+                              {run.foundCameras ? ` · ${run.foundCameras} cameras` : ''}
+                              {run.assignedTo ? '' : ' · by hand'}
+                            </Text>
+                          </Space>
+                        ),
+                      })),
+                    }}
+                  >
+                    <Button size="small" style={{ alignSelf: 'flex-start' }}>
+                      View runs <DownOutlined />
+                    </Button>
+                  </Dropdown>
                 ) : (
                   <Text type="secondary" style={{ fontSize: 12 }}>
                     None yet
                   </Text>
                 )}
-                {theirs.length > 3 ? (
-                  <Button
-                    size="small"
-                    type="link"
-                    style={{ padding: 0, height: 'auto', alignSelf: 'flex-start' }}
-                    onClick={() => setExpandedRuns((e) => ({ ...e, [m.email]: !open }))}
-                  >
-                    {open ? 'Show fewer' : `Show all ${theirs.length}`}
-                  </Button>
-                ) : null}
               </Space>
             </Col>
           </Row>
