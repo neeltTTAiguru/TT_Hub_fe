@@ -20,10 +20,13 @@ import {
   clearAgencyCallLog,
   deleteAgencyCall,
   getAgencyCallLog,
+  getCalendarStatus,
   previewEmailTemplate,
   sendAgencyEmail,
   type AgencyCall,
   type AgencyOutreach,
+  type CallBackOwner,
+  type GmailStatus,
 } from '../lib/api'
 
 const { Text } = Typography
@@ -47,6 +50,22 @@ const OUTCOMES = [
   'Wrong number / bad line',
   'Call later',
 ]
+
+/**
+ * The outcomes that book themselves a second attempt.
+ *
+ * Neither is a finished call: nobody was reached and somebody has to come
+ * back to this agency. Both colour the pin pink (see CALL_LATER_OUTCOMES in
+ * AgencyMap) and both propose a ring-back in the call-back owner's diary,
+ * because coming back to it is whoever owns outbound's job rather than the
+ * job of whoever happened to dial. The stored outcome is untouched either
+ * way, so the call report still tells a voicemail from a deferral.
+ */
+const VOICEMAIL_OUTCOME = 'Left voicemail'
+const CALL_LATER_OUTCOMES = [VOICEMAIL_OUTCOME, 'Call later']
+
+/** How long after the call to offer the call-back. */
+const CALL_BACK_WEEKS = 2
 
 /** Outcomes worth spotting in a list at a glance. */
 const OUTCOME_COLOR: Record<string, string> = {
@@ -73,6 +92,26 @@ function localNow() {
   const now = new Date()
   now.setMinutes(now.getMinutes() - now.getTimezoneOffset())
   return now.toISOString().slice(0, 16)
+}
+
+/**
+ * When to offer to ring back: two weeks after the call, same time of day.
+ *
+ * Measured from the call rather than from now, because a call typed up the
+ * next morning still happened when it happened. Same time of day because the
+ * hour an agency was rung is the best guess anyone has about when somebody
+ * will be at that desk again. Two weeks out is always the same weekday, so a
+ * weekend only comes up if the call itself was at the weekend - nudged to the
+ * Monday, since nobody is ringing a chief on a Sunday.
+ */
+function defaultCallBack(calledAt: string) {
+  const call = calledAt ? new Date(calledAt) : new Date()
+  const when = new Date(Number.isNaN(call.getTime()) ? Date.now() : call.getTime())
+  when.setDate(when.getDate() + CALL_BACK_WEEKS * 7)
+  if (when.getDay() === 6) when.setDate(when.getDate() + 2)
+  if (when.getDay() === 0) when.setDate(when.getDate() + 1)
+  when.setMinutes(when.getMinutes() - when.getTimezoneOffset())
+  return when.toISOString().slice(0, 16)
 }
 
 /**
@@ -155,7 +194,97 @@ export default function CallLogModal({
     connected: boolean
   } | null>(null)
   const [sendFollowUp, setSendFollowUp] = useState(false)
-  const wantsFollowUp = draft.outcome === 'Left voicemail'
+
+  // The diary entry. Whether this person's Google connection covers Calendar
+  // is asked once when the modal opens, because the answer decides whether
+  // the tick box can be offered at all.
+  const [calendarStatus, setCalendarStatus] = useState<(GmailStatus & { callBack: CallBackOwner }) | null>(null)
+  const [addToCalendar, setAddToCalendar] = useState(false)
+  useEffect(() => {
+    if (!open) return
+    let cancelled = false
+    getCalendarStatus()
+      .then((next) => {
+        if (!cancelled) setCalendarStatus(next)
+      })
+      .catch(() => {
+        if (!cancelled) setCalendarStatus(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [open])
+
+  // Sending the voicemail follow-up email only makes sense after a voicemail.
+  const wantsFollowUp = draft.outcome === VOICEMAIL_OUTCOME
+  // Both deferrals propose a ring-back; every other outcome asks for one.
+  const isDeferral = CALL_LATER_OUTCOMES.includes(draft.outcome)
+
+  /**
+   * A voicemail proposes its own call-back, so the common case is one click.
+   *
+   * Only when the field is empty: an SAE who was told "try Thursday" has
+   * better information than this default and must not have it overwritten.
+   */
+  useEffect(() => {
+    if (!isDeferral) return
+    setDraft((current) =>
+      current.followUpAt ? current : { ...current, followUpAt: defaultCallBack(current.calledAt) },
+    )
+  }, [isDeferral])
+
+  /**
+   * Whose diary this particular call-back is for, which the server decides
+   * the same way.
+   *
+   * A voicemail's ring-back is the call-back owner's work whoever left it, so
+   * it goes on their calendar - the label has to say so, because it is
+   * usually not the person looking at the screen. Any other follow-up is an
+   * appointment this person made and stays in their own diary.
+   */
+  const bookingFor: { label: string; ready: boolean; detail: string } = isDeferral
+    ? {
+        label: calendarStatus ? `Put the call-back on ${calendarStatus.callBack.name}'s calendar` : 'Put the call-back on the call-back owner\'s calendar',
+        ready: Boolean(calendarStatus?.callBack.ready),
+        detail: calendarStatus
+          ? calendarStatus.callBack.ready
+            ? `Half an hour in ${calendarStatus.callBack.email}, with the number, your notes and your name on it. Coming back to this agency is ${calendarStatus.callBack.name}'s job, not yours.`
+            : `${calendarStatus.callBack.name} has not connected Google to the hub yet, so there is nowhere to book it.`
+          : 'Checking the call-back calendar...',
+      }
+    : {
+        label: 'Put the call-back on my calendar',
+        ready: Boolean(calendarStatus?.calendar),
+        detail: !calendarStatus
+          ? 'Checking your Google connection...'
+          : !calendarStatus.configured
+            ? 'Google is not set up on the server yet.'
+            : !calendarStatus.connected
+              ? 'Connect your Google account (Gmail in the sidebar) to book call-backs in your own calendar.'
+              : !calendarStatus.calendar
+                ? 'Your Google account was connected before Calendar was added. Reconnect it on the Calendar page.'
+                : `Half an hour in ${calendarStatus.address}, with the number and your notes on it.`,
+      }
+
+  /**
+   * Whether to ask for a call-back time.
+   *
+   * Only for outcomes that could have one and do not: a deferral proposes its
+   * own, and there is no ringing back an agency that said no or gave a dead
+   * number.
+   */
+  const needsCallBack =
+    Boolean(draft.outcome) &&
+    !isDeferral &&
+    !draft.followUpAt &&
+    !['Not interested', 'Wrong number / bad line'].includes(draft.outcome)
+
+  // A call-back with a time goes in the diary unless they say otherwise.
+  // Clearing the time takes it back out - there is nothing left to book.
+  useEffect(() => {
+    if (!draft.followUpAt) setAddToCalendar(false)
+    else if (bookingFor.ready) setAddToCalendar(true)
+  }, [draft.followUpAt, bookingFor.ready])
   useEffect(() => {
     if (!open || !ori || !wantsFollowUp) return
     let cancelled = false
@@ -219,12 +348,20 @@ export default function CallLogModal({
       ...draft,
       calledAt: draft.calledAt ? new Date(draft.calledAt).toISOString() : undefined,
       followUpAt: draft.followUpAt ? new Date(draft.followUpAt).toISOString() : null,
+      addToCalendar: addToCalendar && Boolean(draft.followUpAt),
     })
       .then(async (result) => {
         setCalls(result.calls || [])
         setDraft({ ...emptyDraft(), phone: phone || '' })
         onChanged?.(ori, result.outreach ?? summarise(result.calls || []))
         message.success('Call logged.')
+        // The call is saved whatever the diary did, so a failure here is said
+        // out loud rather than swallowed or turned into a failed save.
+        if (result.calendar && 'error' in result.calendar) {
+          message.warning(`Call logged, but the call-back did not reach your calendar: ${result.calendar.error}`)
+        } else if (result.calendar?.id) {
+          message.success(`Call-back added to your calendar for ${formatWhen(result.calendar.at)}.`)
+        }
         if (wantsFollowUp && sendFollowUp && followUp) {
           try {
             const sent = await sendAgencyEmail({ ori, subject: followUp.subject, body: followUp.body })
@@ -237,6 +374,7 @@ export default function CallLogModal({
           }
         }
         setSendFollowUp(false)
+        setAddToCalendar(false)
       })
       .catch((err: unknown) => {
         message.error(err instanceof Error ? err.message : 'Could not save that call.')
@@ -458,10 +596,13 @@ export default function CallLogModal({
           </div>
           <div>
             <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>
-              Call back on
+              Call back at
             </Text>
+            {/* A time, not just a day: this is what goes in the diary, and
+                "Thursday" is not a slot anyone can be reminded at. */}
             <Input
-              type="date"
+              type="datetime-local"
+              status={needsCallBack ? 'warning' : undefined}
               style={{ width: 260 }}
               value={draft.followUpAt}
               onChange={(event) =>
@@ -470,6 +611,32 @@ export default function CallLogModal({
             />
           </div>
         </Space>
+
+        {/* A deferral fills this in for itself. Every other outcome has to be
+            asked, because an empty field looks optional and a call-back
+            nobody wrote down is a call-back nobody makes. */}
+        {needsCallBack ? (
+          <Text type="warning" style={{ fontSize: 12 }}>
+            {draft.outcome === 'Call back scheduled'
+              ? 'When did you agree to ring back? Put the time in and it goes in your calendar.'
+              : 'Are you ringing them back? Put a time in and it goes in your calendar.'}
+          </Text>
+        ) : null}
+
+        {draft.followUpAt ? (
+          <div>
+            <Checkbox
+              checked={addToCalendar}
+              disabled={!bookingFor.ready}
+              onChange={(event) => setAddToCalendar(event.target.checked)}
+            >
+              <Text strong>{bookingFor.label}</Text>
+            </Checkbox>
+            <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 4 }}>
+              {bookingFor.detail}
+            </Text>
+          </div>
+        ) : null}
 
         <div>
           <Text strong style={{ display: 'block', marginBottom: 6 }}>

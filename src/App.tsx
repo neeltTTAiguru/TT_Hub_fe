@@ -17,6 +17,8 @@ import {
 import { getAntdTheme } from './theme'
 import GmailPage from './pages/GmailPage'
 import { GmailGlyph } from './components/GmailPanel'
+import CalendarPage from './pages/CalendarPage'
+import { CalendarGlyph } from './components/CalendarPanel'
 import { FullAccessProvider, MemberViewProvider, ViewAsProvider, useViewAs, type ViewAs } from './lib/access'
 import Orchestrator from './pages/Orchestrator'
 import TrustedTechAssistant from './pages/TrustedTechAssistant'
@@ -80,6 +82,12 @@ const agencyMapIcon = (
 const gmailIcon = (
   <span className="agent-icon" style={{ color: '#c5221f' }}>
     <GmailGlyph size={18} />
+  </span>
+)
+
+const calendarIcon = (
+  <span className="agent-icon" style={{ color: '#1a73e8' }}>
+    <CalendarGlyph size={18} />
   </span>
 )
 
@@ -161,6 +169,12 @@ const baseNavItems = [
     label: <Link to="/gmail">Gmail</Link>,
   },
   {
+    key: '/calendar',
+    title: 'Calendar',
+    icon: calendarIcon,
+    label: <Link to="/calendar">Calendar</Link>,
+  },
+  {
     key: '/agency-map',
     title: 'Agency Map',
     icon: agencyMapIcon,
@@ -179,7 +193,7 @@ const baseNavItems = [
  * Keys, not paths: they are matched against the nav items, and the Brain group
  * is a parent key with children, so leaving it out removes the whole section.
  */
-const RESTRICTED_NAV_KEYS = ['/gmail', '/agency-map']
+const RESTRICTED_NAV_KEYS = ['/gmail', '/calendar', '/agency-map']
 
 // Kept out of the sidebar without being deleted. The page, its route and its
 // saved chats all still work — /competitor-analyst reaches it directly — so
@@ -525,6 +539,7 @@ function AppShell({
               <Route path="/product-images" element={<ProductImages />} />
               <Route path="/agency-map" element={<AgencyMap key={viewAs.member?.email ?? 'me'} />} />
               <Route path="/gmail" element={<GmailPage />} />
+              <Route path="/calendar" element={<CalendarPage />} />
               <Route path="/assistants/content-operations" element={<ContentOperations />} />
               <Route path="/assistants/content-operations/seo" element={<ContentOperationsSeo />} />
               <Route path="/assistants/content-operations/publish" element={<ContentOperationsPublish />} />
@@ -541,6 +556,7 @@ function AppShell({
             <Routes>
               <Route path="/agency-map" element={<AgencyMap />} />
               <Route path="/gmail" element={<GmailPage />} />
+              <Route path="/calendar" element={<CalendarPage />} />
               <Route path="*" element={<Navigate to="/agency-map" replace />} />
             </Routes>
           )}

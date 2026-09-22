@@ -791,6 +791,8 @@ export type GmailStatus = {
   address: string
   connectedAt: string | null
   lastError: string
+  /** Whether the same Google grant also covers Calendar. False on older connections. */
+  calendar: boolean
 }
 
 export type GmailMessageSummary = {
@@ -876,6 +878,73 @@ export function sendAgencyEmail(input: { ori: string; to?: string; subject: stri
     body: JSON.stringify(input),
   })
 }
+
+/**
+ * Google Calendar, on the same connection as Gmail. `GmailStatus.calendar`
+ * says whether that connection covers it; a grant made before Calendar was
+ * added does not, and the page offers a reconnect.
+ */
+export type CalendarAttendee = {
+  email: string
+  name: string
+  response: 'needsAction' | 'declined' | 'tentative' | 'accepted'
+  organizer: boolean
+}
+
+export type CalendarEvent = {
+  id: string
+  summary: string
+  description: string
+  location: string
+  allDay: boolean
+  /** ISO date-time, or a plain YYYY-MM-DD when `allDay`. */
+  start: string
+  end: string
+  status: string
+  htmlLink: string
+  organizer: string
+  hangoutLink: string
+  attendees: CalendarAttendee[]
+  canEdit: boolean
+}
+
+export type CalendarEventInput = {
+  summary: string
+  description?: string
+  location?: string
+  allDay: boolean
+  start: string
+  end: string
+  attendees?: string[]
+  timeZone?: string
+}
+
+/**
+ * Whose diary the map's voicemail call-backs land in, whoever logged the
+ * call. Usually not the person asking - outbound is one person's job - so the
+ * call log names them on its tick box rather than saying "my calendar".
+ */
+export type CallBackOwner = { email: string; name: string; ready: boolean }
+
+export const getCalendarStatus = () => request<GmailStatus & { callBack: CallBackOwner }>('/calendar/status')
+export const getCalendarConnectUrl = () => request<{ url: string }>('/calendar/connect')
+
+export function getCalendarEvents(options: { timeMin: string; timeMax: string }) {
+  const params = new URLSearchParams({ timeMin: options.timeMin, timeMax: options.timeMax })
+  return request<{ timeZone: string; events: CalendarEvent[] }>(`/calendar/events?${params.toString()}`)
+}
+
+export const createCalendarEvent = (input: CalendarEventInput) =>
+  request<CalendarEvent>('/calendar/events', { method: 'POST', body: JSON.stringify(input) })
+
+export const updateCalendarEvent = (id: string, input: CalendarEventInput) =>
+  request<CalendarEvent>(`/calendar/events/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  })
+
+export const deleteCalendarEvent = (id: string) =>
+  request<{ ok: true }>(`/calendar/events/${encodeURIComponent(id)}`, { method: 'DELETE' })
 
 export function saveDailySchedule(input: Partial<Pick<DailySchedule, 'enabled' | 'hour' | 'minute' | 'pick' | 'notifyFrom' | 'notifyCc'>>) {
   return request<DailySchedule>('/command-board/schedule', {
@@ -2634,6 +2703,9 @@ export type AgencyCall = {
   notes: string
   loggedBy: string
   loggedAt: string
+  /** The call-back this entry put on the logger's own Google Calendar, if any. */
+  calendarEventId?: string
+  calendarError?: string
 }
 
 export type AgencyOutreach = {
@@ -2651,6 +2723,9 @@ type CallLogResponse = {
   // Present on a save: the HubSpot Call activity the entry became, or why it
   // could not. The hub's log is saved either way.
   hubspot?: { callId: string; ownerId: string; loggedBy: string } | { error: string } | null
+  // Present when the save asked for a call-back in the logger's calendar:
+  // the event booked, or why it could not be. The call is saved either way.
+  calendar?: { id: string; at: string } | { error: string } | null
 }
 
 /** Every call logged against an agency, newest first. */
@@ -2665,7 +2740,15 @@ export function getAgencyCallLog(ori: string) {
  * connection, a double click) updates the same entry - and the same HubSpot
  * Call - instead of logging the call twice. The server refuses a save without one.
  */
-export function addAgencyCall(ori: string, call: Partial<AgencyCall> & { clientCallId: string }) {
+/**
+ * `addToCalendar` books a half-hour call-back in the logger's own Google
+ * Calendar at `followUpAt`. Ignored without a follow-up time, and never fatal:
+ * the call is logged whatever the calendar does.
+ */
+export function addAgencyCall(
+  ori: string,
+  call: Partial<AgencyCall> & { clientCallId: string; addToCalendar?: boolean },
+) {
   return request<CallLogResponse>(`/le-agencies/${encodeURIComponent(ori)}/call-log`, {
     method: 'POST',
     body: JSON.stringify(call),

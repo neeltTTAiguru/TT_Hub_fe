@@ -26,7 +26,6 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import 'leaflet.markercluster/dist/MarkerCluster.css'
 import {
-  addAgencyCall,
   getCrmDealGeojson,
   getAgencyCallLog,
   getLeAgencyGeojson,
@@ -120,6 +119,19 @@ const CONTACTED_COLOR = '#7fc4e8'
 // afterwards and the pin goes back to blue, because the deferral has been acted on.
 const CALL_LATER_OUTCOME = 'Call later'
 const CALL_LATER_COLOR = '#ff2d95'
+// Deferring is done in the call log now, not by a button on the pin: that is
+// the one place that can also ask when, and book the ring-back with it.
+/**
+ * Which outcomes leave an agency waiting to be rung again.
+ *
+ * "Call later" is the one-click deferral. A voicemail is the same state
+ * arrived at by dialling: nobody was reached, and somebody has to come back
+ * to it - so it earns the same pink pin rather than the blue of a worked
+ * agency. The stored outcome is untouched, so the call report still counts
+ * voicemails as voicemails.
+ */
+const CALL_LATER_OUTCOMES = [CALL_LATER_OUTCOME, 'Left voicemail']
+const isCallLater = (outcome?: string) => CALL_LATER_OUTCOMES.includes(outcome || '')
 // The live research run. A deliberate outsider in this palette - it is the one
 // thing on the map that is happening rather than known.
 const TRAVELLER_COLOR = '#1f6f8f'
@@ -152,7 +164,8 @@ type MapPoint = {
   isTest?: boolean
   // An SDR has logged at least one call to this agency.
   contacted: boolean
-  // The most recent entry is a "Call later" - see CALL_LATER_OUTCOME.
+  // The most recent entry leaves the agency waiting to be rung again - see
+  // CALL_LATER_OUTCOMES.
   callLater: boolean
   callCount: number
   lastCalledAt: string | null
@@ -630,7 +643,6 @@ export default function AgencyMap() {
     chiefName: string
     chiefTitle: string
   } | null>(null)
-  const [callLaterBusy, setCallLaterBusy] = useState<string | null>(null)
   // The agency whose Call Result panel is open. Same shape as callLogFor so
   // "Log Call" can hand it straight across.
   const [callResultFor, setCallResultFor] = useState<{
@@ -778,7 +790,7 @@ export default function AgencyMap() {
       bwcVendor: f.properties.bwcVendor || '',
       isTest: Boolean(f.properties.isTest),
       contacted: Boolean(f.properties.contacted),
-      callLater: f.properties.lastCallOutcome === CALL_LATER_OUTCOME,
+      callLater: isCallLater(f.properties.lastCallOutcome),
       lastCallOutcome: f.properties.lastCallOutcome || '',
       callCount: f.properties.callCount ?? 0,
       lastCalledAt: f.properties.lastCalledAt ?? null,
@@ -1107,34 +1119,8 @@ export default function AgencyMap() {
       ),
     )
 
-  /**
-   * "Call later": log a deferral in one click.
-   *
-   * It is a real call-log entry with the Call later outcome, so it counts in
-   * the call report, shows in the agency's log, and - because every log entry
-   * is mirrored to HubSpot - lands there as a Call activity owned by the SDR.
-   * The pink pin is the latest-outcome rule doing its job, not a separate flag.
-   */
-  const callLater = async (ori: string, name: string) => {
-    setCallLaterBusy(ori)
-    try {
-      const result = await addAgencyCall(ori, {
-        clientCallId: crypto.randomUUID(),
-        outcome: CALL_LATER_OUTCOME,
-      })
-      applyOutreach(ori, result.outreach ?? { callCount: 1, lastCalledAt: null, lastOutcome: CALL_LATER_OUTCOME, lastLoggedBy: '' })
-      const hubspotError = result.hubspot && 'error' in result.hubspot ? result.hubspot.error : ''
-      if (hubspotError) message.warning(`${name} marked Call later. HubSpot did not take it: ${hubspotError}`)
-      else message.success(`${name} marked Call later and logged in HubSpot.`)
-    } catch (err: unknown) {
-      message.error(err instanceof Error ? err.message : 'Could not mark that agency.')
-    } finally {
-      setCallLaterBusy(null)
-    }
-  }
-
   // Live state of the agency behind the open Call Result panel, so its buttons
-  // reflect what is on file (and recolour the moment Call Later lands).
+  // reflect what is on file.
   const callResultPoint = useMemo(
     () => (callResultFor ? points.find((point) => point.ori === callResultFor.ori) ?? null : null),
     [callResultFor, points],
@@ -2066,16 +2052,6 @@ export default function AgencyMap() {
             </Button>
             <Button
               block
-              type={callResultPoint?.callLater ? 'primary' : 'default'}
-              loading={callLaterBusy === callResultFor.ori}
-              onClick={() => {
-                void callLater(callResultFor.ori, callResultFor.name).then(() => setCallResultFor(null))
-              }}
-            >
-              Call Later
-            </Button>
-            <Button
-              block
               type={sdrFilled.has(callResultFor.ori) ? 'primary' : 'default'}
               onClick={() => {
                 setSdrFor({ ori: callResultFor.ori, name: callResultFor.name })
@@ -2085,8 +2061,8 @@ export default function AgencyMap() {
               Save to HubSpot
             </Button>
             <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              Log Call records the call. Call Later defers it, logs it in HubSpot and turns the pin pink.
-              Save to HubSpot opens the qualification form and syncs the agency.
+              Log Call records the call. A voicemail or a Call later marks the pin pink and books the
+              ring-back; Save to HubSpot opens the qualification form and syncs the agency.
             </Typography.Text>
           </Space>
         ) : null}
