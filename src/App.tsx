@@ -85,8 +85,10 @@ const gmailIcon = (
   </span>
 )
 
+// No colour of its own to set: unlike the Gmail "M" this mark is a full
+// tile and paints itself.
 const calendarIcon = (
-  <span className="agent-icon" style={{ color: '#1a73e8' }}>
+  <span className="agent-icon">
     <CalendarGlyph size={18} />
   </span>
 )

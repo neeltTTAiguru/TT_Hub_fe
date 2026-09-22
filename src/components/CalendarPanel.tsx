@@ -24,17 +24,48 @@ import {
 
 const { Text, Title } = Typography
 
-/** The Google Calendar page-with-a-date mark, drawn inline so there is nothing to load. */
-export const CalendarGlyph = ({ size = 18 }: { size?: number }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" style={{ display: 'block' }}>
-    <path
-      d="M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zm0 5v11h14V8H5z"
-      fill="currentColor"
-    />
-    <path d="M8 1.5v4M16 1.5v4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-    <path d="M10 11h4v4h-4z" fill="currentColor" />
-  </svg>
-)
+/**
+ * The calendar tile, drawn inline so there is nothing to load.
+ *
+ * Carries its own colour rather than `currentColor`, because it is a product
+ * mark and not a UI glyph - the same reason the Brevo and HubSpot marks in
+ * the sidebar are their own colours. The gradient is sampled from the icon
+ * it copies.
+ *
+ * The number is today's date, which is what a calendar icon is for: the app
+ * it is modelled on changes it every morning, and a tile frozen on one date
+ * is wrong on all the others. One digit is set larger than two so the tile
+ * looks evenly filled either way.
+ */
+const GLYPH_GRADIENT_ID = 'calendar-glyph-gradient'
+
+export const CalendarGlyph = ({ size = 18 }: { size?: number }) => {
+  const day = new Date().getDate()
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" style={{ display: 'block' }}>
+      <defs>
+        <linearGradient id={GLYPH_GRADIENT_ID} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#809DF8" />
+          <stop offset="1" stopColor="#4B87F7" />
+        </linearGradient>
+      </defs>
+      <rect x="0.5" y="0.5" width="23" height="23" rx="5.5" fill={`url(#${GLYPH_GRADIENT_ID})`} />
+      <text
+        x="12"
+        y="12.6"
+        textAnchor="middle"
+        dominantBaseline="middle"
+        fill="#ffffff"
+        fontSize={day > 9 ? 12 : 14}
+        fontWeight={600}
+        fontFamily="Avenir Next, Avenir, Segoe UI, sans-serif"
+        letterSpacing={day > 9 ? -0.5 : 0}
+      >
+        {day}
+      </text>
+    </svg>
+  )
+}
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const MONTHS = [
