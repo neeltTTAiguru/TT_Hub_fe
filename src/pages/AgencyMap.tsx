@@ -9,7 +9,6 @@ import ViewsMenu from '../components/ViewsMenu'
 import ResearchRunPanel from '../components/ResearchRunPanel'
 import ResearchRunMenu from '../components/ResearchRunMenu'
 import ResearchRunFindings from '../components/ResearchRunFindings'
-import SdrFormModal from '../components/SdrFormModal'
 import CallLogModal from '../components/CallLogModal'
 import FollowUpEmailModal from '../components/FollowUpEmailModal'
 import LeadsBoard, { type LeadCallState } from '../components/LeadsBoard'
@@ -630,22 +629,12 @@ export default function AgencyMap() {
   // Marking an agency as having cameras asks which vendor, because "they have
   // cameras" without a vendor is barely more useful than not knowing.
   const [vendorPrompt, setVendorPrompt] = useState<{ ori: string; name: string; vendor: string } | null>(null)
-  const [sdrFor, setSdrFor] = useState<{ ori: string; name: string } | null>(null)
   // Which agencies have a qualification on file, so the button can show it
   // without fetching every agency's form up front.
   const [sdrFilled, setSdrFilled] = useState<Set<string>>(new Set())
   // The agency whose follow-up email is being written.
   const [emailFor, setEmailFor] = useState<{ ori: string; name: string } | null>(null)
   const [callLogFor, setCallLogFor] = useState<{
-    ori: string
-    name: string
-    phone: string
-    chiefName: string
-    chiefTitle: string
-  } | null>(null)
-  // The agency whose Call Result panel is open. Same shape as callLogFor so
-  // "Log Call" can hand it straight across.
-  const [callResultFor, setCallResultFor] = useState<{
     ori: string
     name: string
     phone: string
@@ -1119,12 +1108,6 @@ export default function AgencyMap() {
       ),
     )
 
-  // Live state of the agency behind the open Call Result panel, so its buttons
-  // reflect what is on file.
-  const callResultPoint = useMemo(
-    () => (callResultFor ? points.find((point) => point.ori === callResultFor.ori) ?? null : null),
-    [callResultFor, points],
-  )
 
   const markTrusted = async (
     ori: string,
@@ -1285,7 +1268,7 @@ export default function AgencyMap() {
                             size="small"
                             type={point.contacted || sdrFilled.has(point.ori) ? 'primary' : 'default'}
                             onClick={() =>
-                              setCallResultFor({
+                              setCallLogFor({
                                 ori: point.ori,
                                 name: point.name,
                                 phone: point.contact?.phone || '',
@@ -1942,7 +1925,7 @@ export default function AgencyMap() {
           callState={callStateByOri}
           onLocate={showAgency}
           onCallResult={(ori, name, phone, chiefName, chiefTitle) =>
-            setCallResultFor({ ori, name, phone, chiefName, chiefTitle })
+            setCallLogFor({ ori, name, phone, chiefName, chiefTitle })
           }
         />
       ) : null}
@@ -2010,20 +1993,6 @@ export default function AgencyMap() {
         </Space>
       </Modal>
 
-      <SdrFormModal
-        ori={sdrFor?.ori ?? null}
-        agencyName={sdrFor?.name ?? ''}
-        open={Boolean(sdrFor)}
-        onClose={() => setSdrFor(null)}
-        onSaved={(ori, filled) =>
-          setSdrFilled((current) => {
-            const next = new Set(current)
-            if (filled) next.add(ori)
-            else next.delete(ori)
-            return next
-          })
-        }
-      />
 
       <CallReportModal
         open={reportOpen}
@@ -2031,43 +2000,6 @@ export default function AgencyMap() {
         filters={query}
       />
 
-      <Modal
-        title={callResultFor ? `Call result - ${callResultFor.name}` : 'Call result'}
-        open={Boolean(callResultFor)}
-        onCancel={() => setCallResultFor(null)}
-        footer={null}
-        width={420}
-        destroyOnHidden
-      >
-        {callResultFor ? (
-          <Space direction="vertical" size={10} style={{ width: '100%', paddingTop: 8 }}>
-            <Button
-              block
-              type={callResultPoint?.contacted ? 'primary' : 'default'}
-              onClick={() => {
-                setCallLogFor(callResultFor)
-                setCallResultFor(null)
-              }}
-            >
-              Log Call{callResultPoint?.callCount ? ` (${callResultPoint.callCount})` : ''}
-            </Button>
-            <Button
-              block
-              type={sdrFilled.has(callResultFor.ori) ? 'primary' : 'default'}
-              onClick={() => {
-                setSdrFor({ ori: callResultFor.ori, name: callResultFor.name })
-                setCallResultFor(null)
-              }}
-            >
-              Save to HubSpot
-            </Button>
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              Log Call records the call. A voicemail or a Call later marks the pin pink and books the
-              ring-back; Save to HubSpot opens the qualification form and syncs the agency.
-            </Typography.Text>
-          </Space>
-        ) : null}
-      </Modal>
 
       <AgencyDownloadModal
         open={downloadOpen}
@@ -2106,6 +2038,14 @@ export default function AgencyMap() {
         // Patched into the features already loaded rather than refetching the
         // national geojson - the pin recolours in place the moment it saves.
         onChanged={applyOutreach}
+        onSdrSaved={(ori, filled) =>
+          setSdrFilled((current) => {
+            const next = new Set(current)
+            if (filled) next.add(ori)
+            else next.delete(ori)
+            return next
+          })
+        }
       />
 
       <AgencyBriefingPanel

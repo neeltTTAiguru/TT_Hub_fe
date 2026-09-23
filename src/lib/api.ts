@@ -2807,6 +2807,26 @@ type CallLogResponse = {
   // Present when the save asked for a call-back in the logger's calendar:
   // the event booked, or why it could not be. The call is saved either way.
   calendar?: { id: string; at: string } | { error: string } | null
+  // Present when the save carried TMAN-P or BWC answers: what landed on the
+  // agency in HubSpot, and each step that did not.
+  hubspotAgency?: {
+    companyId?: string
+    contactId?: string
+    dealId?: string
+    taskId?: string
+    dueAt?: string
+    closed?: boolean
+    errors: string[]
+  } | null
+}
+
+/** What an agency said about its camera contract on a call. */
+export type BwcContractAnswer = {
+  status: '' | 'none' | 'under_contract'
+  vendor: string
+  /** <1 | 1-2 | 2-4 | 5+ years */
+  termLeft: '' | '<1' | '1-2' | '2-4' | '5+'
+  reviewAt?: string | null
 }
 
 /** Every call logged against an agency, newest first. */
@@ -2828,7 +2848,14 @@ export function getAgencyCallLog(ori: string) {
  */
 export function addAgencyCall(
   ori: string,
-  call: Partial<AgencyCall> & { clientCallId: string; addToCalendar?: boolean },
+  call: Partial<AgencyCall> & {
+    clientCallId: string
+    addToCalendar?: boolean
+    /** Sent only when touched: saving it opens a HubSpot deal. */
+    sdr?: AgencySdr
+    /** Sent only when touched: recorded on the HubSpot company, with a renewal reminder. */
+    bwc?: BwcContractAnswer
+  },
 ) {
   return request<CallLogResponse>(`/le-agencies/${encodeURIComponent(ori)}/call-log`, {
     method: 'POST',

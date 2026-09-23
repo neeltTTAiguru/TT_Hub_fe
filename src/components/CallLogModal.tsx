@@ -8,6 +8,7 @@ import {
   Input,
   Modal,
   Popconfirm,
+  Radio,
   Select,
   Space,
   Spin,
@@ -21,10 +22,11 @@ import {
   deleteAgencyCall,
   getAgencyCallLog,
   getCalendarStatus,
-  previewEmailTemplate,
-  sendAgencyEmail,
+  getLeAgency,
   type AgencyCall,
   type AgencyOutreach,
+  type AgencySdr,
+  type BwcContractAnswer,
   type CallBackOwner,
   type GmailStatus,
 } from '../lib/api'
@@ -52,20 +54,44 @@ const OUTCOMES = [
 ]
 
 /**
- * The outcomes that book themselves a second attempt.
+ * The one outcome that comes with a date: a call-back the agency agreed to.
  *
- * Neither is a finished call: nobody was reached and somebody has to come
- * back to this agency. Both colour the pin pink (see CALL_LATER_OUTCOMES in
- * AgencyMap) and both propose a ring-back in the call-back owner's diary,
- * because coming back to it is whoever owns outbound's job rather than the
- * job of whoever happened to dial. The stored outcome is untouched either
- * way, so the call report still tells a voicemail from a deferral.
+ * A voicemail or a "Call later" has none - the pin turns pink, the agency
+ * goes on the Friday call-back list, and whoever rings it next logs the next
+ * outcome. Nothing is put in a diary for them.
  */
-const VOICEMAIL_OUTCOME = 'Left voicemail'
-const CALL_LATER_OUTCOMES = [VOICEMAIL_OUTCOME, 'Call later']
+const DATED_OUTCOMES = ['Call back scheduled']
 
-/** How long after the call to offer the call-back. */
-const CALL_BACK_WEEKS = 2
+/** Who picked up, as the roles an SDR actually meets on these calls. */
+const ROLES = [
+  'Chief / Sheriff',
+  'Assistant / Deputy Chief',
+  'Captain / Lieutenant',
+  'Sergeant',
+  'Admin / Gatekeeper',
+  'Dispatcher',
+  'Other',
+]
+
+/** Kyle's TMAN-P, asked in his words - kept in step with SdrFormModal. */
+const TMANP: Array<{ key: keyof AgencySdr; letter: string; label: string; question: string }> = [
+  { key: 'timeline', letter: 'T', label: 'Timeline', question: 'Assuming you find the correct solution, when would you want a new BWC implemented?' },
+  { key: 'money', letter: 'M', label: 'Money', question: 'When does your budget cycle come around, will this project align with your budget?' },
+  { key: 'authority', letter: 'A', label: 'Authority', question: 'Who else needs to be involved in this project?' },
+  { key: 'needs', letter: 'N', label: 'Needs', question: 'How many cameras would be needed?' },
+  { key: 'pain', letter: 'P', label: 'Pain', question: 'What would you say is the reason you are looking at new body cameras?' },
+]
+
+const EMPTY_SDR: AgencySdr = { timeline: '', money: '', authority: '', needs: '', pain: '', notes: '' }
+const EMPTY_BWC: BwcContractAnswer = { status: '', vendor: '', termLeft: '' }
+
+const BWC_VENDORS = ['Axon', 'Motorola Solutions', 'WatchGuard', 'Getac', 'Utility', 'Digital Ally', 'Reveal', 'Wolfcom', 'Panasonic / i-PRO']
+const BWC_TERMS: Array<{ value: BwcContractAnswer['termLeft']; label: string }> = [
+  { value: '<1', label: '<1 Year' },
+  { value: '1-2', label: '1-2 Years' },
+  { value: '2-4', label: '2-4 Years' },
+  { value: '5+', label: '5+ Years' },
+]
 
 /** Outcomes worth spotting in a list at a glance. */
 const OUTCOME_COLOR: Record<string, string> = {
@@ -92,26 +118,6 @@ function localNow() {
   const now = new Date()
   now.setMinutes(now.getMinutes() - now.getTimezoneOffset())
   return now.toISOString().slice(0, 16)
-}
-
-/**
- * When to offer to ring back: two weeks after the call, same time of day.
- *
- * Measured from the call rather than from now, because a call typed up the
- * next morning still happened when it happened. Same time of day because the
- * hour an agency was rung is the best guess anyone has about when somebody
- * will be at that desk again. Two weeks out is always the same weekday, so a
- * weekend only comes up if the call itself was at the weekend - nudged to the
- * Monday, since nobody is ringing a chief on a Sunday.
- */
-function defaultCallBack(calledAt: string) {
-  const call = calledAt ? new Date(calledAt) : new Date()
-  const when = new Date(Number.isNaN(call.getTime()) ? Date.now() : call.getTime())
-  when.setDate(when.getDate() + CALL_BACK_WEEKS * 7)
-  if (when.getDay() === 6) when.setDate(when.getDate() + 2)
-  if (when.getDay() === 0) when.setDate(when.getDate() + 1)
-  when.setMinutes(when.getMinutes() - when.getTimezoneOffset())
-  return when.toISOString().slice(0, 16)
 }
 
 /**
@@ -159,10 +165,10 @@ export default function CallLogModal({
   agencyName,
   phone,
   chiefName,
-  chiefTitle,
   open,
   onClose,
   onChanged,
+  onSdrSaved,
 }: {
   ori: string | null
   agencyName: string
@@ -173,6 +179,8 @@ export default function CallLogModal({
   onClose: () => void
   /** Fires with the new summary so the map can recolour the pin and update its card. */
   onChanged?: (ori: string, outreach: AgencyOutreach) => void
+  /** Fires when a save carried the TMAN-P, with whether any of it is filled. */
+  onSdrSaved?: (ori: string, filled: boolean) => void
 }) {
   const [calls, setCalls] = useState<AgencyCall[]>([])
   const [draft, setDraft] = useState<CallDraft>(emptyDraft)
@@ -181,19 +189,39 @@ export default function CallLogModal({
   const [clearing, setClearing] = useState(false)
   const [error, setError] = useState('')
 
-  // The follow-up email, offered when the outcome is a voicemail. The
-  // template is fetched filled-in for this agency and this sender, shown so
-  // what goes out is what they read, and sent from their own Gmail after the
-  // call is saved. Their Gmail must be connected, and the agency must have an
-  // address on file - the section says which is missing rather than hiding.
-  const [followUp, setFollowUp] = useState<{
-    subject: string
-    body: string
-    to: string
-    configured: boolean
-    connected: boolean
-  } | null>(null)
-  const [sendFollowUp, setSendFollowUp] = useState(false)
+  // The qualification and camera contract on file, shared per agency. Sent
+  // back only when touched this time: an untouched TMAN-P re-sent on every
+  // voicemail would re-stamp who qualified it and push HubSpot again.
+  const [sdr, setSdr] = useState<AgencySdr>(EMPTY_SDR)
+  const [sdrDirty, setSdrDirty] = useState(false)
+  const [bwc, setBwc] = useState<BwcContractAnswer>(EMPTY_BWC)
+  const [bwcDirty, setBwcDirty] = useState(false)
+  // The two answer cards. Each edits a copy: Done keeps it for Save call,
+  // Cancel throws it away. Nothing reaches HubSpot until Save call.
+  const [sdrCard, setSdrCard] = useState<AgencySdr | null>(null)
+  const [bwcCard, setBwcCard] = useState<BwcContractAnswer | null>(null)
+  const sdrFilled = TMANP.some((q) => String(sdr[q.key] || '').trim())
+  useEffect(() => {
+    if (!open || !ori) return
+    let cancelled = false
+    setSdr(EMPTY_SDR)
+    setBwc(EMPTY_BWC)
+    setSdrDirty(false)
+    setBwcDirty(false)
+    getLeAgency(ori)
+      .then((agency) => {
+        if (cancelled) return
+        const record = agency as unknown as { sdr?: AgencySdr; bwcContract?: BwcContractAnswer }
+        setSdr({ ...EMPTY_SDR, ...(record.sdr || {}) })
+        setBwc({ ...EMPTY_BWC, ...(record.bwcContract || {}) })
+      })
+      .catch(() => {
+        /* a blank form is the honest fallback; the call can still be logged */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [open, ori])
 
   // The diary entry. Whether this person's Google connection covers Calendar
   // is asked once when the modal opens, because the answer decides whether
@@ -215,69 +243,32 @@ export default function CallLogModal({
     }
   }, [open])
 
-  // Sending the voicemail follow-up email only makes sense after a voicemail.
-  const wantsFollowUp = draft.outcome === VOICEMAIL_OUTCOME
-  // Both deferrals propose a ring-back; every other outcome asks for one.
-  const isDeferral = CALL_LATER_OUTCOMES.includes(draft.outcome)
+  const isDated = DATED_OUTCOMES.includes(draft.outcome)
 
-  /**
-   * A voicemail proposes its own call-back, so the common case is one click.
-   *
-   * Only when the field is empty: an SAE who was told "try Thursday" has
-   * better information than this default and must not have it overwritten.
-   */
+  // An outcome with no date takes any date back off the card, so a call-back
+  // picked for a voicemail cannot ride along on a "Not interested".
   useEffect(() => {
-    if (!isDeferral) return
-    setDraft((current) =>
-      current.followUpAt ? current : { ...current, followUpAt: defaultCallBack(current.calledAt) },
-    )
-  }, [isDeferral])
+    if (!isDated) setDraft((current) => (current.followUpAt ? { ...current, followUpAt: '' } : current))
+  }, [isDated])
 
-  /**
-   * Whose diary this particular call-back is for, which the server decides
-   * the same way.
-   *
-   * A voicemail's ring-back is the call-back owner's work whoever left it, so
-   * it goes on their calendar - the label has to say so, because it is
-   * usually not the person looking at the screen. Any other follow-up is an
-   * appointment this person made and stays in their own diary.
-   */
-  const bookingFor: { label: string; ready: boolean; detail: string } = isDeferral
-    ? {
-        label: calendarStatus ? `Put the call-back on ${calendarStatus.callBack.name}'s calendar` : 'Put the call-back on the call-back owner\'s calendar',
-        ready: Boolean(calendarStatus?.callBack.ready),
-        detail: calendarStatus
-          ? calendarStatus.callBack.ready
-            ? `Half an hour in ${calendarStatus.callBack.email}, with the number, your notes and your name on it. Coming back to this agency is ${calendarStatus.callBack.name}'s job, not yours.`
-            : `${calendarStatus.callBack.name} has not connected Google to the hub yet, so there is nowhere to book it.`
-          : 'Checking the call-back calendar...',
-      }
-    : {
-        label: 'Put the call-back on my calendar',
-        ready: Boolean(calendarStatus?.calendar),
-        detail: !calendarStatus
-          ? 'Checking your Google connection...'
-          : !calendarStatus.configured
-            ? 'Google is not set up on the server yet.'
-            : !calendarStatus.connected
-              ? 'Connect your Google account (Gmail in the sidebar) to book call-backs in your own calendar.'
-              : !calendarStatus.calendar
-                ? 'Your Google account was connected before Calendar was added. Reconnect it on the Calendar page.'
-                : `Half an hour in ${calendarStatus.address}, with the number and your notes on it.`,
-      }
+  // An agreed call-back is an appointment this person made, so it goes in
+  // their own diary.
+  const bookingFor: { label: string; ready: boolean; detail: string } = {
+    label: 'Put the call-back on my calendar',
+    ready: Boolean(calendarStatus?.calendar),
+    detail: !calendarStatus
+      ? 'Checking your Google connection...'
+      : !calendarStatus.configured
+        ? 'Google is not set up on the server yet.'
+        : !calendarStatus.connected
+          ? 'Connect your Google account (Gmail in the sidebar) to book call-backs in your own calendar.'
+          : !calendarStatus.calendar
+            ? 'Your Google account was connected before Calendar was added. Reconnect it on the Calendar page.'
+            : `Half an hour in ${calendarStatus.address}, with the number and your notes on it.`,
+  }
 
-  /**
-   * Whether to ask for a call-back time.
-   *
-   * Only for outcomes that could have one and do not: a deferral proposes its
-   * own, and there is no ringing back an agency that said no or gave a dead
-   * number.
-   */
-  const needsCallBack =
-    Boolean(draft.outcome) &&
-    !isDeferral &&
-    !draft.followUpAt &&
-    !['Not interested', 'Wrong number / bad line'].includes(draft.outcome)
+  // An agreed call-back with no time is a call-back nobody makes.
+  const needsCallBack = isDated && !draft.followUpAt
 
   // A call-back with a time goes in the diary unless they say otherwise.
   // Clearing the time takes it back out - there is nothing left to book.
@@ -285,28 +276,6 @@ export default function CallLogModal({
     if (!draft.followUpAt) setAddToCalendar(false)
     else if (bookingFor.ready) setAddToCalendar(true)
   }, [draft.followUpAt, bookingFor.ready])
-  useEffect(() => {
-    if (!open || !ori || !wantsFollowUp) return
-    let cancelled = false
-    previewEmailTemplate('voicemail-followup', ori)
-      .then((preview) => {
-        if (cancelled) return
-        setFollowUp({
-          subject: preview.subject,
-          body: preview.body,
-          to: preview.to,
-          configured: preview.configured,
-          connected: preview.connected,
-        })
-        setSendFollowUp(Boolean(preview.connected && preview.to && preview.subject && preview.body))
-      })
-      .catch(() => {
-        if (!cancelled) setFollowUp(null)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [open, ori, wantsFollowUp])
 
   // Prefill what the card already knows. The number on the card is the number
   // they just dialled, and retyping it is a chance to typo it.
@@ -337,7 +306,7 @@ export default function CallLogModal({
   // The server refuses an entry that records nothing but a timestamp; say so
   // here rather than letting the SDR find out by pressing save.
   const canSave = useMemo(
-    () => Boolean(draft.outcome || draft.notes.trim() || draft.contactName.trim()),
+    () => Boolean(draft.outcome || draft.notes.trim() || draft.contactName.trim() || draft.contactTitle),
     [draft],
   )
 
@@ -349,12 +318,33 @@ export default function CallLogModal({
       calledAt: draft.calledAt ? new Date(draft.calledAt).toISOString() : undefined,
       followUpAt: draft.followUpAt ? new Date(draft.followUpAt).toISOString() : null,
       addToCalendar: addToCalendar && Boolean(draft.followUpAt),
+      ...(sdrDirty ? { sdr } : {}),
+      ...(bwcDirty && bwc.status ? { bwc } : {}),
     })
       .then(async (result) => {
         setCalls(result.calls || [])
         setDraft({ ...emptyDraft(), phone: phone || '' })
         onChanged?.(ori, result.outreach ?? summarise(result.calls || []))
         message.success('Call logged.')
+        if (sdrDirty) onSdrSaved?.(ori, TMANP.some((q) => String(sdr[q.key] || '').trim()))
+        setSdrDirty(false)
+        setBwcDirty(false)
+        // What landed in HubSpot for the agency, said plainly - and each step
+        // that did not, so nobody goes looking for a deal that was never made.
+        const synced = result.hubspotAgency
+        if (synced) {
+          const landed = [
+            synced.dealId ? 'deal' : '',
+            synced.companyId ? 'company' : '',
+            synced.contactId ? 'contact' : '',
+          ].filter(Boolean)
+          if (landed.length) message.success(`HubSpot updated: ${landed.join(', ')}.`)
+          if (synced.taskId && synced.dueAt) {
+            message.success(`Renewal reminder set in HubSpot for ${formatDay(synced.dueAt)}.`)
+          }
+          if (synced.closed) message.info('The old renewal reminder in HubSpot was closed.')
+          for (const problem of synced.errors) message.warning(`HubSpot: ${problem}`, 8)
+        }
         // The call is saved whatever the diary did, so a failure here is said
         // out loud rather than swallowed or turned into a failed save.
         if (result.calendar && 'error' in result.calendar) {
@@ -362,18 +352,6 @@ export default function CallLogModal({
         } else if (result.calendar?.id) {
           message.success(`Call-back added to your calendar for ${formatWhen(result.calendar.at)}.`)
         }
-        if (wantsFollowUp && sendFollowUp && followUp) {
-          try {
-            const sent = await sendAgencyEmail({ ori, subject: followUp.subject, body: followUp.body })
-            message.success(`Follow-up email sent to ${sent.to}.`)
-            const refreshed = await getAgencyCallLog(ori)
-            setCalls(refreshed.calls || [])
-            onChanged?.(ori, refreshed.outreach ?? summarise(refreshed.calls || []))
-          } catch (err: unknown) {
-            message.error(err instanceof Error ? err.message : 'The call was logged but the email did not send.')
-          }
-        }
-        setSendFollowUp(false)
         setAddToCalendar(false)
       })
       .catch((err: unknown) => {
@@ -412,7 +390,7 @@ export default function CallLogModal({
 
   return (
     <Modal
-      title={agencyName ? `Call log - ${agencyName}` : 'Call log'}
+      title={agencyName ? `Call result - ${agencyName}` : 'Call result'}
       open={open}
       onCancel={onClose}
       width={640}
@@ -520,10 +498,10 @@ export default function CallLogModal({
 
         <Divider style={{ margin: '4px 0' }}>Log a call</Divider>
 
-        <Space size={10} wrap style={{ width: '100%' }}>
+        <Space size={10} wrap style={{ width: '100%' }} align="start">
           <div>
             <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>
-              When you called
+              Date
             </Text>
             <Input
               type="datetime-local"
@@ -536,7 +514,7 @@ export default function CallLogModal({
           </div>
           <div>
             <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>
-              How it went
+              Outcome
             </Text>
             <Select
               style={{ width: 260 }}
@@ -551,76 +529,29 @@ export default function CallLogModal({
           </div>
         </Space>
 
-        <Space size={10} wrap style={{ width: '100%' }}>
-          <div>
-            <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>
-              Who you spoke to
-            </Text>
-            <Input
-              style={{ width: 220 }}
-              placeholder={chiefName || 'Name'}
-              value={draft.contactName}
-              onChange={(event) =>
-                setDraft((current) => ({ ...current, contactName: event.target.value }))
-              }
-            />
-          </div>
-          <div>
-            <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>
-              Their role
-            </Text>
-            <Input
-              style={{ width: 260 }}
-              placeholder={chiefTitle || 'Chief, clerk, dispatcher...'}
-              value={draft.contactTitle}
-              onChange={(event) =>
-                setDraft((current) => ({ ...current, contactTitle: event.target.value }))
-              }
-            />
-          </div>
-        </Space>
-
-        <Space size={10} wrap style={{ width: '100%' }}>
-          <div>
-            <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>
-              Number dialled
-            </Text>
-            <Input
-              style={{ width: 220 }}
-              placeholder="Phone"
-              value={draft.phone}
-              onChange={(event) =>
-                setDraft((current) => ({ ...current, phone: event.target.value }))
-              }
-            />
-          </div>
+        {/* Only an outcome that comes with a date asks for one. A deferral
+            proposes its own two weeks out; an agreed call-back is asked for
+            the time agreed. A time, not just a day: this goes in a diary. */}
+        {isDated ? (
           <div>
             <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>
               Call back at
             </Text>
-            {/* A time, not just a day: this is what goes in the diary, and
-                "Thursday" is not a slot anyone can be reminded at. */}
             <Input
               type="datetime-local"
               status={needsCallBack ? 'warning' : undefined}
-              style={{ width: 260 }}
+              style={{ width: 220 }}
               value={draft.followUpAt}
               onChange={(event) =>
                 setDraft((current) => ({ ...current, followUpAt: event.target.value }))
               }
             />
+            {needsCallBack ? (
+              <Text type="warning" style={{ fontSize: 12, display: 'block', marginTop: 4 }}>
+                When did you agree to ring back? Put the time in and it goes in your calendar.
+              </Text>
+            ) : null}
           </div>
-        </Space>
-
-        {/* A deferral fills this in for itself. Every other outcome has to be
-            asked, because an empty field looks optional and a call-back
-            nobody wrote down is a call-back nobody makes. */}
-        {needsCallBack ? (
-          <Text type="warning" style={{ fontSize: 12 }}>
-            {draft.outcome === 'Call back scheduled'
-              ? 'When did you agree to ring back? Put the time in and it goes in your calendar.'
-              : 'Are you ringing them back? Put a time in and it goes in your calendar.'}
-          </Text>
         ) : null}
 
         {draft.followUpAt ? (
@@ -639,69 +570,181 @@ export default function CallLogModal({
         ) : null}
 
         <div>
+          <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>
+            Who
+          </Text>
+          <Space.Compact style={{ width: '100%' }}>
+            <Select
+              style={{ width: 220 }}
+              placeholder="Role"
+              allowClear
+              value={draft.contactTitle || undefined}
+              options={ROLES.map((role) => ({ value: role, label: role }))}
+              onChange={(value) =>
+                setDraft((current) => ({
+                  ...current,
+                  contactTitle: value || '',
+                  // The chief is on the card already; picking the role should
+                  // not mean typing the name the map is showing.
+                  contactName:
+                    value === 'Chief / Sheriff' && !current.contactName && chiefName ? chiefName : current.contactName,
+                }))
+              }
+            />
+            <Input
+              placeholder="Name"
+              value={draft.contactName}
+              onChange={(event) =>
+                setDraft((current) => ({ ...current, contactName: event.target.value }))
+              }
+            />
+          </Space.Compact>
+        </div>
+
+        <Space size={10} wrap>
+          <Button type={sdrFilled ? 'primary' : 'default'} onClick={() => setSdrCard({ ...sdr })}>
+            TMAN-P{sdrDirty ? ' ✓' : ''}
+          </Button>
+          <Button type={bwc.status ? 'primary' : 'default'} onClick={() => setBwcCard({ ...bwc })}>
+            BWC Info{bwcDirty ? ' ✓' : ''}
+          </Button>
+          {sdrDirty || bwcDirty ? (
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              Goes to HubSpot when you save the call.
+            </Text>
+          ) : null}
+        </Space>
+
+        <div>
           <Text strong style={{ display: 'block', marginBottom: 6 }}>
-            What was said
+            Notes
           </Text>
           <Input.TextArea
-            rows={4}
+            rows={2}
             value={draft.notes}
             onChange={(event) =>
               setDraft((current) => ({ ...current, notes: event.target.value }))
             }
-            placeholder="What they told you, in their words. Who the gatekeeper is, when the budget lands, which vendor they mentioned, what to open with next time."
+            placeholder="What they told you, in their words."
           />
         </div>
 
-        {wantsFollowUp ? (
-          <div>
-            <Checkbox
-              checked={sendFollowUp}
-              disabled={!followUp || !followUp.connected || !followUp.to || !followUp.subject}
-              onChange={(event) => setSendFollowUp(event.target.checked)}
-            >
-              <Text strong>Send the follow-up email when I save</Text>
-            </Checkbox>
-            {!followUp ? (
-              <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 4 }}>
-                Loading the template...
-              </Text>
-            ) : !followUp.configured ? (
-              <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 4 }}>
-                Gmail is not set up on the server yet.
-              </Text>
-            ) : !followUp.connected ? (
-              <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 4 }}>
-                Connect your Gmail (Gmail in the sidebar) to send this from your own address.
-              </Text>
-            ) : !followUp.to ? (
-              <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 4 }}>
-                {agencyName} has no email address on file, so there is nowhere to send it.
-              </Text>
-            ) : !followUp.subject ? (
-              <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 4 }}>
-                No follow-up template has been written yet. An administrator sets it on the command board.
-              </Text>
-            ) : (
-              <div style={{ marginTop: 8 }}>
-                <Text type="secondary" style={{ fontSize: 12, display: 'block' }}>
-                  To {followUp.to}
-                </Text>
-                <Input
-                  style={{ marginTop: 4 }}
-                  value={followUp.subject}
-                  onChange={(event) => setFollowUp((f) => (f ? { ...f, subject: event.target.value } : f))}
-                />
+      </Space>
+
+      <Modal
+        title={agencyName ? `TMAN-P - ${agencyName}` : 'TMAN-P'}
+        open={Boolean(sdrCard)}
+        onCancel={() => setSdrCard(null)}
+        onOk={() => {
+          if (sdrCard) {
+            setSdr(sdrCard)
+            setSdrDirty(true)
+          }
+          setSdrCard(null)
+        }}
+        okText="Done"
+        width={560}
+      >
+        {sdrCard ? (
+          <Space direction="vertical" size={12} style={{ width: '100%' }}>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              Shared per agency. When you save the call, answers here create a deal in HubSpot. (Every saved call
+              already creates or updates the company and contact.)
+              {sdr.filledAt
+                ? ` Last qualified ${formatDay(sdr.filledAt)}${sdr.filledBy?.includes('@') ? ` by ${sdr.filledBy}` : ''}.`
+                : ''}
+            </Text>
+            {TMANP.map((item) => (
+              <div key={item.key}>
+                <Space size={8} align="baseline" style={{ marginBottom: 4 }}>
+                  <Text strong>{item.letter}</Text>
+                  <Text strong>{item.label}</Text>
+                </Space>
                 <Input.TextArea
-                  style={{ marginTop: 6 }}
-                  rows={6}
-                  value={followUp.body}
-                  onChange={(event) => setFollowUp((f) => (f ? { ...f, body: event.target.value } : f))}
+                  autoSize={{ minRows: 1, maxRows: 4 }}
+                  placeholder={item.question}
+                  value={(sdrCard[item.key] as string) || ''}
+                  onChange={(event) => setSdrCard((current) => (current ? { ...current, [item.key]: event.target.value } : current))}
                 />
               </div>
-            )}
-          </div>
+            ))}
+          </Space>
         ) : null}
-      </Space>
+      </Modal>
+
+      <Modal
+        title={agencyName ? `BWC Info - ${agencyName}` : 'BWC Info'}
+        open={Boolean(bwcCard)}
+        onCancel={() => setBwcCard(null)}
+        onOk={() => {
+          if (bwcCard) {
+            setBwc(bwcCard)
+            setBwcDirty(true)
+          }
+          setBwcCard(null)
+        }}
+        okText="Done"
+        okButtonProps={{ disabled: !bwcCard?.status }}
+        width={480}
+      >
+        {bwcCard ? (
+          <Space direction="vertical" size={12} style={{ width: '100%' }}>
+            <Radio.Group
+              value={bwcCard.status || undefined}
+              onChange={(event) =>
+                setBwcCard((current) =>
+                  current ? { ...current, status: event.target.value as BwcContractAnswer['status'] } : current,
+                )
+              }
+              options={[
+                { value: 'none', label: 'No contract' },
+                { value: 'under_contract', label: 'Under contract' },
+              ]}
+            />
+            {bwcCard.status === 'under_contract' ? (
+              <Space size={10} wrap style={{ width: '100%' }}>
+                <div>
+                  <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>
+                    Vendor
+                  </Text>
+                  <Select
+                    style={{ width: 220 }}
+                    showSearch
+                    allowClear
+                    placeholder="Who supplies them"
+                    value={bwcCard.vendor || undefined}
+                    options={[...new Set([...BWC_VENDORS, ...(bwcCard.vendor ? [bwcCard.vendor] : []), 'Other'])].map((v) => ({
+                      value: v,
+                      label: v,
+                    }))}
+                    onChange={(value) => setBwcCard((current) => (current ? { ...current, vendor: value || '' } : current))}
+                  />
+                </div>
+                <div>
+                  <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>
+                    Term left
+                  </Text>
+                  <Select
+                    style={{ width: 160 }}
+                    allowClear
+                    placeholder="How long is left"
+                    value={bwcCard.termLeft || undefined}
+                    options={BWC_TERMS}
+                    onChange={(value) => setBwcCard((current) => (current ? { ...current, termLeft: value || '' } : current))}
+                  />
+                </div>
+              </Space>
+            ) : null}
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {bwcCard.status === 'none'
+                ? 'Recorded on the company in HubSpot as no contract when you save the call.'
+                : bwcCard.status === 'under_contract' && bwcCard.termLeft
+                  ? 'When you save the call, this goes on the company in HubSpot with a reminder to call them as a future prospect before the contract renews.'
+                  : 'Recorded on the company in HubSpot when you save the call.'}
+            </Text>
+          </Space>
+        ) : null}
+      </Modal>
     </Modal>
   )
 }
