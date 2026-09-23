@@ -904,8 +904,21 @@ export type CalendarEvent = {
   htmlLink: string
   organizer: string
   hangoutLink: string
+  /** A Google Meet specifically - hangoutLink alone cannot tell it from another add-on's call. */
+  meet: boolean
   attendees: CalendarAttendee[]
   canEdit: boolean
+  /** Set on a colleague's event laid over the viewer's own; never editable. */
+  owner?: { email: string; name: string }
+}
+
+/** A colleague whose calendar is laid over the viewer's - see CALENDAR_OVERLAYS on the backend. */
+export type CalendarOverlay = {
+  email: string
+  name: string
+  ready: boolean
+  error: string
+  events: CalendarEvent[]
 }
 
 export type CalendarEventInput = {
@@ -917,6 +930,8 @@ export type CalendarEventInput = {
   end: string
   attendees?: string[]
   timeZone?: string
+  /** Omitted leaves the event's call as it is. */
+  meet?: boolean
 }
 
 /**
@@ -931,7 +946,7 @@ export const getCalendarConnectUrl = () => request<{ url: string }>('/calendar/c
 
 export function getCalendarEvents(options: { timeMin: string; timeMax: string }) {
   const params = new URLSearchParams({ timeMin: options.timeMin, timeMax: options.timeMax })
-  return request<{ timeZone: string; events: CalendarEvent[] }>(`/calendar/events?${params.toString()}`)
+  return request<{ timeZone: string; events: CalendarEvent[]; overlays?: CalendarOverlay[] }>(`/calendar/events?${params.toString()}`)
 }
 
 export const createCalendarEvent = (input: CalendarEventInput) =>

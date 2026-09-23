@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Button, Card, Input, Modal, Popconfirm, Space, Spin, Switch, Tooltip, Typography, message, theme } from 'antd'
+import { Button, Card, Checkbox, Input, Modal, Popconfirm, Space, Spin, Switch, Tooltip, Typography, message, theme } from 'antd'
 import {
   DeleteOutlined,
   EditOutlined,
@@ -19,6 +19,7 @@ import {
   getCalendarStatus,
   updateCalendarEvent,
   type CalendarEvent,
+  type CalendarOverlay,
   type GmailStatus,
 } from '../lib/api'
 
@@ -161,6 +162,7 @@ type EventForm = {
   location: string
   guests: string
   description: string
+  meet: boolean
 }
 
 const blankForm = (day: string): EventForm => {
@@ -177,6 +179,7 @@ const blankForm = (day: string): EventForm => {
     location: '',
     guests: '',
     description: '',
+    meet: false,
   }
 }
 
@@ -195,6 +198,7 @@ const formFor = (event: CalendarEvent): EventForm => {
       location: event.location,
       guests: event.attendees.map((a) => a.email).join(', '),
       description: event.description,
+      meet: event.meet,
     }
   }
   const start = new Date(event.start)
@@ -211,6 +215,7 @@ const formFor = (event: CalendarEvent): EventForm => {
     location: event.location,
     guests: event.attendees.map((a) => a.email).join(', '),
     description: event.description,
+    meet: event.meet,
   }
 }
 
@@ -263,6 +268,10 @@ export default function CalendarPanel() {
     return new Date(now.getFullYear(), now.getMonth(), 1)
   })
   const [events, setEvents] = useState<CalendarEvent[]>([])
+  const [overlays, setOverlays] = useState<CalendarOverlay[]>([])
+  // Colleagues switched off in the legend. Kept by email so a refresh does not
+  // switch them back on.
+  const [hiddenOwners, setHiddenOwners] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [loaded, setLoaded] = useState(false)
   const [openDay, setOpenDay] = useState<string | null>(null)
@@ -288,6 +297,7 @@ export default function CalendarPanel() {
     getCalendarEvents({ timeMin: from.toISOString(), timeMax: to.toISOString() })
       .then((page) => {
         setEvents(page.events)
+        setOverlays(page.overlays ?? [])
         setLoaded(true)
       })
       .catch((err: unknown) => message.error(err instanceof Error ? err.message : 'Could not load your calendar.'))
@@ -298,9 +308,29 @@ export default function CalendarPanel() {
     refresh()
   }, [refresh])
 
+  // A meeting the viewer is already invited to carries the same id on every
+  // guest's calendar; it is on their own already, so the copy is dropped.
+  const shown = useMemo(() => {
+    const own = new Set(events.map((event) => event.id))
+    const theirs = overlays
+      .filter((overlay) => !hiddenOwners.includes(overlay.email))
+      .flatMap((overlay) => overlay.events.filter((event) => !own.has(event.id)))
+    return [...events, ...theirs]
+  }, [events, overlays, hiddenOwners])
+
+  // Theme colours rather than new ones, so a colleague's events stay part of
+  // the page in either mode.
+  const ownerColour = (email?: string) => {
+    if (!email) return null
+    const palette = [token.colorSuccessBg, token.colorWarningBg, token.colorInfoBg, token.colorErrorBg]
+    const index = overlays.findIndex((overlay) => overlay.email === email)
+    return palette[(index < 0 ? 0 : index) % palette.length]
+  }
+  const eventKey = (event: CalendarEvent) => `${event.owner?.email ?? 'me'}:${event.id}`
+
   const byDay = useMemo(() => {
     const map = new Map<string, CalendarEvent[]>()
-    for (const event of events) {
+    for (const event of shown) {
       for (const key of daysCovered(event)) {
         const list = map.get(key)
         if (list) list.push(event)
@@ -314,7 +344,7 @@ export default function CalendarPanel() {
       })
     }
     return map
-  }, [events])
+  }, [shown])
 
   const connect = () => {
     setBusy(true)
@@ -341,6 +371,7 @@ export default function CalendarPanel() {
       end: form.allDay ? form.endDate : `${form.endDate}T${form.endTime}`,
       attendees: guests,
       timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      meet: form.meet,
     }
     setSaving(true)
     const done = form.id ? updateCalendarEvent(form.id, input) : createCalendarEvent(input)
@@ -367,7 +398,7 @@ export default function CalendarPanel() {
 
   const chip = (event: CalendarEvent, key: string) => (
     <div
-      key={`${key}:${event.id}`}
+      key={`${key}:${eventKey(event)}`}
       role="button"
       tabIndex={0}
       onClick={(e) => {
@@ -377,7 +408,7 @@ export default function CalendarPanel() {
       onKeyDown={(e) => {
         if (e.key === 'Enter') setReading(event)
       }}
-      title={`${event.allDay ? 'All day' : timeOf(event.start)} · ${event.summary || '(no title)'}`}
+      title={`${event.owner ? `${event.owner.name}: ` : ''}${event.allDay ? 'All day' : timeOf(event.start)} · ${event.summary || '(no title)'}`}
       style={{
         display: 'flex',
         gap: 4,
@@ -385,8 +416,8 @@ export default function CalendarPanel() {
         padding: '1px 4px',
         marginBottom: 2,
         borderRadius: token.borderRadiusSM,
-        background: event.allDay ? token.colorPrimary : token.colorFillSecondary,
-        color: event.allDay ? token.colorTextLightSolid : token.colorText,
+        background: ownerColour(event.owner?.email) ?? (event.allDay ? token.colorPrimary : token.colorFillSecondary),
+        color: event.owner || !event.allDay ? token.colorText : token.colorTextLightSolid,
         fontSize: 11,
         lineHeight: '15px',
         cursor: 'pointer',
@@ -486,7 +517,7 @@ export default function CalendarPanel() {
       </Title>
       {(byDay.get(openDay) || []).map((event) => (
         <div
-          key={event.id}
+          key={eventKey(event)}
           role="button"
           tabIndex={0}
           onClick={() => setReading(event)}
@@ -498,6 +529,7 @@ export default function CalendarPanel() {
             gridTemplateColumns: '120px minmax(0, 1fr)',
             gap: 12,
             padding: '8px 4px',
+            background: ownerColour(event.owner?.email) ?? undefined,
             borderBottom: `1px solid ${token.colorBorderSecondary}`,
             cursor: 'pointer',
           }}
@@ -507,6 +539,11 @@ export default function CalendarPanel() {
           </Text>
           <div style={{ minWidth: 0 }}>
             <Text style={{ fontSize: 13 }}>{event.summary || '(no title)'}</Text>
+            {event.owner ? (
+              <Text type="secondary" style={{ fontSize: 12, display: 'block' }}>
+                {event.owner.name}'s calendar
+              </Text>
+            ) : null}
             {event.location ? (
               <Text type="secondary" ellipsis style={{ fontSize: 12, display: 'block' }}>
                 {event.location}
@@ -620,6 +657,11 @@ export default function CalendarPanel() {
         {reading ? (
           <Space direction="vertical" size={8} style={{ width: '100%' }}>
             <Text>{spanLabel(reading)}</Text>
+            {reading.owner ? (
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                On {reading.owner.name}'s calendar
+              </Text>
+            ) : null}
             {reading.location ? (
               <Text type="secondary">
                 <EnvironmentOutlined /> {reading.location}
@@ -627,7 +669,7 @@ export default function CalendarPanel() {
             ) : null}
             {reading.hangoutLink ? (
               <a href={reading.hangoutLink} target="_blank" rel="noreferrer">
-                <LinkOutlined /> Join the video call
+                <LinkOutlined /> {reading.meet ? 'Join Google Meet' : 'Join the video call'}
               </a>
             ) : null}
             {reading.attendees.length ? (
@@ -641,7 +683,7 @@ export default function CalendarPanel() {
                 {reading.description.replace(/<[^>]+>/g, '')}
               </div>
             ) : null}
-            {!reading.canEdit ? (
+            {!reading.canEdit && !reading.owner ? (
               <Text type="secondary" style={{ fontSize: 12 }}>
                 Organised by {reading.organizer || 'someone else'}, so it is read-only here.
               </Text>
@@ -712,6 +754,10 @@ export default function CalendarPanel() {
               value={form.location}
               onChange={(event) => setForm({ ...form, location: event.target.value })}
             />
+            <Space>
+              <Switch checked={form.meet} onChange={(meet) => setForm({ ...form, meet })} size="small" />
+              <Text>Google Meet</Text>
+            </Space>
             <Input
               addonBefore="Guests"
               placeholder="someone@example.com, someone.else@example.com"
@@ -760,6 +806,38 @@ export default function CalendarPanel() {
       ) : (
         <Space direction="vertical" size={10} style={{ width: '100%' }}>
           {dayView ? null : toolbar}
+          {overlays.length ? (
+            <Space size={12} wrap>
+              {overlays.map((overlay) => (
+                <Tooltip key={overlay.email} title={overlay.error || overlay.email}>
+                  <Checkbox
+                    checked={overlay.ready && !hiddenOwners.includes(overlay.email)}
+                    disabled={!overlay.ready}
+                    onChange={(e) =>
+                      setHiddenOwners((current) =>
+                        e.target.checked ? current.filter((email) => email !== overlay.email) : [...current, overlay.email],
+                      )
+                    }
+                  >
+                    <span
+                      style={{
+                        display: 'inline-block',
+                        width: 10,
+                        height: 10,
+                        marginRight: 6,
+                        borderRadius: token.borderRadiusXS,
+                        background: ownerColour(overlay.email) ?? undefined,
+                      }}
+                    />
+                    <Text style={{ fontSize: 12 }} type={overlay.ready ? undefined : 'secondary'}>
+                      {overlay.name}
+                      {overlay.ready ? '' : ' (not connected)'}
+                    </Text>
+                  </Checkbox>
+                </Tooltip>
+              ))}
+            </Space>
+          ) : null}
           {!loaded && !events.length && loading ? <Spin /> : dayView ?? grid}
         </Space>
       )}
