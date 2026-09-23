@@ -692,7 +692,45 @@ export type DailySchedule = {
   pool: number
   nextFireAt: string | null
   days: Array<{ date: string; trigger: string; finishedAt: string | null; plan: DailyPlanEntry[] }>
+  /** The weekly call-later email, sent from notifyFrom in the same timezone. */
+  callLaterDigest: CallLaterDigest
 }
+
+export type CallLaterDigestSend = {
+  at: string
+  trigger: string
+  to: string
+  count: number
+  total: number
+  note: string
+}
+
+export type CallLaterDigest = {
+  enabled: boolean
+  /** 0 = Sunday ... 6 = Saturday. */
+  weekday: number
+  hour: number
+  minute: number
+  /** Resolved: the call-back owner when nobody is set. */
+  to: string
+  cc: string[]
+  limit: number
+  nextAt: string | null
+  recent: CallLaterDigestSend[]
+}
+
+export type CallLaterDigestSettings = Partial<Pick<CallLaterDigest, 'enabled' | 'weekday' | 'hour' | 'minute' | 'to' | 'cc' | 'limit'>>
+
+export const saveCallLaterDigest = (change: CallLaterDigestSettings) =>
+  request<unknown>('/command-board/schedule', { method: 'PUT', body: JSON.stringify({ callLaterDigest: change }) })
+
+export const previewCallLaterDigest = () =>
+  request<{ to: string; from: string; fromReady: boolean; count: number; total: number; subject: string; text: string }>(
+    '/command-board/call-later-digest/preview',
+  )
+
+export const sendCallLaterDigestNow = () =>
+  request<CallLaterDigestSend>('/command-board/call-later-digest/send-now', { method: 'POST' })
 
 export type MemberScope = {
   states: string[]
@@ -707,8 +745,36 @@ export type MemberScope = {
  * full-access account, and for anyone the board has not configured. A
  * configured account gets no filter controls: the scope is the map.
  */
+/** One agency on a Friday call-later list, as it stood when the list went out. */
+export type CallLaterListRow = {
+  ori: string
+  agency: string
+  county: string
+  state: string
+  contact: string
+  contactTitle: string
+  phone: string
+  email: string
+  outcome: string
+  calledAt: string | null
+  followUpAt: string | null
+  loggedBy: string
+  notes: string
+  callCount: number
+}
+
+/** A week's call-later list: the same rows all week, whatever gets logged. */
+export type CallLaterList = {
+  id: string
+  at: string
+  /** How many were waiting in all; `rows` is the longest-waiting of them. */
+  total: number
+  rows: CallLaterListRow[]
+}
+
 export type MemberView = {
   assignedRuns: AssignableRun[]
+  callLaterLists?: CallLaterList[]
   limitToAssignedRuns: boolean
   includeCalled: boolean
   scope: MemberScope

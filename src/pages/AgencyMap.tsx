@@ -1932,9 +1932,10 @@ export default function AgencyMap() {
         </Space>
       </Card>
 
-      {member?.assignedRuns.length ? (
+      {member?.assignedRuns.length || member?.callLaterLists?.length ? (
         <LeadsBoard
           runs={member.assignedRuns}
+          callLaterLists={member.callLaterLists ?? []}
           // What the map already knows about each agency's calls, live: the
           // board reads "done" from here, so logging a call marks the row
           // the moment the pin changes colour.

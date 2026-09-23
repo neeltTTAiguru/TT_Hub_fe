@@ -22,7 +22,10 @@ import {
 } from 'antd'
 import {
   getCommandBoard,
+  previewCallLaterDigest,
   removeHubMember,
+  saveCallLaterDigest,
+  sendCallLaterDigestNow,
   runDailyResearchNow,
   getEmailTemplate,
   saveDailySchedule,
@@ -30,6 +33,7 @@ import {
   saveHubMember,
   startMiniRun,
   type AssignableRun,
+  type CallLaterDigestSettings,
   type CommandBoard as Board,
   type DailySchedule,
   type EmailTemplate,
@@ -255,6 +259,53 @@ export default function CommandBoard({
       },
       immediate ? 0 : 600,
     )
+  }
+
+  // The Friday call-later email. Saved field by field and then re-read, because
+  // the board's copy carries the next send and the recent ones, which the save
+  // does not return.
+  const [digestPreview, setDigestPreview] = useState<{ subject: string; text: string; note: string } | null>(null)
+  const [digestBusy, setDigestBusy] = useState<'' | 'preview' | 'send'>('')
+  const digestTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const updateDigest = (change: CallLaterDigestSettings, immediate = true) => {
+    setBoard((current) =>
+      current
+        ? { ...current, schedule: { ...current.schedule, callLaterDigest: { ...current.schedule.callLaterDigest, ...change } } }
+        : current,
+    )
+    if (digestTimer.current) clearTimeout(digestTimer.current)
+    digestTimer.current = setTimeout(
+      () => {
+        saveCallLaterDigest(change)
+          .then(() => reload())
+          .catch((err: unknown) => message.error(err instanceof Error ? err.message : 'Could not save the call-later email.'))
+      },
+      immediate ? 0 : 600,
+    )
+  }
+  const showDigestPreview = () => {
+    setDigestBusy('preview')
+    previewCallLaterDigest()
+      .then((p) =>
+        setDigestPreview({
+          subject: p.subject,
+          text: p.text,
+          note: `To ${p.to}, from ${p.from || 'nobody'}${p.fromReady ? '' : ' - no Gmail connected, so it would not send'}.`,
+        }),
+      )
+      .catch((err: unknown) => message.error(err instanceof Error ? err.message : 'Could not build the preview.'))
+      .finally(() => setDigestBusy(''))
+  }
+  const sendDigestNow = () => {
+    setDigestBusy('send')
+    sendCallLaterDigestNow()
+      .then((send) => {
+        if (send.count) message.success(`Sent ${send.count} call-backs to ${send.to}.`)
+        else message.warning(send.note)
+        reload()
+      })
+      .catch((err: unknown) => message.error(err instanceof Error ? err.message : 'Could not send.'))
+      .finally(() => setDigestBusy(''))
   }
 
   const miniRun = (email: string) => {
@@ -784,6 +835,121 @@ export default function CommandBoard({
                 )
               })()}
             </Space>
+          </Card>
+        ) : null}
+
+        {schedule?.callLaterDigest ? (
+          <Card size="small" className="section-card">
+            {(() => {
+              const digest = schedule.callLaterDigest
+              const last = digest.recent[0]
+              return (
+                <Space direction="vertical" size={8} style={{ width: '100%' }}>
+                  <Space wrap size={12} align="center">
+                    <Switch checked={digest.enabled} onChange={(enabled) => updateDigest({ enabled })} />
+                    <Text strong>Call-later email</Text>
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      Every
+                    </Text>
+                    <Select
+                      size="small"
+                      style={{ width: 90 }}
+                      value={digest.weekday}
+                      onChange={(weekday) => updateDigest({ weekday })}
+                      options={['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((label, value) => ({ value, label }))}
+                    />
+                    <Select
+                      size="small"
+                      style={{ width: 110 }}
+                      value={digest.hour}
+                      onChange={(hour) => updateDigest({ hour, minute: 0 })}
+                      options={Array.from({ length: 24 }, (_, hour) => ({ value: hour, label: hourLabel(hour, 0) }))}
+                    />
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      Pacific · the
+                    </Text>
+                    <InputNumber
+                      size="small"
+                      min={1}
+                      max={200}
+                      style={{ width: 70 }}
+                      value={digest.limit}
+                      onChange={(limit) => (limit ? updateDigest({ limit }, false) : undefined)}
+                    />
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      longest-waiting pink pins
+                      {digest.enabled && digest.nextAt ? ` · next ${new Date(digest.nextAt).toLocaleString()}` : ' · off'}
+                    </Text>
+                    <Button size="small" loading={digestBusy === 'preview'} onClick={showDigestPreview}>
+                      Preview
+                    </Button>
+                    <Popconfirm
+                      title="Send the call-later email now?"
+                      description={`Emails ${digest.to} the list as it stands. The scheduled send still goes out.`}
+                      onConfirm={sendDigestNow}
+                    >
+                      <Button size="small" loading={digestBusy === 'send'}>
+                        Send now
+                      </Button>
+                    </Popconfirm>
+                  </Space>
+                  <Space wrap size={8} align="center">
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      To
+                    </Text>
+                    <Select
+                      size="small"
+                      showSearch
+                      style={{ width: 280 }}
+                      value={digest.to}
+                      onChange={(to) => updateDigest({ to })}
+                      options={(board?.members ?? []).map((m) => ({ value: m.email, label: m.name ? `${m.name} (${m.email})` : m.email }))}
+                    />
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      cc
+                    </Text>
+                    <Select
+                      mode="tags"
+                      size="small"
+                      style={{ width: 300 }}
+                      placeholder="Nobody"
+                      tokenSeparators={[',', ' ']}
+                      value={digest.cc}
+                      onChange={(cc) => updateDigest({ cc }, false)}
+                      options={(board?.members ?? []).map((m) => ({ value: m.email, label: m.email }))}
+                    />
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      From the leads email's sender ({schedule.notifyFrom || 'nobody set'}). On that day the
+                      recipient gets no morning research - the list is their Your leads entry for the week.
+                    </Text>
+                  </Space>
+                  {last ? (
+                    <Text style={{ fontSize: 12 }}>
+                      <Text strong style={{ fontSize: 12 }}>Last:</Text> {new Date(last.at).toLocaleString()}
+                      {last.trigger === 'manual' ? ' (sent by hand)' : ''} - {last.note}
+                    </Text>
+                  ) : (
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      Not sent yet.
+                    </Text>
+                  )}
+                </Space>
+              )
+            })()}
+            <Modal
+              title={digestPreview?.subject}
+              open={Boolean(digestPreview)}
+              onCancel={() => setDigestPreview(null)}
+              footer={null}
+              width={680}
+            >
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                {digestPreview?.note}
+              </Text>
+              <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12, maxHeight: '60vh', overflow: 'auto', marginTop: 8 }}>
+                {digestPreview?.text}
+              </pre>
+            </Modal>
           </Card>
         ) : null}
 
