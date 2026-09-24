@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Alert, AutoComplete, Button, Card, Checkbox, Col, Input, Modal, Row, Select, Space, Statistic, Spin, Typography, message } from 'antd'
+import { Alert, Button, Card, Checkbox, Col, Input, Modal, Row, Select, Space, Statistic, Spin, Typography, message } from 'antd'
 import { MapContainer, TileLayer, Marker, Polyline, Popup, useMap } from 'react-leaflet'
 import MarkerClusterGroup from 'react-leaflet-cluster'
 import AgencyBriefingPanel from '../components/AgencyBriefingPanel'
@@ -31,7 +31,6 @@ import {
   getLeAgencyStats,
   getResearchActivity,
   moveTraveller,
-  setTrustedBwc,
   type AgencyOutreach,
   type CrmDealFeature,
   type LeAgencyFeature,
@@ -84,23 +83,6 @@ const NO_BWC_COLOR = '#6f9457'
 // test agency that reads as real is a trap somebody eventually rings.
 const TEST_COLOR = '#e8590c'
 const UNKNOWN_BWC_COLOR = '#d4a017'
-// The vendors actually seen in the data, offered as suggestions rather than a
-// closed list - the long tail here is real, and a free-text box that quietly
-// refuses an unlisted vendor is worse than no suggestions at all.
-const COMMON_VENDORS = [
-  'Axon',
-  'Motorola/WatchGuard',
-  'Getac',
-  'Utility',
-  'Digital Ally',
-  'Wolfcom',
-  'Coban',
-  'Reveal',
-  'Visual Labs',
-  'Panasonic',
-  'Pro-Vision',
-  'LensLock',
-]
 // An agency an SDR has logged a call to. Deliberately the one cool colour in a
 // warm palette, so a worked territory reads at a glance without squinting at
 // shades of red and amber.
@@ -630,7 +612,6 @@ export default function AgencyMap() {
   const [waving, setWaving] = useState(false)
   // Marking an agency as having cameras asks which vendor, because "they have
   // cameras" without a vendor is barely more useful than not knowing.
-  const [vendorPrompt, setVendorPrompt] = useState<{ ori: string; name: string; vendor: string } | null>(null)
   // Which agencies have a qualification on file, so the button can show it
   // without fetching every agency's form up front.
   const [sdrFilled, setSdrFilled] = useState<Set<string>>(new Set())
@@ -1111,11 +1092,8 @@ export default function AgencyMap() {
     )
 
 
-  const markTrusted = async (
-    ori: string,
-    value: 'has_bwc' | 'no_bwc' | '',
-    vendor?: string,
-  ) => {
+  /** Patch the verdict a saved call's BWC Info set, so the pin recolours without a refetch. */
+  const applyTrusted = (ori: string, value: 'has_bwc' | 'no_bwc', vendor: string) =>
     setFeatures((current) =>
       current.map((feature) =>
         feature.properties.ori === ori
@@ -1124,19 +1102,13 @@ export default function AgencyMap() {
               properties: {
                 ...feature.properties,
                 bwcTrusted: value,
-                bwcTrustedBy: value ? 'manual' : '',
+                bwcTrustedBy: 'manual',
                 bwcVendor: vendor || feature.properties.bwcVendor,
               },
             }
           : feature,
       ),
     )
-    try {
-      await setTrustedBwc(ori, value, vendor ? { vendor } : {})
-    } catch (error) {
-      message.error(error instanceof Error ? error.message : 'Could not save that.')
-    }
-  }
 
   const markerNodes = useMemo(
     () => (
@@ -1231,36 +1203,10 @@ export default function AgencyMap() {
                             Research this agency
                           </Button>
                         ) : null}
-                        {/* Set it by hand when research finds nothing but you
-                            know the answer. A person's word beats an empty
-                            search, and it is recorded as a person's word. */}
-                        {/* wrap, because a fourth button here squeezed the
-                            "Mark:" label down to one letter per line. */}
+                        {/* The verdict is set from the call card's BWC Info
+                            now (under contract = has BWC, no contract = none),
+                            so the card only needs these two. */}
                         <Space size={4} wrap>
-                          <Text type="secondary" style={{ fontSize: 11, whiteSpace: 'nowrap' }}>
-                            Mark:
-                          </Text>
-                          <Button
-                            size="small"
-                            type={point.bwcTrusted === 'has_bwc' ? 'primary' : 'default'}
-                            onClick={() =>
-                              setVendorPrompt({ ori: point.ori, name: point.name, vendor: point.bwcVendor || '' })
-                            }
-                          >
-                            Has BWC
-                          </Button>
-                          <Button
-                            size="small"
-                            type={point.bwcTrusted === 'no_bwc' ? 'primary' : 'default'}
-                            onClick={() => void markTrusted(point.ori, 'no_bwc')}
-                          >
-                            No BWC
-                          </Button>
-                          {point.bwcTrusted ? (
-                            <Button size="small" onClick={() => void markTrusted(point.ori, '')}>
-                              Clear
-                            </Button>
-                          ) : null}
                           {/* One door for everything that happens after a call.
                               The three actions behind it (log the call, defer
                               it, qualify it into HubSpot) used to be three
@@ -1962,38 +1908,6 @@ export default function AgencyMap() {
         onClose={() => setViewingRunId(null)}
       />
 
-      <Modal
-        title={vendorPrompt ? `${vendorPrompt.name} - which vendor?` : 'Which vendor?'}
-        open={Boolean(vendorPrompt)}
-        onCancel={() => setVendorPrompt(null)}
-        okText="Mark as having BWC"
-        onOk={() => {
-          if (!vendorPrompt) return
-          void markTrusted(vendorPrompt.ori, 'has_bwc', vendorPrompt.vendor.trim())
-          setVendorPrompt(null)
-        }}
-      >
-        <Space direction="vertical" size={10} style={{ width: '100%' }}>
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            Who supplies their cameras? Leave it blank if you do not know - the agency is still
-            marked as having them, just without a vendor.
-          </Text>
-          <AutoComplete
-            autoFocus
-            style={{ width: '100%' }}
-            value={vendorPrompt?.vendor ?? ''}
-            placeholder="Axon, Motorola/WatchGuard, ..."
-            // Suggestions, not a closed list: the long tail of vendors here is
-            // real, and a picker that refuses an unlisted one loses the answer.
-            options={COMMON_VENDORS.filter((vendor) =>
-              vendor.toLowerCase().includes((vendorPrompt?.vendor || '').toLowerCase()),
-            ).map((vendor) => ({ value: vendor }))}
-            onChange={(value) =>
-              setVendorPrompt((current) => (current ? { ...current, vendor: value } : current))
-            }
-          />
-        </Space>
-      </Modal>
 
 
       <CallReportModal
@@ -2040,6 +1954,7 @@ export default function AgencyMap() {
         // Patched into the features already loaded rather than refetching the
         // national geojson - the pin recolours in place the moment it saves.
         onChanged={applyOutreach}
+        onBwcTrusted={applyTrusted}
         onSdrSaved={(ori, filled) =>
           setSdrFilled((current) => {
             const next = new Set(current)

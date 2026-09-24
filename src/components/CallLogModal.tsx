@@ -56,7 +56,7 @@ const OUTCOMES = [
 /**
  * The one outcome that comes with a date: a call-back the agency agreed to.
  *
- * A voicemail or a "Call later" has none - the pin turns pink, the agency
+ * A voicemail, a gatekeeper message or a "Call later" has none - the pin turns pink, the agency
  * goes on the Friday call-back list, and whoever rings it next logs the next
  * outcome. Nothing is put in a diary for them.
  */
@@ -169,6 +169,7 @@ export default function CallLogModal({
   onClose,
   onChanged,
   onSdrSaved,
+  onBwcTrusted,
 }: {
   ori: string | null
   agencyName: string
@@ -181,6 +182,8 @@ export default function CallLogModal({
   onChanged?: (ori: string, outreach: AgencyOutreach) => void
   /** Fires when a save carried the TMAN-P, with whether any of it is filled. */
   onSdrSaved?: (ori: string, filled: boolean) => void
+  /** Fires when BWC Info set the pin's verdict: under contract = has BWC, no contract = none. */
+  onBwcTrusted?: (ori: string, value: 'has_bwc' | 'no_bwc', vendor: string) => void
 }) {
   const [calls, setCalls] = useState<AgencyCall[]>([])
   const [draft, setDraft] = useState<CallDraft>(emptyDraft)
@@ -327,6 +330,7 @@ export default function CallLogModal({
         onChanged?.(ori, result.outreach ?? summarise(result.calls || []))
         message.success('Call logged.')
         if (sdrDirty) onSdrSaved?.(ori, TMANP.some((q) => String(sdr[q.key] || '').trim()))
+        if (result.bwcTrusted) onBwcTrusted?.(ori, result.bwcTrusted.value, result.bwcTrusted.vendor)
         setSdrDirty(false)
         setBwcDirty(false)
         // What landed in HubSpot for the agency, said plainly - and each step

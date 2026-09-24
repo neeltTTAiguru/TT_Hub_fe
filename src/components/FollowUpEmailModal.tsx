@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Button, Input, Modal, Space, Typography, message } from 'antd'
-import { previewEmailTemplate, sendAgencyEmail } from '../lib/api'
+import { findAgencyEmail, previewEmailTemplate, sendAgencyEmail, type EmailSource } from '../lib/api'
 
 const { Text } = Typography
 
@@ -40,6 +40,29 @@ export default function FollowUpEmailModal({
   const [draft, setDraft] = useState<Draft | null>(null)
   const [error, setError] = useState('')
   const [sending, setSending] = useState(false)
+  // The address lookup. With nothing on file the composer asks PromptLoop to
+  // read the agency's website - up to a minute - and says where the address
+  // came from, so a generic inbox is seen for what it is before sending.
+  const [finding, setFinding] = useState(false)
+  const [source, setSource] = useState<EmailSource | null>(null)
+  const [lookupNote, setLookupNote] = useState('')
+
+  const lookUp = (force = false) => {
+    if (!ori) return
+    setFinding(true)
+    setLookupNote('')
+    findAgencyEmail(ori, force)
+      .then((found) => {
+        if (found.found && found.email) {
+          setDraft((d) => (d ? { ...d, to: d.to.trim() ? d.to : found.email } : d))
+          setSource(found.source ? found : null)
+        } else {
+          setLookupNote(found.reason || 'No published address was found.')
+        }
+      })
+      .catch((err: unknown) => setLookupNote(err instanceof Error ? err.message : 'The address lookup failed.'))
+      .finally(() => setFinding(false))
+  }
 
   useEffect(() => {
     if (!open || !ori) return
@@ -47,6 +70,8 @@ export default function FollowUpEmailModal({
     previewEmailTemplate('voicemail-followup', ori)
       .then((next) => {
         if (cancelled) return
+        setSource(next.toSource ?? null)
+        setLookupNote('')
         setDraft({
           to: next.to,
           subject: next.subject,
@@ -56,6 +81,8 @@ export default function FollowUpEmailModal({
           templated: Boolean(next.subject || next.body),
         })
         setError('')
+        // Nothing on file: find it, so the email is ready to send.
+        if (!next.to && next.connected) lookUp()
       })
       .catch((err: unknown) => {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Could not open the composer.')
@@ -63,6 +90,8 @@ export default function FollowUpEmailModal({
     return () => {
       cancelled = true
     }
+    // lookUp is recreated each render and reads only ori; open/ori are the triggers.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, ori])
 
   const blocked = !draft
@@ -115,10 +144,42 @@ export default function FollowUpEmailModal({
         <Space direction="vertical" size={8} style={{ width: '100%' }}>
           <Input
             addonBefore="To"
-            placeholder="someone@agency.gov"
+            placeholder={finding ? 'Finding their address...' : 'someone@agency.gov'}
+            disabled={finding}
             value={draft.to}
-            onChange={(event) => patch({ to: event.target.value })}
+            onChange={(event) => {
+              patch({ to: event.target.value })
+              setSource(null)
+            }}
           />
+          {finding ? (
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              Searching {agencyName}'s website with PromptLoop for who to write to - this can take up to a minute.
+            </Text>
+          ) : source ? (
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              Found by PromptLoop: {[source.owner, source.tier, source.confidence ? `${source.confidence} confidence` : '']
+                .filter(Boolean)
+                .join(' · ')}
+              {source.sourceUrl ? (
+                <>
+                  {' · '}
+                  <a href={source.sourceUrl} target="_blank" rel="noreferrer">
+                    where it was found
+                  </a>
+                </>
+              ) : null}
+            </Text>
+          ) : lookupNote ? (
+            <Space size={8} wrap>
+              <Text type="warning" style={{ fontSize: 12 }}>
+                {lookupNote} Type an address in, or
+              </Text>
+              <Button size="small" onClick={() => lookUp(true)}>
+                Search again
+              </Button>
+            </Space>
+          ) : null}
           <Input
             addonBefore="Subject"
             placeholder="Subject"

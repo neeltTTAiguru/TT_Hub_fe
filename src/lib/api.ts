@@ -924,8 +924,28 @@ export function saveEmailTemplate(key: string, input: { subject: string; body: s
 }
 
 /** The template filled in for one agency, as the signed-in person would send it. */
+/** Where an agency's address came from when the hub found it rather than a person. */
+export type EmailSource = {
+  source: string
+  tier: string
+  owner: string
+  sourceUrl: string
+  confidence: string
+}
+
+/**
+ * Find who to email at an agency with PromptLoop. Up to a minute; returns the
+ * address on file (or a recent miss) without running unless `force`.
+ */
+export function findAgencyEmail(ori: string, force = false) {
+  return request<EmailSource & { email: string; found: boolean; cached: boolean; reason?: string; notes?: string }>(
+    `/le-agencies/${encodeURIComponent(ori)}/find-email`,
+    { method: 'POST', body: JSON.stringify({ force }) },
+  )
+}
+
 export function previewEmailTemplate(key: string, ori: string) {
-  return request<{ subject: string; body: string; to: string } & GmailStatus>(
+  return request<{ subject: string; body: string; to: string; toSource?: EmailSource | null } & GmailStatus>(
     `/gmail/template/${key}/preview/${encodeURIComponent(ori)}`,
   )
 }
@@ -2807,6 +2827,8 @@ type CallLogResponse = {
   // Present when the save asked for a call-back in the logger's calendar:
   // the event booked, or why it could not be. The call is saved either way.
   calendar?: { id: string; at: string } | { error: string } | null
+  // Present when the save carried BWC Info: the pin verdict it set.
+  bwcTrusted?: { value: 'has_bwc' | 'no_bwc'; vendor: string } | null
   // Present when the save carried TMAN-P or BWC answers: what landed on the
   // agency in HubSpot, and each step that did not.
   hubspotAgency?: {
