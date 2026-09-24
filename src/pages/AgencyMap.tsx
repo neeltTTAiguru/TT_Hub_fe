@@ -126,10 +126,12 @@ const CALL_LATER_COLOR = '#ff2d95'
  * "Call later" is the one-click deferral. A voicemail is the same state
  * arrived at by dialling: nobody was reached, and somebody has to come back
  * to it - so it earns the same pink pin rather than the blue of a worked
- * agency. The stored outcome is untouched, so the call report still counts
- * voicemails as voicemails.
+ * agency. A gatekeeper who takes a message is the same again: the promised
+ * call-back may never come, so it stays pink until someone follows up. The
+ * stored outcome is untouched, so the call report still counts voicemails as
+ * voicemails and gatekeepers as conversations.
  */
-const CALL_LATER_OUTCOMES = [CALL_LATER_OUTCOME, 'Left voicemail']
+const CALL_LATER_OUTCOMES = [CALL_LATER_OUTCOME, 'Left voicemail', 'Spoke with gatekeeper']
 const isCallLater = (outcome?: string) => CALL_LATER_OUTCOMES.includes(outcome || '')
 // The live research run. A deliberate outsider in this palette - it is the one
 // thing on the map that is happening rather than known.
